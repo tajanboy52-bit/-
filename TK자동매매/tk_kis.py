@@ -28,6 +28,15 @@ ENV = {
 _PACE = {}                       # {(env, 앱키 끝 6자리): [lock, 마지막 호출 시각]} — 같은 앱키는 프로세스 전체가 한 줄로
 _PACE_LOCK = threading.Lock()
 _APPROVAL = {}
+HOOK = [None]                    # 호출 통계 (tk_journal.api_hit) — (env, tr_id, ms, 오류)
+
+
+def _hit(env, tr, t0, err=''):
+    if HOOK[0]:
+        try:
+            HOOK[0](env, tr, (time.monotonic() - t0) * 1000, err)
+        except Exception:
+            pass
 
 
 class KISError(RuntimeError):
@@ -158,8 +167,15 @@ class KIS:
         for k in range(retry):
             try:
                 self._throttle()
-                j, h = self._http('GET', path, self._headers(tr_id, tr_cont), params=params)
-                if str(j.get('rt_cd', '0')) == '0':
+                t0 = time.monotonic()
+                try:
+                    j, h = self._http('GET', path, self._headers(tr_id, tr_cont), params=params)
+                except Exception as e:
+                    _hit(self.env, tr_id, t0, str(e)[:100] or 'error')
+                    raise
+                ok = str(j.get('rt_cd', '0')) == '0'
+                _hit(self.env, tr_id, t0, '' if ok else f"{j.get('msg_cd', '')} {j.get('msg1', '')}")
+                if ok:
                     return j, h
                 code, msg = j.get('msg_cd', ''), j.get('msg1', '')
                 last = KISError(f'{code} {msg}'.strip(), code)
@@ -196,13 +212,17 @@ class KIS:
         except Exception as e:
             raise KISError(f'주문 전 준비 실패(주문 안 나감): {str(e)[:150]}')
         self._throttle()
+        t0 = time.monotonic()
         try:
             j, _ = self._http('POST', path, headers, body=body, timeout=25)
+            _hit(self.env, tr_id, t0, '' if str(j.get('rt_cd', '0')) == '0' else f"{j.get('msg_cd', '')} {j.get('msg1', '')}")
         except urllib.error.HTTPError as e:
+            _hit(self.env, tr_id, t0, f'HTTP {e.code}')
             if e.code in (400, 401, 403, 404, 429):
                 raise KISError(f'주문 거절 HTTP {e.code}', str(e.code))
             raise KISError(f'ORDER_SUBMISSION_AMBIGUOUS: HTTP {e.code}')
         except Exception as e:
+            _hit(self.env, tr_id, t0, 'AMBIGUOUS')
             raise KISError(f'ORDER_SUBMISSION_AMBIGUOUS: {str(e)[:150]}')
         if str(j.get('rt_cd', '0')) != '0':
             raise KISError(f"주문 거절: {j.get('msg_cd', '')} {j.get('msg1', '')}".strip(), j.get('msg_cd', ''))
@@ -235,7 +255,7 @@ class KIS:
         j = self.post_order('/uapi/domestic-stock/v1/trading/order-cash', 'TTTC0012U' if side == 'buy' else 'TTTC0011U', body)
         o = j.get('output') or {}
         return {'order_no': str(o.get('ODNO') or o.get('odno') or ''), 'org_no': str(o.get('KRX_FWDG_ORD_ORGNO') or o.get('krx_fwdg_ord_orgno') or ''),
-                'time': str(o.get('ORD_TMD') or o.get('ord_tmd') or ''), 'msg': j.get('msg1', '')}
+                'time': str(o.get('ORD_TMD') or o.get('ord_tmd') or ''), 'msg': j.get('msg1', ''), 'msg_cd': j.get('msg_cd', '')}
 
     def cancel(self, order_no, org_no=''):
         body = {'CANO': self.cano, 'ACNT_PRDT_CD': self.product, 'KRX_FWDG_ORD_ORGNO': str(org_no or ''), 'ORGN_ODNO': str(order_no),
@@ -277,7 +297,21 @@ class KIS:
         return [{'order_no': str(r.get('odno', '')), 'ticker': str(r.get('pdno', '')).zfill(6), 'name': r.get('prdt_name', ''),
                  'side': 'sell' if str(r.get('sll_buy_dvsn_cd', '')) == '01' else 'buy', 'qty': int(_num(r.get('ord_qty'))),
                  'filled': int(_num(r.get('tot_ccld_qty'))), 'avg': _num(r.get('avg_prvs')), 'remain': int(_num(r.get('rmn_qty'))),
-                 'cancelled': str(r.get('cncl_yn', 'N')) == 'Y', 'time': str(r.get('ord_tmd', ''))} for r in a1 if r.get('odno')]
+                 'cancelled': str(r.get('cncl_yn', 'N')) == 'Y', 'time': str(r.get('ord_tmd', '')), 'amt': _num(r.get('tot_ccld_amt')),
+                 'rejected': int(_num(r.get('rjct_qty'))), 'ord_price': _num(r.get('ord_unpr')), 'ord_kind': r.get('ord_dvsn_name', '')}
+                for r in a1 if r.get('odno')]
+
+    def trade_profit(self, frm, to):
+        """기간별 매매손익 TTTC8715R (HTS 0856 · 실전 전용) — 종목 · 날짜별 실제 수수료 · 세금 · 실현손익 · 모의면 None"""
+        if self.is_paper:
+            return None
+        p = {'CANO': self.cano, 'ACNT_PRDT_CD': self.product, 'SORT_DVSN': '01', 'INQR_STRT_DT': frm, 'INQR_END_DT': to, 'CBLC_DVSN': '00',
+             'PDNO': '', 'CTX_AREA_FK100': '', 'CTX_AREA_NK100': ''}
+        a1, _ = self._paged('/uapi/domestic-stock/v1/trading/inquire-period-trade-profit', 'TTTC8715R', p)
+        return [{'date': r.get('trad_dt', ''), 'ticker': str(r.get('pdno', '')).zfill(6), 'name': r.get('prdt_name', ''),
+                 'kind': r.get('trad_dvsn_name', ''), 'buy_qty': _num(r.get('buy_qty')), 'buy_amt': _num(r.get('buy_amt')),
+                 'sell_qty': _num(r.get('sll_qty')), 'sell_amt': _num(r.get('sll_amt')), 'pnl': _num(r.get('rlzt_pfls')),
+                 'fee': _num(r.get('fee')), 'tax': _num(r.get('tl_tax'))} for r in a1 if r.get('pdno')]
 
     # ── 시세 ──
     def price(self, ticker):

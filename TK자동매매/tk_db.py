@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS monthly (month TEXT, date TEXT, ticker TEXT, market T
     eps REAL, div REAL, pbr REAL, PRIMARY KEY (month, ticker));
 CREATE TABLE IF NOT EXISTS done (kind TEXT, key TEXT, n INTEGER, at TEXT, PRIMARY KEY (kind, key));
 CREATE TABLE IF NOT EXISTS log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, mode TEXT, level TEXT, msg TEXT);
+CREATE TABLE IF NOT EXISTS cands (date TEXT, sleeve TEXT, ticker TEXT, rank INTEGER, score REAL, close REAL, info TEXT, src TEXT,
+    PRIMARY KEY (date, sleeve, ticker));
+CREATE INDEX IF NOT EXISTS ix_cands_tk ON cands(ticker, date);
 """
 TRADE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
@@ -53,7 +56,33 @@ CREATE TABLE IF NOT EXISTS intraday (ts TEXT PRIMARY KEY, value REAL);
 CREATE TABLE IF NOT EXISTS sleeve_daily (date TEXT, sleeve TEXT, invested REAL, value REAL, realized REAL, npos INTEGER,
     PRIMARY KEY (date, sleeve));
 CREATE TABLE IF NOT EXISTS days (date TEXT PRIMARY KEY, done_at TEXT, note TEXT);
+-- ── 거래 기록 (분석 · 고도화용 · 지우지 않음) ──
+CREATE TABLE IF NOT EXISTS fills (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, ts TEXT, order_id INTEGER, order_no TEXT, lot_id INTEGER,
+    sleeve TEXT, ticker TEXT, name TEXT, side TEXT, kind TEXT, qty INTEGER, price REAL, amount REAL, fee REAL, tax REAL, src TEXT);
+CREATE INDEX IF NOT EXISTS ix_fills ON fills(date, ticker);
+CREATE TABLE IF NOT EXISTS ws_execs (ts TEXT, exec_time TEXT, order_no TEXT, ticker TEXT, side TEXT, qty INTEGER, price REAL,
+    PRIMARY KEY (order_no, exec_time, qty, price));
+CREATE TABLE IF NOT EXISTS order_events (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, ts TEXT, status TEXT, detail TEXT);
+CREATE INDEX IF NOT EXISTS ix_oev ON order_events(order_id);
+CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, ts TEXT, sig_date TEXT, sleeve TEXT, ticker TEXT,
+    name TEXT, rank INTEGER, score REAL, ref REAL, qty INTEGER, amt REAL, action TEXT, reason TEXT);
+CREATE INDEX IF NOT EXISTS ix_dec ON decisions(date);
+CREATE TABLE IF NOT EXISTS positions_daily (date TEXT, ticker TEXT, name TEXT, qty INTEGER, avg REAL, price REAL, value REAL, pnl REAL,
+    PRIMARY KEY (date, ticker));
+CREATE TABLE IF NOT EXISTS account_daily (date TEXT PRIMARY KEY, cash REAL, cash_d2 REAL, equity REAL, stock_value REAL, buy_amt REAL,
+    sell_amt REAL, fee REAL, tax REAL, realized REAL, n_buy INTEGER, n_sell INTEGER, flow REAL, note TEXT);
+CREATE TABLE IF NOT EXISTS broker_pnl (date TEXT, ticker TEXT, name TEXT, kind TEXT, buy_qty REAL, buy_amt REAL, sell_qty REAL,
+    sell_amt REAL, pnl REAL, fee REAL, tax REAL, PRIMARY KEY (date, ticker, kind));
+CREATE TABLE IF NOT EXISTS api_daily (date TEXT, tr TEXT, n INTEGER DEFAULT 0, err INTEGER DEFAULT 0, ms REAL DEFAULT 0, last_err TEXT,
+    PRIMARY KEY (date, tr));
 """
+# 예전 장부에 없던 열 (켤 때 자동 추가)
+TRADE_COLUMNS = {
+    'lots': [('sig_rank', 'INTEGER'), ('sig_score', 'REAL'), ('sig_ref', 'REAL'), ('entry_info', 'TEXT'), ('fee', 'REAL DEFAULT 0'),
+             ('tax', 'REAL DEFAULT 0'), ('mae', 'REAL'), ('mfe', 'REAL'), ('model_ret', 'REAL'), ('slip_in', 'REAL'), ('slip_out', 'REAL'),
+             ('gap_in', 'REAL'), ('entry_ts', 'TEXT'), ('exit_ts', 'TEXT'), ('exit_kind', 'TEXT'), ('post_at', 'TEXT')],
+    'orders': [('sig_ref', 'REAL'), ('ack_ts', 'TEXT'), ('fill_ts', 'TEXT'), ('msg_cd', 'TEXT'), ('ord_time', 'TEXT')],
+}
 _local = threading.local()
 MODE = ['paper']                                   # 지금 장부 모드 (tk_server가 설정에서 정함)
 
@@ -91,7 +120,14 @@ def conn(m=None):
     if d is None:
         d = _local.t = {}
     if m not in d:
-        d[m] = _open(os.path.join(DATA_DIR, f'trade_{m}.db'), TRADE_SCHEMA)
+        c = _open(os.path.join(DATA_DIR, f'trade_{m}.db'), TRADE_SCHEMA)
+        for t, cols in TRADE_COLUMNS.items():
+            have = {r[1] for r in c.execute(f'PRAGMA table_info({t})')}
+            for col, typ in cols:
+                if col not in have:
+                    c.execute(f'ALTER TABLE {t} ADD COLUMN {col} {typ}')
+        c.commit()
+        d[m] = c
     return d[m]
 
 

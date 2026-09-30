@@ -32,19 +32,23 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 import tk_collect as col
 import tk_config as CF
+import tk_analyze as AN
 import tk_db as db
+import tk_journal as J
+import tk_kis
 import tk_signals as S
 import tk_trader as tr
 import tk_ws as rtws
 
 APP_NAME = 'TK자동매매 시스템'
-APP_VERSION = 'T1.0'
+APP_VERSION = 'T1.1'
 PORT = int(os.environ.get('TKAUTO_PORT', '8086'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TOKEN = secrets.token_urlsafe(24)
 CFG = CF.load()
 db.set_mode(CFG.get('mode', 'paper'))
-JOB = {'signal': False, 'signal_msg': '', 'signal_err': '', 'bt': False, 'bt_msg': '', 'collect_msg': ''}
+JOB = {'signal': False, 'signal_msg': '', 'signal_err': '', 'bt': False, 'bt_msg': '', 'collect_msg': '', 'an': False, 'an_msg': '', 'bf': False, 'bf_msg': ''}
+ANALYSIS = {'res': None}
 app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None, openapi_url=None)
 
 
@@ -108,6 +112,11 @@ def signal_run(d):
         tr.signal_job(CFG, d)
         JOB['signal_msg'] = f'{d} 신호 계산 끝 {datetime.now():%H:%M}'
         telegram(report(d))
+        try:                                                                     # 날마다 거래 분석 갱신 (보고서 파일 · 화면)
+            ANALYSIS['res'] = AN.analyze()
+            open(os.path.join(db.DATA_DIR, 'analysis_result.md'), 'w', encoding='utf-8').write(AN.report_md(ANALYSIS['res']))
+        except Exception as e:
+            db.log(f'거래 분석 실패: {CF.clean(e)}', 'warn')
         return True
     except Exception as e:
         JOB['signal_err'] = CF.clean(e)
@@ -169,6 +178,7 @@ def scheduler():
             if time.time() - last_imp > 600 and not col.STATE['running']:         # 10분마다 가져오기 폴더 확인 → 새 파일 자동 누적
                 last_imp = time.time()
                 import_run()
+                J.flush_api()
             d, hm = n.strftime('%Y%m%d'), n.strftime('%H:%M')
             if '07:40' <= hm <= '08:10' and db.gmeta_get('master_day') != d:
                 db.gmeta_set('master_day', d)
@@ -260,11 +270,24 @@ def _state():
                      'collect': dict(col.STATE), 'collect_msg': JOB['collect_msg']},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
             'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.SLOTS, 'backtest': bt,
-            'gate': tr.gate(CFG), 'phrase': {'ok': tr.SWITCH_PHRASE, 'force': tr.FORCE_PHRASE},
+            'gate': tr.gate(CFG), 'journal': _journal_counts(),
             'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')),
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
-                                                                               'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days')}},
+                                                                               'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days',
+                                                                               'real_ramp_on', 'caps', 'cap', 'fee_pct', 'tax_pct')}},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
+
+
+def _journal_counts():
+    out = {}
+    for m in ('paper', 'real'):
+        x = db.conn(m)
+        out[m] = {t: x.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0] for t in ('orders', 'fills', 'lots', 'decisions', 'account_daily', 'order_events')}
+        out[m]['closed'] = x.execute("SELECT COUNT(*) FROM lots WHERE status='청산'").fetchone()[0]
+        out[m]['first'] = x.execute('SELECT MIN(date) FROM orders').fetchone()[0]
+    c = db.mconn().execute('SELECT COUNT(DISTINCT date), MIN(date), MAX(date) FROM cands').fetchone()
+    out['cands'] = {'days': c[0], 'first': c[1], 'last': c[2]}
+    return out
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -331,9 +354,22 @@ async def api_config(req: Request):
                 if not (lo <= t <= '23:00' and len(t) == 5):
                     raise ValueError(f'{k}: {lo}~23:00')
                 CFG[k] = t
-        for k in ('ws_on', 'hourly_report'):
+        for k in ('ws_on', 'hourly_report', 'real_ramp_on'):
             if k in b:
                 CFG[k] = bool(b[k])
+        for m in ('paper', 'real'):                                              # 계좌별 운용 한도 (비우면 공통 한도)
+            v = (b.get('caps') or {}).get(m) if 'caps' in b else None
+            if v is not None:
+                v = str(v).replace(',', '').strip()
+                if v and not 1_000_000 <= float(v) <= 2_000_000_000:
+                    raise ValueError('계좌별 운용 한도 1,000,000 ~ 2,000,000,000')
+                CFG.setdefault('caps', {})[m] = int(float(v)) if v else None
+        for k, lo, hi in (('fee_pct', 0, 1), ('tax_pct', 0, 1)):
+            if b.get(k) not in (None, ''):
+                v = float(b[k])
+                if not lo <= v <= hi:
+                    raise ValueError(f'{k} {lo}~{hi}%')
+                CFG[k] = v
         CF.save(CFG)
         return '저장'
     return await _ok(f)()
@@ -360,8 +396,6 @@ async def api_on(req: Request):
         on = bool(b.get('on'))
         if on and not tr.configured(CFG):
             raise ValueError('지금 모드의 앱키 · 시크릿 · 계좌를 먼저 저장하세요')
-        if on and db.mode() == 'real' and b.get('confirm') != '실전 자동주문':
-            raise ValueError('실전 자동주문을 켜려면 확인 문구 "실전 자동주문" 입력')
         CFG['kis_on'] = on
         CF.save(CFG)
         db.log(f"자동주문 {'ON' if on else 'OFF'} ({'실전' if db.mode() == 'real' else '모의'} · 사용자)", 'warn' if on and db.mode() == 'real' else 'info')
@@ -461,8 +495,6 @@ async def api_manual_order(req: Request):
             raise ValueError('매수/매도 · 종목코드 6자리 · 수량 1주 이상')
         if not tr.can_order(CFG):
             raise ValueError('자동주문이 꺼져 있거나 정지 상태')
-        if db.mode() == 'real' and b.get('confirm') != '실전 주문':
-            raise ValueError('실전 수동 주문은 확인 문구 "실전 주문" 입력')
         kc = tr.client(CFG)
         p = kc.price(tk)
         ref = price or p['price']
@@ -566,9 +598,9 @@ async def api_mode(req: Request):
     b = await req.json()
 
     def f():
-        tr.switch_mode(CFG, b.get('mode'), b.get('phrase', ''))
+        tr.switch_mode(CFG, b.get('mode'), bool(b.get('confirm')))
         CF.save(CFG)
-        return f"{'실전' if CFG['mode'] == 'real' else '모의'} 모드 (자동주문 꺼짐)"
+        return f"{'🔴 실전' if CFG['mode'] == 'real' else '🟢 모의'} 계좌로 전환 · 자동주문 {'ON' if CFG.get('kis_on') else 'OFF'} 그대로"
     return await _ok(f)()
 
 
@@ -581,35 +613,84 @@ async def api_tg_test(req: Request):
 
 @app.get('/api/export')
 async def api_export():
+    """점검 · 분석 패키지 — 모의 · 실전 기록 전체 + 분석 보고서 + 로그 (비밀 값 없음)"""
     def build():
-        c = db.conn()
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
-            for t in ('lots', 'orders', 'equity', 'sleeve_daily', 'signals', 'days', 'intraday'):
-                cur = c.execute(f'SELECT * FROM {t}')
-                s = io.StringIO()
-                w = csv.writer(s)
-                w.writerow([d_[0] for d_ in cur.description])
-                w.writerows(cur.fetchall())
-                z.writestr(f'{db.mode()}_{t}.csv', '﻿' + s.getvalue())
-            cur = db.mconn().execute('SELECT * FROM log ORDER BY id DESC LIMIT 5000')
-            s = io.StringIO()
-            csv.writer(s).writerows([[d_[0] for d_ in cur.description]] + cur.fetchall())
-            z.writestr('log.csv', '﻿' + s.getvalue())
-            for f_ in ('backtest_result.md', 'backtest_result.json'):
-                p = os.path.join(db.DATA_DIR, f_)
-                if os.path.exists(p):
-                    z.write(p, f_)
-            z.writestr('summary.json', json.dumps({'app': APP_NAME, 'version': APP_VERSION, 'mode': db.mode(), 'made': db.now_s(),
-                                                   'alloc': tr.alloc(CFG), 'cap': tr.cap(CFG), 'gate': tr.gate(CFG)}, ensure_ascii=False, indent=1))
+        res = ANALYSIS['res'] or AN.analyze()
+        data = AN.package(res, {'app': APP_NAME, 'version': APP_VERSION, 'mode': db.mode(), 'made': db.now_s(), 'alloc': tr.alloc(CFG),
+                                'cap': tr.cap(CFG), 'gate': tr.gate(CFG), 'data_last_bar': db.last_bar_day()})
+        buf = io.BytesIO(data)
+        with zipfile.ZipFile(buf, 'a', zipfile.ZIP_DEFLATED) as z:
+            cur = db.mconn().execute('SELECT * FROM log ORDER BY id DESC LIMIT 20000')
+            s_ = io.StringIO()
+            csv.writer(s_).writerows([[d_[0] for d_ in cur.description]] + cur.fetchall())
+            z.writestr('log.csv', '\ufeff' + s_.getvalue())
         return buf.getvalue()
     data = await asyncio.to_thread(build)
-    return Response(content=data, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="tk_{db.mode()}_{datetime.now():%Y%m%d}.zip"'})
+    return Response(content=data, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="tk_record_{datetime.now():%Y%m%d}.zip"'})
+
+
+# ════════════════════════════════════════════
+#  거래 기록 조회 · 분석
+# ════════════════════════════════════════════
+@app.get('/api/journal')
+async def api_journal(view: str = 'orders', mode: str = '', frm: str = '', to: str = '', q: str = ''):
+    m = mode if mode in ('paper', 'real', 'all') else db.mode()
+
+    def f():
+        return {'ok': True, 'mode': m, 'views': {k: v[0] for k, v in AN.VIEWS.items()}, **AN.journal(view, m, frm, to, q[:40])}
+    try:
+        return await asyncio.to_thread(f)
+    except Exception as e:
+        return JSONResponse({'ok': False, 'error': CF.clean(e)}, 400)
+
+
+@app.get('/api/journal.csv')
+async def api_journal_csv(view: str = 'orders', mode: str = '', frm: str = '', to: str = '', q: str = ''):
+    m = mode if mode in ('paper', 'real', 'all') else db.mode()
+    data = await asyncio.to_thread(AN.journal_csv, view, m, frm, to, q[:40])
+    return Response(content=data.encode('utf-8'), media_type='text/csv; charset=utf-8',
+                    headers={'Content-Disposition': f'attachment; filename="tk_{view}_{m}_{datetime.now():%Y%m%d}.csv"'})
+
+
+@app.post('/api/analysis')
+async def api_analysis(req: Request):
+    b = await req.json()
+    if b.get('cached') and ANALYSIS['res']:
+        return {'ok': True, 'res': ANALYSIS['res'], 'md': AN.report_md(ANALYSIS['res'])}
+    modes = [m for m in (b.get('modes') or ['paper', 'real']) if m in ('paper', 'real')] or ['paper', 'real']
+
+    def f():
+        res = AN.analyze(tuple(modes), str(b.get('frm') or '').replace('-', ''), str(b.get('to') or '').replace('-', ''))
+        ANALYSIS['res'] = res
+        md = AN.report_md(res)
+        open(os.path.join(db.DATA_DIR, 'analysis_result.md'), 'w', encoding='utf-8').write(md)
+        return {'res': json.loads(json.dumps(res, default=str)), 'md': md}
+    return await _ok(f)()
+
+
+@app.post('/api/job/backfill')
+async def api_job_backfill(req: Request):
+    """과거 신호 후보 채우기 (분석의 '후보 순위별 사후 수익'을 처음부터 볼 수 있게)"""
+    b = await req.json()
+    if JOB['bf']:
+        return {'ok': False, 'error': '이미 계산 중'}
+
+    def run():
+        JOB.update(bf=True, bf_msg='시작')
+        try:
+            AN.backfill_cands(b.get('start') or '20231024', '99999999', progress=lambda m: JOB.update(bf_msg=m))
+        except Exception as e:
+            JOB['bf_msg'] = f'오류: {CF.clean(e)}'
+        finally:
+            JOB['bf'] = False
+    threading.Thread(target=run, daemon=True).start()
+    return {'ok': True, 'msg': '과거 신호 후보 계산 시작'}
 
 
 def main():
     import uvicorn
     tr.NOTIFY = lambda m: telegram(m)
+    tk_kis.HOOK[0] = J.api_hit
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=tr.loop, args=(lambda: CFG, lambda: {k: v[0] for k, v in rtws.PRICE.items()}, lambda m: telegram(m)), daemon=True).start()
 

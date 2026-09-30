@@ -92,6 +92,11 @@ def _notice(d):
         del NOTICES[60:]
         if filled:
             db.log(f"[실시간] {side} 체결 통보 {row['name']} {row['qty']}주 @ {row['price']}")
+            try:
+                import tk_journal
+                tk_journal.ws_exec({**row, 'side': 'sell' if side == '매도' else 'buy', 'exec_time': d.get('STCK_CNTG_HOUR', '')})
+            except Exception:
+                pass
     if time.time() - _sync_at[0] < 1.5:
         return
     _sync_at[0] = time.time()

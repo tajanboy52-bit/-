@@ -4,7 +4,7 @@ tk_config.py — TK자동매매 설정 · 비밀 값 보관
 · 설정 파일 %APPDATA%\\TKAuto\\tk_config.json
 · 비밀 값(앱키 · 시크릿 · 계좌 · HTS ID · KRX 비밀번호 · 텔레그램 토큰)은 윈도우 DPAPI로 암호화해 저장
   → 이 PC의 이 윈도우 사용자만 풀 수 있음 (파일이 새어 나가도 다른 PC에서는 못 씀). 윈도우가 아니면 base64(경고 표시)
-· 모의(paper)와 실전(real) 키 · 계좌를 따로 보관 · 지금 모드는 'mode'
+· 모의(paper)와 실전(real) 키 · 계좌 · 운용 한도(caps)를 따로 보관 · 지금 모드는 'mode' — 모드를 바꾸면 이 계좌 설정만 바뀌고 시스템은 그대로
 """
 import base64
 import ctypes
@@ -20,7 +20,7 @@ GLOBAL_SECRETS = ('krx_id', 'krx_pw', 'telegram_token', 'telegram_chat')
 DEFAULT = {'mode': 'paper', 'kis_on': False, 'cap': 10_000_000, 'alloc': {'LVH': 40, 'REV': 25, 'DV': 20, 'ON': 15},
            'accounts': {'paper': {}, 'real': {}}, 'ws_on': True, 'dd_limit': 15, 'day_loss_limit': 4, 'pause_buy': False,
            'hourly_report': True, 'collect_time': '15:50', 'signal_time': '18:40', 'real_ramp': [30, 60, 100], 'real_ramp_days': 20,
-           'min_paper_days': 60}
+           'real_ramp_on': False, 'caps': {'paper': None, 'real': None}, 'fee_pct': 0.0140527, 'tax_pct': 0.20, 'min_paper_days': 60}
 
 
 # ── DPAPI ──
@@ -106,7 +106,12 @@ def save(c):
 
 
 def _register(c):
-    """로그 · 오류 메시지에서 가릴 값"""
+    """로그 · 오류 메시지에서 가릴 값 · 수수료/세금 비율"""
+    try:
+        import tk_journal
+        tk_journal.RATES.update(fee=float(c.get('fee_pct') or 0), tax=float(c.get('tax_pct') or 0))
+    except Exception:
+        pass
     vals = [c.get(k) for k in GLOBAL_SECRETS]
     for m in ('paper', 'real'):
         vals += [c['accounts'].get(m, {}).get(k) for k in ACCOUNT_KEYS]

@@ -18,6 +18,8 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+import tempfile
+os.environ['TKAUTO_DATA'] = tempfile.mkdtemp(prefix='tk_test_')          # 매번 빈 데이터 폴더에서
 sys.path.insert(0, os.path.join(HERE, '..'))
 sys.path.insert(0, HERE)
 import numpy as np
@@ -119,22 +121,66 @@ check('잔고 불일치 0', bad == 0)
 check('장중 평가 기록 (최근 10일만 보관)', 5 <= x.execute('SELECT COUNT(*) FROM intraday').fetchone()[0] <= 12, f"{x.execute('SELECT COUNT(*) FROM intraday').fetchone()[0]}건")
 g = tr.gate(cfg)
 check('판정: 40일이라 60일 기준 미달', not g['pass'] and not g['rows'][0]['ok'], g['rows'][0]['v'])
+# ── 2-1. 거래 기록 (HTS급) ──
+import tk_journal as J
+o_all = [dict(r) for r in x.execute('SELECT * FROM orders')]
+fq = {r[0]: r[1] for r in x.execute('SELECT order_id, SUM(qty) FROM fills GROUP BY order_id')}
+check('기록: 체결 조각 합 = 주문 체결 수량', all(fq.get(o['id'], 0) == (o['filled'] or 0) for o in o_all) and len(fq) > 100, f'{len(fq)}건 주문 · 체결 조각 {sum(fq.values()):,}주')
+ev = {}
+for r in x.execute('SELECT order_id, status FROM order_events'):
+    ev.setdefault(r[0], []).append(r[1])
+check('기록: 주문마다 상태 이력 (보냄 → 접수 → 체결)', all(ev.get(o['id'], [None])[0] == '보냄' for o in o_all)
+      and all('접수' in ev[o['id']] and '체결' in ev[o['id']] for o in o_all if o['status'] == '체결'), f'이벤트 {sum(len(v) for v in ev.values())}건')
+cl = [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='청산'")]
+okp = all(abs(l['pnl'] - (l['proceeds'] - l['cost'] - l['fee'] - l['tax'])) < 1 for l in cl)
+tax_ok = all((l['tax'] > 0) == (l['sleeve'] != 'ON') for l in cl)
+check('기록: 손익 = 매도 - 매수 - 수수료 - 세금 (ETF 거래세 없음)', okp and tax_ok and len(cl) > 50, f"청산 {len(cl)} · 수수료 {sum(l['fee'] for l in cl):,.0f} · 세금 {sum(l['tax'] for l in cl):,.0f}")
+nb = x.execute("SELECT COUNT(*) FROM orders WHERE side='buy' AND kind='entry'").fetchone()[0]
+dec = dict(x.execute('SELECT action, COUNT(*) FROM decisions GROUP BY action').fetchall())
+check('기록: 판단 기록 (산 것 · 미룬 것 · 못 산 것)', dec.get('buy', 0) + dec.get('defer', 0) >= nb > 0 and dec.get('sell', 0) > 0, str(dec))
+sig_ok = x.execute("SELECT COUNT(*) FROM lots WHERE sleeve IN ('LVH','REV') AND entry_date IS NOT NULL AND (sig_rank IS NULL OR entry_info IS NULL OR sig_ref IS NULL)").fetchone()[0]
+check('기록: 거래마다 진입 근거 (순위 · 점수 · 지표 · 신호가)', sig_ok == 0)
+ad = x.execute('SELECT COUNT(*) FROM account_daily').fetchone()[0]
+pdn = x.execute('SELECT COUNT(DISTINCT date) FROM positions_daily').fetchone()[0]
+check('기록: 날마다 매매일지 · 잔고 이력', ad == n and pdn >= n - 1, f'매매일지 {ad}일 · 잔고 {pdn}일')
+nc = db.mconn().execute("SELECT COUNT(DISTINCT date), COUNT(*) FROM cands WHERE src='live'").fetchone()
+check('기록: 신호 후보 상위 50 날마다', nc[0] == n + 1 and nc[1] >= (n + 1) * 100, f'{nc[0]}일 · {nc[1]:,}줄')
+post = [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='청산' AND sleeve IN ('LVH','REV') AND post_at IS NOT NULL")]
+gap = [abs(l['ret'] + (l['fee'] + l['tax']) / l['cost'] * 100 - l['model_ret']) for l in post if l['model_ret'] is not None]
+check('사후 계산: 가짜 체결(시가) → 체결 차이 0 · 실제 = 모델 수익', len(post) > 20 and all(abs(l['slip_in'] or 0) < 0.01 for l in post) and max(gap) < 0.05
+      and all(l['mae'] <= 0.001 and l['mfe'] >= -0.001 for l in post if l['mae'] is not None), f'{len(post)}건 · 최대 차이 {max(gap):.4f}%p')
+
+# ── 2-2. 모의 ↔ 실전 (계좌 설정만 바뀜) ──
 try:
-    tr.switch_mode(cfg, 'real', tr.SWITCH_PHRASE)
-    check('실전 전환: 판정 미달이면 짧은 문구로 안 됨', False)
+    tr.switch_mode(cfg, 'real', True)
+    check('모드: 실전 계좌 없으면 거부', False)
 except ValueError as e:
-    check('실전 전환: 실전 키 없으면 · 판정 미달이면 거부', True, str(e)[:40])
+    check('모드: 실전 계좌 없으면 거부', True, str(e)[:40])
 cfg['accounts']['real'] = {'app_key': 'r' * 20, 'app_secret': 's' * 20, 'account': '87654321-01'}
 try:
-    tr.switch_mode(cfg, 'real', tr.SWITCH_PHRASE)
-    check('실전 전환: 미달 + 짧은 문구 거부', False)
+    tr.switch_mode(cfg, 'real', False)
+    check('모드: 화면 확인 없으면 거부', False)
 except ValueError:
-    check('실전 전환: 미달 + 짧은 문구 거부', True)
-tr.switch_mode(cfg, 'real', tr.FORCE_PHRASE)
-check('실전 전환: 긴 문구면 전환 · 자동주문 꺼짐 · 장부 분리 · 한도 30%',
-      db.mode() == 'real' and not cfg['kis_on'] and db.conn().execute('SELECT COUNT(*) FROM lots').fetchone()[0] == 0 and tr.cap(cfg) == 3_000_000,
-      f'실전 장부 lots {db.conn().execute("SELECT COUNT(*) FROM lots").fetchone()[0]} · 한도 {tr.cap(cfg):,}')
+    check('모드: 화면 확인 없으면 거부', True)
+cfg['caps'] = {'paper': None, 'real': 5_000_000}
+tr.switch_mode(cfg, 'real', True)
+check('모드: 실전 → 자동주문 · 설정 그대로 · 계좌 · 한도 · 장부만 바뀜',
+      db.mode() == 'real' and cfg['kis_on'] and db.conn().execute('SELECT COUNT(*) FROM lots').fetchone()[0] == 0 and tr.cap(cfg) == 5_000_000
+      and tr.client(cfg).cano == '87654321' and tr.alloc(cfg) == tr.alloc({**cfg, 'mode': 'paper'}),
+      f'실전 장부 lots {db.conn().execute("SELECT COUNT(*) FROM lots").fetchone()[0]} · 한도 {tr.cap(cfg):,} · 계좌 {tr.client(cfg).masked_account}')
 tr.switch_mode(cfg, 'paper')
+check('모드: 모의로 돌아오면 모의 장부 · 모의 계좌 그대로', db.mode() == 'paper' and db.conn().execute('SELECT COUNT(*) FROM lots').fetchone()[0] == len(
+    x.execute('SELECT id FROM lots').fetchall()) and tr.client(cfg).cano == '12345678' and tr.cap(cfg) == 10_000_000)
+
+# ── 2-3. 분석 ──
+import tk_analyze as A
+res = A.analyze()
+check('분석: 칸별 · 청산 이유 · 지표 구간 · 체결 품질 · 후보 순위 · 놓친 거래',
+      res['summary'] and res['by_sleeve'] and res['by_exit'] and res['buckets'] and res['execution'] and res['cands'] is not None and 'missed' in res,
+      f"거래 {res['summary'][0]['n'] if res['summary'] else 0} · 구간표 {len(res['buckets'])} · 제안 {len(res['ideas'])} · "
+      + str({k: bool(res[k]) if k != 'cands' else res[k] is not None for k in ('summary', 'by_sleeve', 'by_exit', 'buckets', 'execution', 'cands', 'missed')}))
+md = A.report_md(res)
+check('분석: 보고서 · 패키지(zip · 비밀 값 없음)', '# TK자동매매 거래 분석' in md and '12345678' not in json.dumps(res, ensure_ascii=False, default=str))
 
 # ── 3. 서버 보안 ──
 from fastapi.testclient import TestClient

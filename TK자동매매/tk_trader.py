@@ -12,7 +12,7 @@ tk_trader.py — TK자동매매 매매 · 일정 (모의 → 실전 같은 코�
   장 마감 뒤: 자료 수집(tk_collect) → 신호 계산(signal_job) → 텔레그램 (tk_server 일정)
 손절 없음 (전종목 검증: 손절은 모든 모델의 평균 수익을 깎음) — 꼬리 위험은 종목당 비중으로
 안전: 자동주문 기본 OFF · 결과 불분명 주문 → 정지 · 모르는 보유 종목 → 새 매수 차단 · 1회 · 하루 한도 · 긴급 정지
-실전: 모의 성적 판정 통과 + 확인 문구 뒤에만 전환 · 처음 20거래일 한도 30% → 60% → 100%
+모의 ↔ 실전: 같은 시스템 · 바뀌는 것은 계좌(앱키 · 시크릿 · 계좌번호 · 운용 한도)와 장부 파일뿐 · 모든 주문 · 체결 · 판단은 tk_journal에 쌓음
 """
 import json
 import threading
@@ -23,6 +23,7 @@ import pandas as pd
 
 import tk_config as CF
 import tk_db as db
+import tk_journal as J
 import tk_signals as S
 from tk_kis import KIS, KISError
 
@@ -86,16 +87,16 @@ def alloc(cfg):
 
 
 def cap(cfg):
-    """운용 한도 — 실전은 처음 real_ramp_days 거래일마다 30% → 60% → 100%"""
+    """운용 한도 — 계좌(모드)별 한도가 있으면 그것 · 없으면 공통 한도 · 실전 단계 한도는 켰을 때만"""
     try:
-        base = max(1_000_000, int(float(cfg.get('cap') or 10_000_000)))
+        base = max(1_000_000, int(float((cfg.get('caps') or {}).get(db.mode()) or cfg.get('cap') or 10_000_000)))
     except Exception:
         base = 10_000_000
     return int(base * ramp(cfg) / 100)
 
 
 def ramp(cfg):
-    if db.mode() != 'real':
+    if db.mode() != 'real' or not cfg.get('real_ramp_on'):
         return 100
     steps = cfg.get('real_ramp') or [30, 60, 100]
     n = db.conn('real').execute('SELECT COUNT(*) FROM equity').fetchone()[0]
@@ -153,22 +154,27 @@ def _mark(job, d):
 # ════════════════════════════════════════════
 #  주문 · 체결
 # ════════════════════════════════════════════
-def send(cfg, kc, side, kind, lot_id, sleeve, ticker, name, qty, ord_dvsn='01', price=0):
+def send(cfg, kc, side, kind, lot_id, sleeve, ticker, name, qty, ord_dvsn='01', price=0, sig_ref=None):
     x = db.conn()
-    x.execute("""INSERT INTO orders (date, ts, sleeve, lot_id, ticker, name, side, kind, qty, ord_dvsn, price, status)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,'보냄')""", (today(), db.now_s(), sleeve, lot_id, ticker, name, side, kind, int(qty), ord_dvsn, float(price or 0)))
+    x.execute("""INSERT INTO orders (date, ts, sleeve, lot_id, ticker, name, side, kind, qty, ord_dvsn, price, status, sig_ref)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,'보냄',?)""", (today(), db.now_s(), sleeve, lot_id, ticker, name, side, kind, int(qty), ord_dvsn,
+                                                           float(price or 0), sig_ref))
     oid = x.execute('SELECT last_insert_rowid()').fetchone()[0]
+    J.event(x, oid, '보냄', f"{KIND.get(kind, kind)} {qty}주 {'시장가' if ord_dvsn == '01' else f'지정가 {price}'}")
     x.commit()
     try:
         r = kc.order(side, ticker, qty, ord_dvsn, price)
-        x.execute("UPDATE orders SET status='접수', order_no=?, org_no=?, msg=? WHERE id=?", (r['order_no'], r['org_no'], r['msg'][:200], oid))
+        x.execute("UPDATE orders SET status='접수', order_no=?, org_no=?, msg=?, msg_cd=?, ack_ts=?, ord_time=? WHERE id=?",
+                  (r['order_no'], r['org_no'], r['msg'][:200], r.get('msg_cd', ''), db.now_s(), r.get('time', ''), oid))
+        J.event(x, oid, '접수', f"주문번호 {r['order_no']} {r['msg'][:100]}")
         x.commit()
         log(f"{'🟢' if side == 'buy' else '🔵'} [{sleeve}] {KIND.get(kind, kind)} {name} {qty}주 {'시장가' if ord_dvsn == '01' else f'지정가 {price:,.0f}'}")
         return oid
     except KISError as e:
         msg = str(e)
         amb = 'AMBIGUOUS' in msg
-        x.execute('UPDATE orders SET status=?, msg=? WHERE id=?', ('불분명' if amb else '거절', msg[:200], oid))
+        x.execute('UPDATE orders SET status=?, msg=?, msg_cd=? WHERE id=?', ('불분명' if amb else '거절', msg[:200], getattr(e, 'code', ''), oid))
+        J.event(x, oid, '불분명' if amb else '거절', msg)
         x.commit()
         if amb:
             halt(f'{name} {KIND.get(kind, kind)} 주문 결과 불분명 — KIS 앱에서 체결 여부를 확인한 뒤 정지 해제')
@@ -177,6 +183,7 @@ def send(cfg, kc, side, kind, lot_id, sleeve, ticker, name, qty, ord_dvsn='01', 
         return None
     except Exception as e:                           # kc.order는 전송 뒤 오류를 모두 KISError로 바꿈 → 여기는 전송 전 오류
         x.execute("UPDATE orders SET status='거절', msg=? WHERE id=?", (f'전송 전 오류: {str(e)[:180]}', oid))
+        J.event(x, oid, '거절', f'전송 전 오류: {str(e)[:180]}')
         x.commit()
         log(f'주문 전송 전 오류 {name}: {str(e)[:150]}', 'warn')
         return None
@@ -195,6 +202,10 @@ def sync(kc, d=None):
         st = '체결' if filled >= o['qty'] else ('취소' if f['cancelled'] or (f['remain'] == 0 and filled < o['qty']) else ('부분' if filled else o['status']))
         delta = filled - (o['applied'] or 0)
         x.execute('UPDATE orders SET filled=?, avg=?, status=?, applied=? WHERE id=?', (filled, avg, st, filled, o['id']))
+        if st != o['status']:
+            J.event(x, o['id'], st, f"누적 {filled}/{o['qty']}주 평균 {avg:,.0f}")
+            if st == '체결':
+                x.execute('UPDATE orders SET fill_ts=? WHERE id=?', (db.now_s(), o['id']))
         if delta > 0:
             _apply(x, o, filled, avg, delta, d)
         if st == '취소' and o['side'] == 'buy':
@@ -209,21 +220,25 @@ def _apply(x, o, filled, avg, delta, d):
         log(f"묶음 없는 체결 {o['name']} {filled}주 — 확인 필요", 'warn')
         return
     lot = dict(lot)
+    got = filled * avg - (o['applied'] or 0) * (o['avg'] or 0)            # o는 반영 전 값 (누적 체결 · 평균가) → 이번 조각 금액
+    fee, tax = J.fill(x, o, delta, got / delta if delta else avg)
     if o['side'] == 'buy':
-        x.execute("UPDATE lots SET qty=?, qty0=?, entry_px=?, cost=?, entry_date=?, status='보유', last_px=COALESCE(last_px, ?), updated=? WHERE id=?",
-                  (filled, filled, avg, filled * avg, d, avg, db.now_s(), lot['id']))
+        x.execute("""UPDATE lots SET qty=?, qty0=?, entry_px=?, cost=?, entry_date=?, status='보유', last_px=COALESCE(last_px, ?), updated=?,
+                     fee=COALESCE(fee,0)+?, entry_ts=COALESCE(entry_ts, ?) WHERE id=?""",
+                  (filled, filled, avg, filled * avg, d, avg, db.now_s(), fee, db.now_s(), lot['id']))
         log(f"✅ [{o['sleeve']}] 매수 체결 {o['name']} {filled}주 @ {avg:,.0f}")
         return
-    got = filled * avg - (o['applied'] or 0) * (o['avg'] or 0)            # o는 반영 전 값 (누적 체결 · 평균가)
     left = max(0, (lot['qty'] or 0) - delta)
     proceeds = (lot['proceeds'] or 0) + got
+    fee_all, tax_all = (lot['fee'] or 0) + fee, (lot['tax'] or 0) + tax
     if left > 0:
-        x.execute('UPDATE lots SET qty=?, proceeds=?, updated=? WHERE id=?', (left, proceeds, db.now_s(), lot['id']))
+        x.execute('UPDATE lots SET qty=?, proceeds=?, fee=?, tax=?, updated=? WHERE id=?', (left, proceeds, fee_all, tax_all, db.now_s(), lot['id']))
         return
-    fee = lot['cost'] * COSTS.get(lot['sleeve'], 0.25) / 100
-    pnl = proceeds - lot['cost'] - fee
-    x.execute("""UPDATE lots SET qty=0, proceeds=?, status='청산', exit_date=?, exit_px=?, pnl=?, ret=?, updated=? WHERE id=?""",
-              (proceeds, d, avg, pnl, pnl / lot['cost'] * 100 if lot['cost'] else 0, db.now_s(), lot['id']))
+    pnl = proceeds - lot['cost'] - fee_all - tax_all
+    x.execute("""UPDATE lots SET qty=0, proceeds=?, status='청산', exit_date=?, exit_px=?, pnl=?, ret=?, fee=?, tax=?, exit_ts=?, exit_kind=?,
+                 updated=? WHERE id=?""",
+              (proceeds, d, proceeds / (lot['qty0'] or filled or 1), pnl, pnl / lot['cost'] * 100 if lot['cost'] else 0, fee_all, tax_all,
+               db.now_s(), o['kind'], db.now_s(), lot['id']))
     log(f"{'💰' if pnl > 0 else '🔻'} [{lot['sleeve']}] 청산 {lot['name']} {pnl / lot['cost'] * 100 if lot['cost'] else 0:+.2f}% · {pnl:+,.0f}원 ({KIND.get(o['kind'], o['kind'])})")
 
 
@@ -234,10 +249,13 @@ def _finish_buy(x, o, filled):
         x.execute("UPDATE lots SET status='미체결', updated=? WHERE id=?", (db.now_s(), lot['id']))
 
 
-def new_lot(sleeve, ticker, name, sector, signal_date):
+def new_lot(sleeve, ticker, name, sector, signal_date, sig=None):
+    """sig: 신호 근거 {rank, score, ref, info} → 분석용으로 거래에 같이 저장"""
     x = db.conn()
-    x.execute("INSERT INTO lots (sleeve, ticker, name, sector, signal_date, status, updated) VALUES (?,?,?,?,?,'주문',?)",
-              (sleeve, ticker, name, sector, signal_date, db.now_s()))
+    sig = sig or {}
+    x.execute("""INSERT INTO lots (sleeve, ticker, name, sector, signal_date, status, updated, sig_rank, sig_score, sig_ref, entry_info)
+                 VALUES (?,?,?,?,?,'주문',?,?,?,?,?)""",
+              (sleeve, ticker, name, sector, signal_date, db.now_s(), sig.get('rank'), sig.get('score'), sig.get('ref'), sig.get('info')))
     return x.execute('SELECT last_insert_rowid()').fetchone()[0]
 
 
@@ -273,7 +291,7 @@ def plan(cfg, equity, cash, sig_date):
             if s == 'DV' and free <= 0:
                 break
             o = {'sleeve': s, 'ticker': r['ticker'], 'name': r['name'], 'ref': r['ref'] or 0, 'rank': r['rank'], 'score': r['score'],
-                 'qty': 0, 'amt': 0, 'skip': ''}
+                 'info': r['info'], 'qty': 0, 'amt': 0, 'skip': ''}
             q = S.shares(size, o['ref'] * 1.02, 10 ** 15)                    # 시가 갭 여유 2%
             if r['ticker'] in held:
                 o['skip'] = '이 칸이 이미 보유'
@@ -347,29 +365,36 @@ def preopen(cfg, kc, d):
         db.meta_set('block_new', '')
     sd = db.meta_get('last_signal_date')
     pl = plan(cfg, bal['equity'], min(bal['cash_d2'] or bal['cash'], bal['cash'] or bal['cash_d2']), sd)
+    x = db.conn()
     for l in pl['sells']:
-        send(cfg, kc, 'sell', l['sell_reason'] or 'manual', l['id'], l['sleeve'], l['ticker'], l['name'], l['qty'])
+        J.decision(x, d, sd, {**l, 'ref': l['last_px'], 'amt': (l['last_px'] or 0) * l['qty']}, 'sell', KIND.get(l['sell_reason'], l['sell_reason'] or ''))
+        x.commit()
+        send(cfg, kc, 'sell', l['sell_reason'] or 'manual', l['id'], l['sleeve'], l['ticker'], l['name'], l['qty'], sig_ref=l['last_px'])
         if halted():
             return
-    if unknown or buy_paused(cfg):
-        log('새 매수 안 함 — ' + ('모르는 보유 종목' if unknown else '매수 일시 중지'), 'warn')
-        return
-    if sd != prev_trading_day(d):
-        log(f'신호가 전 거래일 것이 아님 (마지막 {sd}) → 오늘 새 매수 없음', 'warn')
-        return
-    if db.meta_get(f'plan_used_{sd}') == '1':
-        log(f'{sd} 신호는 이미 주문함', 'warn')
+    why = ('모르는 보유 종목' if unknown else '매수 일시 중지' if buy_paused(cfg) else f'신호가 전 거래일 것이 아님 (마지막 {sd})' if sd != prev_trading_day(d)
+           else f'{sd} 신호는 이미 주문함' if db.meta_get(f'plan_used_{sd}') == '1' else '')
+    if why:
+        log(f'새 매수 안 함 — {why}', 'warn')
+        if db.meta_get(f'plan_used_{sd}') != '1':
+            for o in pl['buys'] + pl['defer']:
+                J.decision(x, d, sd, o, 'skip', o['skip'] or why)
+            x.commit()
         return
     db.meta_set(f'plan_used_{sd}', '1')
+    for o in pl['buys'] + pl['defer']:
+        J.decision(x, d, sd, o, 'skip' if o['skip'] and o not in pl['defer'] else ('defer' if o in pl['defer'] else 'buy'), o['skip'])
+    x.commit()
     for o in pl['buys']:
         if o['skip']:
             continue
-        lid = new_lot(o['sleeve'], o['ticker'], o['name'], '', sd)
+        lid = new_lot(o['sleeve'], o['ticker'], o['name'], '', sd, o)
         db.conn().commit()
-        send(cfg, kc, 'buy', 'entry', lid, o['sleeve'], o['ticker'], o['name'], o['qty'])
+        send(cfg, kc, 'buy', 'entry', lid, o['sleeve'], o['ticker'], o['name'], o['qty'], sig_ref=o['ref'])
         if halted():
             return
-    db.meta_set(f'defer_{d}', json.dumps([{k: o[k] for k in ('sleeve', 'ticker', 'name', 'qty', 'ref')} for o in pl['defer']], ensure_ascii=False))
+    db.meta_set(f'defer_{d}', json.dumps([{k: o.get(k) for k in ('sleeve', 'ticker', 'name', 'qty', 'ref', 'rank', 'score', 'info')} for o in pl['defer']],
+                                         ensure_ascii=False))
     if pl['defer']:
         log(f"현금 부족으로 {len(pl['defer'])}건은 09:02에 (아침 매도 체결 뒤)")
 
@@ -398,7 +423,9 @@ def deferred(cfg, kc, d):
         x.execute("UPDATE orders SET status='거절(재시도)' WHERE id=?", (o['id'],))
         x.execute("UPDATE lots SET status='미체결' WHERE id=? AND status='주문'", (o['lot_id'],))
         x.commit()
-        todo.append({'sleeve': o['sleeve'], 'ticker': o['ticker'], 'name': o['name'], 'qty': o['qty'], 'ref': o['price'] or 0})
+        lot = x.execute('SELECT sig_rank, sig_score, sig_ref, entry_info FROM lots WHERE id=?', (o['lot_id'],)).fetchone()
+        todo.append({'sleeve': o['sleeve'], 'ticker': o['ticker'], 'name': o['name'], 'qty': o['qty'], 'ref': (lot['sig_ref'] if lot else None) or o['price'] or 0,
+                     'rank': lot['sig_rank'] if lot else None, 'score': lot['sig_score'] if lot else None, 'info': lot['entry_info'] if lot else None})
     for o in todo:
         try:
             px = kc.price(o['ticker'])['price'] or o['ref']
@@ -408,11 +435,14 @@ def deferred(cfg, kc, d):
             q = int(cash / 1.01 // px) if px else 0
             if q <= 0:
                 log(f"[{o['sleeve']}] {o['name']} 09:02 매수도 현금 부족 → 건너뜀", 'warn')
+                J.decision(x, d, db.meta_get('last_signal_date'), o, 'skip', '09:02 현금 부족')
+                x.commit()
                 continue
             o['qty'] = min(o['qty'], q)
-        lid = new_lot(o['sleeve'], o['ticker'], o['name'], '', db.meta_get('last_signal_date'))
+        J.decision(x, d, db.meta_get('last_signal_date'), {**o, 'amt': px * o['qty']}, 'buy', '09:02 (미룬 매수 · 재시도)')
+        lid = new_lot(o['sleeve'], o['ticker'], o['name'], '', db.meta_get('last_signal_date'), o)
         x.commit()
-        if send(cfg, kc, 'buy', 'entry', lid, o['sleeve'], o['ticker'], o['name'], o['qty']):
+        if send(cfg, kc, 'buy', 'entry', lid, o['sleeve'], o['ticker'], o['name'], o['qty'], sig_ref=o.get('ref')):
             cash -= px * o['qty'] * 1.01
         if halted():
             return
@@ -436,10 +466,11 @@ def on_buy(cfg, kc, d):
     if q <= 0:
         log('밤사이 ETF 매수 건너뜀 — 현금 부족', 'warn')
         return
-    lid = new_lot('ON', S.ON_TICKER, S.ON_NAME, 'ETF', d)
+    lid = new_lot('ON', S.ON_TICKER, S.ON_NAME, 'ETF', d, {'ref': px})
     db.conn().execute('UPDATE lots SET sell_flag=1, sell_reason=? WHERE id=?', ('on_sell', lid))
+    J.decision(db.conn(), d, d, {'sleeve': 'ON', 'ticker': S.ON_TICKER, 'name': S.ON_NAME, 'ref': px, 'qty': q, 'amt': q * px}, 'buy', '15:20 종가 매수')
     db.conn().commit()
-    if not send(cfg, kc, 'buy', 'on_buy', lid, 'ON', S.ON_TICKER, S.ON_NAME, q) and not halted():
+    if not send(cfg, kc, 'buy', 'on_buy', lid, 'ON', S.ON_TICKER, S.ON_NAME, q, sig_ref=px) and not halted():
         alert(f'밤사이 ETF 매수 거절 ({S.ON_NAME} {q}주) — 로그 확인', 'onfail')
 
 
@@ -449,6 +480,7 @@ def eod(cfg, kc, d):
     sync(kc, d)
     for o in [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND status IN ('보냄','접수','부분')", (d,))]:
         x.execute("UPDATE orders SET status='만료' WHERE id=?", (o['id'],))
+        J.event(x, o['id'], '만료', f"장 마감 · 체결 {o['filled'] or 0}/{o['qty']}주")
         if o['side'] == 'buy':
             _finish_buy(x, o, o['filled'] or 0)
     x.execute("UPDATE lots SET status='미체결' WHERE status='주문' AND id NOT IN (SELECT lot_id FROM orders WHERE date=? AND side='buy')", (d,))
@@ -477,7 +509,14 @@ def eod(cfg, kc, d):
         val = sum(l['qty'] * (l['last_px'] or l['entry_px'] or 0) for l in ls)
         rz = x.execute("SELECT COALESCE(SUM(pnl),0) FROM lots WHERE sleeve=? AND status='청산'", (s,)).fetchone()[0]
         x.execute('INSERT OR REPLACE INTO sleeve_daily VALUES (?,?,?,?,?,?)', (d, s, inv, val, rz, len(ls)))
+    broker = None
+    try:
+        broker = kc.trade_profit(d, d) if hasattr(kc, 'trade_profit') else None       # 실전만 (모의는 None → 추정 수수료 · 세금)
+    except Exception as e:
+        log(f'기간별 매매손익 조회 실패 (추정값 사용): {CF.clean(e)[:120]}', 'warn')
+    J.day_close(x, d, bal, broker)
     x.commit()
+    J.flush_api()
     if bad:
         log('장 마감 잔고 불일치 — ' + ' / '.join(bad[:6]), 'warn')
         alert('장 마감 잔고 불일치 — ' + ' / '.join(bad[:5]), 'eodmismatch')
@@ -556,23 +595,38 @@ def signal_job(cfg, d, progress=None):
                 rows.append((d, 'DV', k, t, nm, sc, float(C.at[d, t]), json.dumps({'div': dv, 'pbr': pb, 'sector': sec}, ensure_ascii=False)))
                 if k >= S.DV['n'] + 5:
                     break
-    # ③ LVH · REV 상위 3
+    cands = [('DV', t, k, sc, float(C.at[d, t]) if t in C.columns and C.at[d, t] == C.at[d, t] else None, {'div': dv, 'pbr': pb, 'sector': sec})
+             for k, (t, nm, sec, sc, dv, pb) in enumerate(rank[:50] if al.get('DV', 0) > 0 and rank else [], start=1)]
+    # ③ LVH · REV 상위 3 (후보 상위 50은 분석용으로 따로 기록)
     for s, fn, top in (('LVH', S.lvh_scores, S.LVH['top']), ('REV', S.rev_scores, S.REV['top'])):
+        sc = fn(F, d)
+        for k, t in enumerate(S.top_n(sc.dropna(), set(), 50), start=1):
+            cands.append((s, t, k, float(sc[t]), float(C.at[d, t]), feat_info(F, d, t)))
         if al.get(s, 0) <= 0:
             continue
-        sc = fn(F, d)
         held = {l['ticker'] for l in open_lots(s)}
         for k, t in enumerate(S.top_n(sc, held, top + 3), start=1):                  # +3은 예비(자리 · 가격 때문에 못 살 때 화면 참고용 · 주문은 상위 3만)
-            info = {'rsi': _r(F['rsi14'], d, t), 'atrp': _r(F['atrp'], d, t), 'fromhi': _r(F['fromhi'], d, t), 'heat': _r(F['heat'], d, t),
-                    'fr20': _r(F['fr20'], d, t), 'pen20': _r(F['pen20'], d, t), 'spare': k > top}
+            info = {**feat_info(F, d, t), 'spare': k > top}
             rows.append((d, s, k if k <= top else 100 + k, t, st.get(t, {}).get('name', t), float(sc[t]), float(C.at[d, t]), json.dumps(info)))
     x.execute('DELETE FROM signals WHERE date=?', (d,))
     x.executemany('INSERT OR REPLACE INTO signals VALUES (?,?,?,?,?,?,?,?)', rows)
     x.execute('INSERT OR REPLACE INTO days VALUES (?,?,?)', (d, db.now_s(), f"{len(rows)} 신호 · 수급 {F['flow_src'] or '없음'}"))
     x.commit()
+    J.save_cands(d, cands)
     db.meta_set('last_signal_date', d)
+    for m in ('paper', 'real'):                                                      # 청산 거래 사후 계산 (오늘 일봉까지 들어왔으므로)
+        try:
+            J.enrich(m)
+        except Exception as e:
+            log(f'거래 사후 계산 실패({m}): {CF.clean(e)[:120]}', 'warn')
     log(f"{d} 신호 계산 끝 ({time.time() - t0:.0f}초 · 후보풀 {int(F['pool'].loc[d].sum())} · 수급 {F['flow_src'] or '없음'})")
     return rows
+
+
+def feat_info(F, d, t):
+    """진입 근거 지표 — 거래 · 후보에 같이 저장 (나중에 구간별 수익 분석)"""
+    return {'rsi': _r(F['rsi14'], d, t), 'atrp': _r(F['atrp'], d, t), 'fromhi': _r(F['fromhi'], d, t), 'heat': _r(F['heat'], d, t),
+            'fr20': _r(F['fr20'], d, t), 'pen20': _r(F['pen20'], d, t), 'val20': _r(F['val20'], d, t) if 'val20' in F else None}
 
 
 def _r(T, d, t):
@@ -675,25 +729,24 @@ def gate(cfg):
     return {'rows': rows, 'pass': all(r['ok'] for r in rows)}
 
 
-SWITCH_PHRASE = '실전 전환에 동의합니다'
-FORCE_PHRASE = '판정 미달이지만 위험을 이해하고 실전 전환합니다'
-
-
-def switch_mode(cfg, target, phrase=''):
-    """모드 전환 — 실전은 판정 통과 + 확인 문구 (미달이면 더 긴 문구) · 실전 키 · 계좌 필요 · 전환 때 자동주문은 꺼짐"""
+def switch_mode(cfg, target, confirm=False):
+    """모의 ↔ 실전 — 바뀌는 것은 계좌 설정(앱키 · 시크릿 · 계좌 · 운용 한도)과 그 계좌의 장부뿐. 전략 · 일정 · 안전장치 · 자동주문 상태는 그대로.
+       실전으로 갈 때만 실전 계좌가 저장돼 있어야 하고 화면에서 한 번 확인(confirm=True). 모의 성적 판정은 참고로 기록"""
     if target not in ('paper', 'real'):
         raise ValueError('모드는 paper · real')
+    if target == cfg.get('mode', 'paper') == db.mode():
+        return cfg
     if target == 'real':
         if not configured(cfg, 'real'):
             raise ValueError('실전 앱키 · 시크릿 · 계좌를 먼저 저장하세요')
-        g = gate(cfg)
-        need = SWITCH_PHRASE if g['pass'] else FORCE_PHRASE
-        if phrase.strip() != need:
-            raise ValueError(f'확인 문구를 정확히 입력하세요: "{need}"')
-    cfg['mode'] = target
-    cfg['kis_on'] = False
-    db.set_mode(target)
-    log(f"모드 전환 → {'🔴 실전' if target == 'real' else '🟢 모의'} (자동주문은 꺼 둠 · 확인 뒤 켜세요)", 'warn')
+        if not confirm:
+            raise ValueError('실전 계좌로 바꾸려면 확인이 필요합니다')
+    with _lock:                                                                   # 주문 · 체결 반영 중에는 기다렸다가 전환
+        g = gate(cfg) if target == 'real' else None
+        cfg['mode'] = target
+        db.set_mode(target)
+    log(f"모드 전환 → {'🔴 실전 계좌' if target == 'real' else '🟢 모의 계좌'} · 자동주문 {'ON' if cfg.get('kis_on') else 'OFF'} 그대로"
+        + (f" · 모의 판정 {'통과' if g['pass'] else '미달'}" if g else ''), 'warn')
     return cfg
 
 
