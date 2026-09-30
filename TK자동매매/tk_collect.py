@@ -534,9 +534,20 @@ def import_file(path):
     import gzip
     out = {'bars': 0, 'flows': 0, 'tickers': 0, 'members': 0, 'monthly': 0, 'files': 0}
     low = path.lower()
+    if low.endswith('.db'):
+        return import_chart_db(path)
     if low.endswith('.zip'):
         with zipfile.ZipFile(path) as z:
             for name in z.namelist():
+                if name.lower().endswith('.db'):
+                    if name.lower().endswith('swing_chart.db'):                       # 차트 DB 백업 zip → 임시로 풀어서
+                        import tempfile
+                        with tempfile.TemporaryDirectory() as td:
+                            z.extract(name, td)
+                            r = import_chart_db(os.path.join(td, name))
+                        for k in out:
+                            out[k] += r.get(k, 0)
+                    continue
                 with z.open(name) as fb:
                     raw = gzip.GzipFile(fileobj=fb) if name.lower().endswith('.gz') else fb
                     out['files'] += _import_table(os.path.basename(name), io.TextIOWrapper(raw, encoding='utf-8-sig'), out)
@@ -545,6 +556,40 @@ def import_file(path):
             out['files'] += _import_table(os.path.basename(path), io.TextIOWrapper(fb, encoding='utf-8-sig'), out)
     if out['monthly']:
         _build_monthly()
+    return out
+
+
+def import_chart_db(path):
+    """TK STOCK CHART 백업 swing_chart.db (market · universe) → market.db — 날짜 YYYY-MM-DD → YYYYMMDD · 시장 STK/KSQ/KNX"""
+    import sqlite3
+    src = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+    out = {'bars': 0, 'flows': 0, 'tickers': 0, 'members': 0, 'monthly': 0, 'files': 0}
+    names = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    c = db.mconn()
+    if 'universe' in names:
+        mk = {'STK': 'KOSPI', 'KSQ': 'KOSDAQ', 'KNX': 'KONEX'}
+        rows = [(t, n, mk.get(m, m), classify(t, n or '', mk.get(m, m)), db.now_s()) for t, n, m in src.execute('SELECT ticker, name, market FROM universe')]
+        c.executemany("""INSERT INTO stocks (ticker, name, market, listed, excluded, updated) VALUES (?,?,?,1,?,?)
+                         ON CONFLICT(ticker) DO UPDATE SET name=COALESCE(excluded.name, stocks.name), market=excluded.market,
+                         excluded=CASE WHEN stocks.excluded LIKE '마스터:%' THEN stocks.excluded ELSE excluded.excluded END""", rows)
+        out['tickers'] = len(rows)
+    if 'market' in names:
+        cur = src.execute('SELECT date, ticker, open, high, low, close, volume, value_mil, chg FROM market')
+        days = set()
+        while True:
+            chunk = cur.fetchmany(200000)
+            if not chunk:
+                break
+            rows = [(d.replace('-', ''), t, o, h, l, cl, v, vm * 1e6 if vm is not None else None, ch, 'chartdb') for d, t, o, h, l, cl, v, vm, ch in chunk if cl and cl > 0]
+            c.executemany('INSERT OR REPLACE INTO bars VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
+            days.update(r[0] for r in rows)
+            out['bars'] += len(rows)
+        for d in days:
+            n = c.execute('SELECT COUNT(*) FROM bars WHERE date=?', (d,)).fetchone()[0]
+            c.execute('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', ('bars', d, n, db.now_s()))
+        out['files'] = 1
+    c.commit()
+    src.close()
     return out
 
 
@@ -562,7 +607,7 @@ def auto_import(dirs=None, say=None):
             continue
         for f in sorted(os.listdir(d)):
             p = os.path.join(d, f)
-            if os.path.isfile(p) and f.lower().endswith(('.zip', '.csv', '.csv.gz')):
+            if os.path.isfile(p) and f.lower().endswith(('.zip', '.csv', '.csv.gz', '.db')):
                 todo.append(p)
     n = 0
     for p in todo:

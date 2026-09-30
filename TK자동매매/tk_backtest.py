@@ -7,7 +7,7 @@ tk_backtest.py — TK자동매매 포트폴리오 백테스트 (실전과 같은
 
 규칙 (실전과 같음 · 새로 맞춘 값 없음)
 · 모든 판단은 그날 종가까지 아는 값 → 주식은 다음 거래일 시가 체결 · ON ETF는 그날 종가 매수 → 다음날 시가 매도
-· 종목당 금액 = 칸 비율 ÷ 칸 자리 수 × 전날 계좌 평가액 (LVH 20자리 · REV 10자리 · DV 15자리) · 정수 주 · 현금 안에서만
+· 종목당 금액 = 칸 비율 ÷ 칸 자리 수 × 전날 계좌 평가액 (LVH 20자리 · REV 30자리 · DV 15자리) · 정수 주 · 현금 안에서만
 · 비용: 주식 왕복 0.25% (매수 · 매도 각 0.125%) · ETF 왕복 0.05% (보수적으로) · 상장폐지 · 거래 끊김은 마지막 종가로 정리
 · 기간 구분은 Scout 보고서와 같음: 조정 2023-10-24 ~ 2025-08-29 · 검증 2025-09-01 ~
 """
@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tk_db as db
 import tk_signals as S
 
-SLOTS = {'LVH': 20, 'REV': 10, 'DV': 15}
+SLOTS = {'LVH': 20, 'REV': 30, 'DV': 15}
 ALLOC = {'LVH': 0.40, 'REV': 0.25, 'DV': 0.20, 'ON': 0.15}
 PERIODS = {'조정': ('20231024', '20250829'), '검증': ('20250901', '99999999')}
 
@@ -44,7 +44,50 @@ def load(start, end):
     F = S.features(P, FL, excl)
     mem, mon = db.month_tables()
     on = db.etf_bars(S.ON_TICKER, frm, end)
-    return {'P': P, 'F': F, 'mem': mem, 'mon': mon, 'on': on, 'names': {t: v['name'] for t, v in st.items()}, 'flow_src': F['flow_src']}
+    on_proxy = False
+    if len(on) < 100:                                            # ETF 가격이 없으면: 코스닥150 구성 종목 동일가중 밤사이 · 낮 수익으로 근사 가격
+        on, on_proxy = on_proxy_series(P, db.members_of('코스닥150') or mem), True
+    return {'P': P, 'F': F, 'mem': mem, 'mon': mon, 'on': on, 'on_proxy': on_proxy, 'names': {t: v['name'] for t, v in st.items()}, 'flow_src': F['flow_src']}
+
+
+def k200_proxy_series(P, start, end):
+    """KODEX 200 근사: 그달 코스피200 구성 종목의 전달 시가총액 가중 종가 수익 (근사)"""
+    mem, caps = db.members_of('코스피200'), db.month_caps()
+    C = P['close']
+    C = C[(C.index >= start) & (C.index <= end)]
+    r = C.pct_change().clip(-0.3, 0.3)
+    months = sorted(mem)
+    vals, px = [], 1.0
+    for d in C.index[1:]:
+        m = max([x for x in months if x <= d[:6]], default=None)
+        w = {t: caps.get(m, {}).get(t, 0) for t in (mem.get(m) or ()) if t in C.columns} if m else {}
+        w = pd.Series({t: v for t, v in w.items() if v > 0 and r.at[d, t] == r.at[d, t]})
+        if len(w) >= 100:
+            px *= 1 + float((r.loc[d, w.index] * w).sum() / w.sum())
+        vals.append((d, px))
+    return pd.Series(dict(vals)) if vals else pd.Series(dtype=float)
+
+
+def on_proxy_series(P, mem):
+    """KODEX 코스닥150 근사: 그달 코스닥150 구성 종목의 동일가중 밤사이(시가/전날 종가) · 낮(종가/시가) 수익을 이어 붙인 가격 (근사 — 실제 ETF와 다를 수 있음)"""
+    O, C = P['open'], P['close']
+    months = sorted(mem)
+    on_r, day_r = O / C.shift(1) - 1, C / O - 1
+    rows, px = [], 10000.0
+    for d in C.index:
+        m = max([x for x in months if x <= d[:6]], default=None)
+        cols = [t for t in (mem.get(m) or ()) if t in C.columns] if m else []
+        if not cols:
+            continue
+        a = on_r.loc[d, cols].clip(-0.3, 0.3).mean()
+        b = day_r.loc[d, cols].clip(-0.3, 0.3).mean()
+        if a != a or b != b:
+            continue
+        op = px * (1 + a)
+        cl = op * (1 + b)
+        rows.append((d, op, max(op, cl), min(op, cl), cl))
+        px = cl
+    return pd.DataFrame(rows, columns=['date', 'open', 'high', 'low', 'close']).set_index('date')
 
 
 def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed_rank_cache=None):
@@ -195,8 +238,13 @@ def trade_stats(trades):
 def benchmarks(D, start, end):
     out = {}
     k = db.etf_bars('069500', start, end)
-    if len(k):
+    if len(k) >= 100:
         out['KODEX 200 보유'] = k['close']
+    else:                                                        # ETF 가격이 없으면 코스피200 시총가중 근사
+        b = k200_proxy_series(D['P'], start, end)
+        if len(b) >= 100:
+            out['KODEX 200 보유'] = b * 1e7
+            D['k200_proxy'] = True
     C = D['P']['close']
     pool = D['F']['pool']
     r = C.pct_change().where(pool.shift(1).fillna(False).astype(bool)).clip(-0.3, 0.3)
@@ -214,6 +262,9 @@ def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=p
     progress(f"일봉 {D['P']['close'].shape[0]}일 × {D['P']['close'].shape[1]}종목 · 수급 {D['flow_src'] or '없음'} · ON ETF {len(D['on'])}일 · {time.time() - t0:.0f}초")
     cache = {}
     runs = {'★ TK자동매매 (합성)': alloc}
+    if alloc.get('ON', 0) > 0:
+        rest = 1 - alloc['ON']
+        runs['TK자동매매 (ON 제외 · 나머지 비율대로)'] = {k: v / rest for k, v in alloc.items() if k != 'ON'}
     for s in ('LVH', 'REV', 'DV', 'ON'):
         runs[f"{S.SLEEVES[s]['icon']} {S.SLEEVES[s]['name']}만 100%"] = {s: 1.0}
     res = {}
@@ -223,7 +274,7 @@ def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=p
     bm = benchmarks(D, start, end)
     daily = pd.DataFrame({k: v['curve'] for k, v in res.items()}).pct_change()
     corr = daily[[k for k in res if k != '★ TK자동매매 (합성)']].corr().round(2)
-    out = {'start': start, 'end': end, 'alloc': alloc, 'made': time.strftime('%Y-%m-%d %H:%M'), 'flow_src': D['flow_src'],
+    out = {'start': start, 'end': end, 'alloc': alloc, 'made': time.strftime('%Y-%m-%d %H:%M'), 'flow_src': D['flow_src'], 'on_proxy': D.get('on_proxy', False), 'k200_proxy': D.get('k200_proxy', False),
            'models': {k: {**stats(v['curve']), 'trades': trade_stats(v['trades']), 'expo': v['expo'], 'pnl': v['sleeve_pnl'],
                           'curve': [[d, round(x)] for d, x in v['curve'].items()]} for k, v in res.items()},
            'bench': {k: {**stats(v), 'curve': [[d, round(float(x) / float(v.iloc[0]) * cap)] for d, x in v.items()]} for k, v in bm.items()},
@@ -238,7 +289,9 @@ def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=p
 def report_md(o):
     f = lambda v: '-' if v is None or v != v else f'{v * 100:+.1f}%'
     L = [f"# TK자동매매 백테스트 ({o['start']} ~ {o['end']} · 1,000만 · 비용 반영)", '',
-         f"칸 비율: {', '.join(f'{k} {v * 100:.0f}%' for k, v in o['alloc'].items())} · 수급: {o['flow_src'] or '없음(중립 0.5)'}", '',
+         f"칸 비율: {', '.join(f'{k} {v * 100:.0f}%' for k, v in o['alloc'].items())} · 수급: {o['flow_src'] or '없음(중립 0.5)'}"
+         + (' · ⚠️ 밤사이 ETF 가격이 없어 코스닥150 구성 종목 동일가중으로 근사' if o.get('on_proxy') else '')
+         + (' · ⚠️ KODEX 200 가격이 없어 코스피200 시총가중으로 근사' if o.get('k200_proxy') else ''), '',
          '| 모델 | 누적 | 연수익 | 최대낙폭 | 샤프 | 조정 기간 | 검증 기간 | 검증 낙폭 |', '|---|---|---|---|---|---|---|---|']
     rows = list(o['models'].items()) + list(o['bench'].items())
     for k, v in rows:

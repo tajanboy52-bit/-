@@ -211,6 +211,22 @@ def etf_bars(ticker, frm='0', to='99999999'):
     return df.set_index('date').astype(float) if len(df) else pd.DataFrame(columns=['open', 'high', 'low', 'close'])
 
 
+def members_of(idx):
+    """{월: {종목}} — 한 지수(코스피200 · 코스닥150)만"""
+    out = {}
+    for m, t in mconn().execute('SELECT month, ticker FROM members WHERE idx=?', (idx,)):
+        out.setdefault(m, set()).add(t)
+    return out
+
+
+def month_caps():
+    """{월: {종목: 시가총액}}"""
+    out = {}
+    for m, t, v in mconn().execute('SELECT month, ticker, marcap FROM monthly WHERE marcap>0'):
+        out.setdefault(m, {})[t] = v
+    return out
+
+
 def month_tables(upto=None):
     c = mconn()
     mem = {}
