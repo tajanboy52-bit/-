@@ -172,6 +172,10 @@ tr.switch_mode(cfg, 'paper')
 check('모드: 모의로 돌아오면 모의 장부 · 모의 계좌 그대로', db.mode() == 'paper' and db.conn().execute('SELECT COUNT(*) FROM lots').fetchone()[0] == len(
     x.execute('SELECT id FROM lots').fetchall()) and tr.client(cfg).cano == '12345678' and tr.cap(cfg) == 10_000_000)
 
+check('실험 설정: 자리 · 건너뛸 순위가 실전 · 백테스트에 같이', tr.slots({'slots': {'LVH': 40}})['LVH'] == 40 and tr.slots({})['REV'] == 30
+      and tr.picks({'pick_skip': {'REV': 3}})['REV'] == (3, 3) and tr.picks({})['LVH'] == (0, 3)
+      and S.top_n(__import__('pandas').Series({'a': 3, 'b': 2, 'c': 1, 'd': 0}), {'d'}, 2, 1) == ['b', 'c'])
+
 # ── 2-3. 분석 ──
 import tk_analyze as A
 res = A.analyze()

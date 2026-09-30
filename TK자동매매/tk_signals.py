@@ -139,10 +139,10 @@ def shares(size, px, cash, fee=0.00125):
     return q
 
 
-def top_n(scores, held, n):
-    """점수 높은 순(동점은 종목코드 순)으로 보유 중이 아닌 상위 n"""
+def top_n(scores, held, n, skip=0):
+    """점수 높은 순(동점은 종목코드 순)으로 보유 중이 아닌 상위 n · skip이면 맨 위 skip개를 건너뛴 순위부터"""
     s = scores.sort_index().sort_values(ascending=False, kind='stable')
-    return [t for t in s.index if t not in held][:n]
+    return [t for t in s.index[skip:] if t not in held][:n]
 
 
 def rev_exit(F, d, t):

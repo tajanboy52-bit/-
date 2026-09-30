@@ -80,6 +80,17 @@ def next_trading_day(d):
     return ''
 
 
+def slots(cfg):
+    """칸별 자리 수 — 설정(실험)에서 바꿀 수 있음 · 백테스트도 같은 값을 씀"""
+    return {**SLOTS, **{k: int(v) for k, v in (cfg.get('slots') or {}).items() if k in SLOTS and v}}
+
+
+def picks(cfg):
+    """LVH · REV 하루 매수 후보: (건너뛸 순위, 하루 수) — 기본 (0, 3) = 상위 1~3"""
+    sk = cfg.get('pick_skip') or {}
+    return {'LVH': (int(sk.get('LVH') or 0), S.LVH['top']), 'REV': (int(sk.get('REV') or 0), S.REV['top'])}
+
+
 def alloc(cfg):
     a = dict(DEFAULT_ALLOC)
     a.update({k: float(v) for k, v in (cfg.get('alloc') or {}).items() if k in a})
@@ -272,6 +283,7 @@ def plan(cfg, equity, cash, sig_date):
     x = db.conn()
     base = min(equity or cap(cfg), cap(cfg))
     al = alloc(cfg)
+    SLOTS = slots(cfg)
     sells = [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sell_flag=1 AND qty>0")]
     lots = open_lots()
     buys, defer = [], []
@@ -598,14 +610,16 @@ def signal_job(cfg, d, progress=None):
     cands = [('DV', t, k, sc, float(C.at[d, t]) if t in C.columns and C.at[d, t] == C.at[d, t] else None, {'div': dv, 'pbr': pb, 'sector': sec})
              for k, (t, nm, sec, sc, dv, pb) in enumerate(rank[:50] if al.get('DV', 0) > 0 and rank else [], start=1)]
     # ③ LVH · REV 상위 3 (후보 상위 50은 분석용으로 따로 기록)
-    for s, fn, top in (('LVH', S.lvh_scores, S.LVH['top']), ('REV', S.rev_scores, S.REV['top'])):
+    pk = picks(cfg)
+    for s, fn in (('LVH', S.lvh_scores), ('REV', S.rev_scores)):
+        skip, top = pk[s]
         sc = fn(F, d)
         for k, t in enumerate(S.top_n(sc.dropna(), set(), 50), start=1):
             cands.append((s, t, k, float(sc[t]), float(C.at[d, t]), feat_info(F, d, t)))
         if al.get(s, 0) <= 0:
             continue
         held = {l['ticker'] for l in open_lots(s)}
-        for k, t in enumerate(S.top_n(sc, held, top + 3), start=1):                  # +3은 예비(자리 · 가격 때문에 못 살 때 화면 참고용 · 주문은 상위 3만)
+        for k, t in enumerate(S.top_n(sc, held, top + 3, skip), start=1):            # +3은 예비(자리 · 가격 때문에 못 살 때 화면 참고용 · 주문은 top개만)
             info = {**feat_info(F, d, t), 'spare': k > top}
             rows.append((d, s, k if k <= top else 100 + k, t, st.get(t, {}).get('name', t), float(sc[t]), float(C.at[d, t]), json.dumps(info)))
     x.execute('DELETE FROM signals WHERE date=?', (d,))

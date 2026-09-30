@@ -90,7 +90,10 @@ def on_proxy_series(P, mem):
     return pd.DataFrame(rows, columns=['date', 'open', 'high', 'low', 'close']).set_index('date')
 
 
-def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed_rank_cache=None):
+def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed_rank_cache=None, pick=None, slots=None):
+    """pick: {'LVH': (건너뛸 순위, 하루 수)} · slots: 칸별 자리 수 (없으면 기본)"""
+    SLOTS = {**globals()['SLOTS'], **(slots or {})}
+    pick = {'LVH': (0, S.LVH['top']), 'REV': (0, S.REV['top']), **(pick or {})}
     P, F = D['P'], D['F']
     O, C = P['open'], P['close']
     dates = [d for d in C.index if start <= d <= end]
@@ -165,10 +168,10 @@ def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed
         if i + 1 < len(dates):
             if alloc.get('LVH', 0) > 0:
                 held = {x['t'] for x in lots if x['s'] == 'LVH'}
-                pend['LVH'] = S.top_n(S.lvh_scores(F, d), held, S.LVH['top'])
+                pend['LVH'] = S.top_n(S.lvh_scores(F, d), held, pick['LVH'][1], pick['LVH'][0])
             if alloc.get('REV', 0) > 0:
                 held = {x['t'] for x in lots if x['s'] == 'REV'}
-                pend['REV'] = S.top_n(S.rev_scores(F, d), held, S.REV['top'])
+                pend['REV'] = S.top_n(S.rev_scores(F, d), held, pick['REV'][1], pick['REV'][0])
             if alloc.get('DV', 0) > 0:
                 m = d[:6]
                 if m != dv_month:
@@ -253,7 +256,7 @@ def benchmarks(D, start, end):
     return out
 
 
-def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=print):
+def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=print, slots=None, pick=None):
     t0 = time.time()
     alloc = alloc or dict(ALLOC)
     progress('일봉 · 수급 읽는 중 …')
@@ -270,11 +273,11 @@ def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=p
     res = {}
     for name, al in runs.items():
         progress(f'{name} 계산 중 …')
-        res[name] = simulate(D, start, end, al, cap, seed_rank_cache=cache)
+        res[name] = simulate(D, start, end, al, cap, seed_rank_cache=cache, slots=slots, pick=pick)
     bm = benchmarks(D, start, end)
     daily = pd.DataFrame({k: v['curve'] for k, v in res.items()}).pct_change()
     corr = daily[[k for k in res if k != '★ TK자동매매 (합성)']].corr().round(2)
-    out = {'start': start, 'end': end, 'alloc': alloc, 'made': time.strftime('%Y-%m-%d %H:%M'), 'flow_src': D['flow_src'], 'on_proxy': D.get('on_proxy', False), 'k200_proxy': D.get('k200_proxy', False),
+    out = {'start': start, 'end': end, 'alloc': alloc, 'made': time.strftime('%Y-%m-%d %H:%M'), 'flow_src': D['flow_src'], 'on_proxy': D.get('on_proxy', False), 'k200_proxy': D.get('k200_proxy', False), 'slots': {**SLOTS, **(slots or {})}, 'pick': pick or {},
            'models': {k: {**stats(v['curve']), 'trades': trade_stats(v['trades']), 'expo': v['expo'], 'pnl': v['sleeve_pnl'],
                           'curve': [[d, round(x)] for d, x in v['curve'].items()]} for k, v in res.items()},
            'bench': {k: {**stats(v), 'curve': [[d, round(float(x) / float(v.iloc[0]) * cap)] for d, x in v.items()]} for k, v in bm.items()},
@@ -291,7 +294,8 @@ def report_md(o):
     L = [f"# TK자동매매 백테스트 ({o['start']} ~ {o['end']} · 1,000만 · 비용 반영)", '',
          f"칸 비율: {', '.join(f'{k} {v * 100:.0f}%' for k, v in o['alloc'].items())} · 수급: {o['flow_src'] or '없음(중립 0.5)'}"
          + (' · ⚠️ 밤사이 ETF 가격이 없어 코스닥150 구성 종목 동일가중으로 근사' if o.get('on_proxy') else '')
-         + (' · ⚠️ KODEX 200 가격이 없어 코스피200 시총가중으로 근사' if o.get('k200_proxy') else ''), '',
+         + (' · ⚠️ KODEX 200 가격이 없어 코스피200 시총가중으로 근사' if o.get('k200_proxy') else '')
+         + (f" · 자리 {o.get('slots')}" if o.get('slots') else '') + (f" · 순위 건너뜀 {o.get('pick')}" if any(v[0] for v in (o.get('pick') or {}).values()) else ''), '',
          '| 모델 | 누적 | 연수익 | 최대낙폭 | 샤프 | 조정 기간 | 검증 기간 | 검증 낙폭 |', '|---|---|---|---|---|---|---|---|']
     rows = list(o['models'].items()) + list(o['bench'].items())
     for k, v in rows:

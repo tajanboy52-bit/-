@@ -231,7 +231,7 @@ def _state():
         ls = [l for l in lots if l['sleeve'] == s and l['status'] == '보유']
         cl = list(x.execute("SELECT pnl, ret FROM lots WHERE sleeve=? AND status='청산'", (s,)))
         sleeves.append({'key': s, **m, 'pct': al.get(s, 0), 'limit': base * al.get(s, 0) / 100, 'value': sum(l['qty'] * l['px'] for l in ls),
-                        'npos': len(ls), 'slots': tr.SLOTS.get(s, 1), 'eval': sum(l['eval'] for l in ls), 'realized': sum(r[0] or 0 for r in cl),
+                        'npos': len(ls), 'slots': tr.slots(CFG).get(s, 1), 'eval': sum(l['eval'] for l in ls), 'realized': sum(r[0] or 0 for r in cl),
                         'closed': len(cl), 'win': sum(1 for r in cl if (r[0] or 0) > 0) / len(cl) * 100 if cl else None,
                         'avg': sum(r[1] or 0 for r in cl) / len(cl) if cl else None})
     sd = db.meta_get('last_signal_date')
@@ -269,7 +269,7 @@ def _state():
                      'etf_last': mc.execute('SELECT MAX(date) FROM etf').fetchone()[0], 'master_at': db.gmeta_get('master_at'),
                      'collect': dict(col.STATE), 'collect_msg': JOB['collect_msg']},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
-            'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.SLOTS, 'backtest': bt,
+            'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
             'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')),
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
@@ -364,6 +364,20 @@ async def api_config(req: Request):
                 if v and not 1_000_000 <= float(v) <= 2_000_000_000:
                     raise ValueError('계좌별 운용 한도 1,000,000 ~ 2,000,000,000')
                 CFG.setdefault('caps', {})[m] = int(float(v)) if v else None
+        for k, lo, hi in (('LVH', 5, 80), ('REV', 5, 90), ('DV', 5, 30)):          # 실험: 자리 수
+            v = (b.get('slots') or {}).get(k)
+            if v not in (None, ''):
+                if not lo <= int(v) <= hi:
+                    raise ValueError(f'{k} 자리 {lo}~{hi}')
+                CFG.setdefault('slots', {})[k] = int(v)
+        for k in ('LVH', 'REV'):                                                 # 실험: 맨 위 몇 순위를 건너뛸지
+            v = (b.get('pick_skip') or {}).get(k)
+            if v not in (None, ''):
+                if not 0 <= int(v) <= 30:
+                    raise ValueError(f'{k} 건너뛸 순위 0~30')
+                CFG.setdefault('pick_skip', {})[k] = int(v)
+        if b.get('slots') or b.get('pick_skip'):
+            db.log(f"실험 설정: 자리 {tr.slots(CFG)} · 건너뛸 순위 {CFG.get('pick_skip') or {}} (다음 신호부터)", 'warn')
         for k, lo, hi in (('fee_pct', 0, 1), ('tax_pct', 0, 1)):
             if b.get(k) not in (None, ''):
                 v = float(b[k])
@@ -583,6 +597,7 @@ async def api_job_backtest(req: Request):
             import tk_backtest
             al = {k: v / 100 for k, v in tr.alloc(CFG).items()}
             tk_backtest.run(b.get('start') or '20231024', b.get('end') or '99999999', al, int(CFG.get('cap') or 10_000_000),
+                            slots=tr.slots(CFG), pick=tr.picks(CFG),
                             progress=lambda m: JOB.update(bt_msg=m))
         except Exception as e:
             JOB['bt_msg'] = f'오류: {CF.clean(e)}'
