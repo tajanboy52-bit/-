@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>📈 퀀트 자동매매</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#111827;--mut:#6b7280;--line:#e5e7eb;--up:#dc2626;--dn:#2563eb;--acc:#0f766e;--warn:#b45309;--soft:#f1f5f9}
+@media (prefers-color-scheme:dark){:root{--bg:#0b0f14;--card:#141a21;--ink:#e5e7eb;--mut:#94a3b8;--line:#243040;--up:#f87171;--dn:#60a5fa;--acc:#2dd4bf;--warn:#fbbf24;--soft:#1b2430}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 18px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0 8px 0 0}nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{border:0;background:none;color:var(--mut);padding:7px 11px;border-radius:8px;cursor:pointer;font:inherit}nav button.on{background:var(--soft);color:var(--ink);font-weight:600}
+.chip{display:inline-flex;gap:5px;align-items:center;padding:3px 9px;border-radius:99px;background:var(--soft);font-size:12.5px;color:var(--mut)}.chip b{color:var(--ink)}
+.chip.bad{background:#fee2e2;color:#991b1b}.chip.ok{background:#dcfce7;color:#166534}
+main{max-width:1280px;margin:0 auto;padding:16px}section[hidden]{display:none}
+.grid{display:grid;gap:14px}.g4{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(420px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}.card h2{font-size:15px;margin:0 0 10px}.card h2 small{color:var(--mut);font-weight:400;margin-left:6px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.kpi .v{font-size:21px;font-weight:700}.kpi .l{color:var(--mut);font-size:12.5px}
+.up{color:var(--up)}.dn{color:var(--dn)}.mut{color:var(--mut)}.small{font-size:12.5px}
+table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{color:var(--mut);font-weight:500}td.r,th.r{text-align:right}
+.tw{overflow-x:auto}.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 12px;border-radius:8px;cursor:pointer;font:inherit}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}.btn.d{background:#dc2626;border-color:#dc2626;color:#fff}.btn.sm{padding:3px 8px;font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}input,select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+label{display:block;color:var(--mut);font-size:12.5px;margin:8px 0 3px}
+.sl{border-left:4px solid var(--c);}.bar{height:8px;background:var(--soft);border-radius:9px;overflow:hidden;margin:6px 0}.bar i{display:block;height:100%;background:var(--c)}
+.alert{padding:10px 12px;border-radius:10px;background:#fef3c7;color:#92400e;margin-bottom:12px}
+@media (prefers-color-scheme:dark){.alert{background:#3b2f10;color:#fcd34d}.chip.bad{background:#451a1a;color:#fca5a5}.chip.ok{background:#12301f;color:#86efac}}
+pre{white-space:pre-wrap;font-size:12px;max-height:420px;overflow:auto;background:var(--soft);padding:10px;border-radius:8px}
+svg text{fill:var(--mut);font-size:11px}#toast{position:fixed;bottom:18px;right:18px;padding:10px 14px;border-radius:10px;background:var(--ink);color:var(--bg);opacity:0;transition:.3s}
+@media (max-width:600px){.g2{grid-template-columns:1fr}main{padding:10px}}
+</style>
+</head>
+<body>
+<header><h1>📈 퀀트 자동매매</h1>
+  <nav><button data-t="dash" class="on">대시보드</button><button data-t="pos">보유 · 주문</button><button data-t="sig">신호 · 계획</button><button data-t="bt">🧪 백테스트</button><button data-t="set">⚙️ 설정 · 로그</button></nav>
+  <span id="chips" class="row"></span></header>
+<main>
+<section id="t-dash">
+  <div id="alerts"></div>
+  <div class="card"><div class="kpis" id="kpis"></div></div>
+  <div class="grid g4" id="sleeves" style="margin-top:14px"></div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h2>계좌 평가 <small>장 마감 기록</small></h2><div id="curve"></div></div>
+    <div class="card"><h2>다음 장전 08:35 계획 <small id="planSub"></small></h2><div id="plan"></div></div>
+  </div>
+</section>
+<section id="t-pos" hidden>
+  <div class="card"><h2>보유 묶음 <small>같은 종목도 칸마다 따로 관리 · 📡 실시간 가격이면 초록</small></h2><div class="tw" id="lots"></div></div>
+  <div class="card" style="margin-top:14px"><h2>청산 거래 <small>최근 300</small></h2><div class="row" style="margin-bottom:8px"><select id="fSl"><option value="">모든 칸</option></select></div><div id="closedK" class="kpis" style="margin-bottom:10px"></div><div class="tw" id="closed"></div></div>
+  <div class="card" style="margin-top:14px"><h2>주문 기록 <small>최근 200</small></h2><div class="tw" id="orders"></div></div>
+</section>
+<section id="t-sig" hidden>
+  <div class="card"><h2>최근 신호 <small id="sigSub"></small></h2><div class="tw" id="sig"></div></div>
+  <div class="card" style="margin-top:14px"><h2>모델 규칙 <small>이미 검증된 정의 그대로 — 결과를 보고 바꾸지 않음</small></h2><div id="rules" class="small"></div></div>
+</section>
+<section id="t-bt" hidden>
+  <div class="card"><h2>포트폴리오 백테스트 <small>Scout 전종목 일봉(상장폐지 포함)으로 · 실전과 같은 신호 함수</small></h2>
+    <div class="row"><label style="margin:0">시작</label><input id="btS" value="20231024" size="9"><label style="margin:0">끝</label><input id="btE" placeholder="오늘까지" size="9">
+      <button class="btn p" id="btRun">🧪 백테스트 실행</button><span id="btMsg" class="mut"></span></div>
+    <div id="bt" style="margin-top:12px"></div></div>
+</section>
+<section id="t-set" hidden>
+  <div class="grid g2">
+    <div class="card"><h2>자동주문 <small>KIS 모의투자 전용</small></h2>
+      <div class="row"><button class="btn p" id="bOn"></button><button class="btn" id="bPause"></button><button class="btn" id="bHalt">정지 해제</button><button class="btn d" id="bEmg">⛔ 긴급 정지</button></div>
+      <label>칸 비율 (%) — 합계 100 이하 · 다음 주문부터</label>
+      <div class="row" id="alloc"></div>
+      <label>운용 한도 (원) — KIS 평가액과 이 값 중 작은 쪽을 기준으로 · 계좌 안전장치: 고점 대비 낙폭 % · 하루 손실 %</label>
+      <div class="row"><input id="cap" size="11"><input id="dd" size="4"><input id="dl" size="4"><button class="btn" id="bAlloc">저장</button></div>
+      <div class="row" style="margin-top:10px"><button class="btn" id="bSig">🔄 신호 지금 계산</button><button class="btn" id="bSync">체결 반영</button><a class="btn" href="/api/export">📦 점검 zip</a></div></div>
+    <div class="card"><h2>연결 설정 <small>이 PC 설정 파일에만 저장 · 화면 · 로그 · zip에는 가림</small></h2>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:4px 10px">
+        <div><label>KIS 모의 앱키</label><input id="kis_app_key" type="password" style="width:100%"></div><div><label>KIS 모의 시크릿</label><input id="kis_app_secret" type="password" style="width:100%"></div>
+        <div><label>모의계좌 (8-2)</label><input id="kis_account" type="password" style="width:100%"></div><div><label>HTS ID (체결 통보 · 선택)</label><input id="kis_hts_id" type="password" style="width:100%"></div>
+        <div><label>KRX 아이디 (월 자료)</label><input id="krx_id" type="password" style="width:100%"></div><div><label>KRX 비밀번호</label><input id="krx_pw" type="password" style="width:100%"></div>
+        <div><label>텔레그램 봇 토큰</label><input id="telegram_token" type="password" style="width:100%"></div><div><label>텔레그램 채팅 ID</label><input id="telegram_chat" type="password" style="width:100%"></div></div>
+      <label><input type="checkbox" id="ws_on"> 📡 장중 실시간 웹소켓</label>
+      <div class="mut small" id="cfgNow"></div>
+      <div class="row" style="margin-top:8px"><button class="btn p" id="bSave">저장</button><button class="btn" id="bTest">🔌 KIS 연결 테스트</button><button class="btn" id="bTg">🔔 텔레그램 테스트</button></div>
+      <div class="mut small" id="testMsg" style="margin-top:6px"></div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h2>데이터 · 로그</h2><div id="data" class="small"></div><pre id="log"></pre></div>
+</section>
+</main>
+<div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s);let ST=null,TAB='dash';
+const won=v=>v==null?'-':Math.round(v).toLocaleString('ko-KR');const man=v=>v==null?'-':(v/1e4).toLocaleString('ko-KR',{maximumFractionDigits:0})+'만';
+const pct=(v,d=2)=>v==null||isNaN(v)?'-':(v>0?'+':'')+v.toFixed(d)+'%';const cls=v=>v>0?'up':(v<0?'dn':'');const sw=v=>`<span class="${cls(v)}">${v>0?'+':''}${won(v)}</span>`;
+const md=d=>d?d.slice(4,6)+'/'+d.slice(6):'-';
+const KIND={entry:'매수',hold20:'20일 보유 끝',ema9:'9EMA 복귀',hold10:'10일 만료',dv_rebal:'배당·가치 교체',on_buy:'밤사이 매수',on_sell:'밤사이 매도',manual:'수동',delist:'거래 끊김'};
+function toast(m,ok=true){const t=$('#toast');t.textContent=m;t.style.background=ok?'':'#dc2626';t.style.opacity=1;setTimeout(()=>t.style.opacity=0,2600)}
+async function get(u){const r=await fetch(u);return r.json()}async function post(u,b={}){const r=await fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)});return r.json()}
+function tbl(cols,rows,empty='없음'){if(!rows.length)return `<div class="mut" style="padding:8px">${empty}</div>`;return `<table><tr>${cols.map(c=>`<th class="${c.r?'r':''}">${c.h}</th>`).join('')}</tr>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.r?'r':''}">${c.f(r)}</td>`).join('')}</tr>`).join('')}</table>`}
+function line(series,h=210,W=640){/* series: [{name,color,pts:[[d,v]]}] */const all=series.flatMap(s=>s.pts);if(all.length<2)return '<div class="mut">기록이 쌓이면 표시</div>';
+  const P=46,xs=[...new Set(all.map(p=>p[0]))].sort(),vs=all.map(p=>p[1]),lo=Math.min(...vs),hi=Math.max(...vs),span=hi-lo||1;
+  const X=d=>P+(xs.indexOf(d)/(Math.max(1,xs.length-1)))*(W-P-8),Y=v=>8+(1-(v-lo)/span)*(h-30);
+  const paths=series.map(s=>`<path d="${s.pts.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join('')}" fill="none" stroke="${s.color}" stroke-width="${s.w||1.8}"/>`).join('');
+  const lg=series.length>1?'<div class="row small" style="gap:4px 14px">'+series.map(s=>`<span style="color:${s.color}">■ ${s.name}</span>`).join('')+'</div>':'';
+  return `<svg viewBox="0 0 ${W} ${h}" width="100%"><text x="2" y="14">${man(hi)}</text><text x="2" y="${h-24}">${man(lo)}</text><text x="${P}" y="${h-6}">${md(xs[0])}</text><text x="${W-44}" y="${h-6}">${md(xs[xs.length-1])}</text>${paths}</svg>${lg}`}
+function chips(s){const c=[];c.push(`<span class="chip ${s.kis_on?'ok':''}">자동주문 <b>${s.kis_on?'ON':'OFF'}</b></span>`);
+  if(s.halt)c.push(`<span class="chip bad">⛔ 정지</span>`);if(s.auto_pause||s.pause_buy)c.push(`<span class="chip bad">⏸ 새 매수 중지</span>`);if(s.block_new)c.push(`<span class="chip bad">⚠️ 새 매수 차단</span>`);
+  c.push(`<span class="chip">Scout <b>${md(s.scout.last)}</b> · 수급 <b>${md(s.scout.flows)}</b></span>`);
+  c.push(`<span class="chip">📡 <b>${s.ws.connected?'실시간 '+s.ws.subs.length:(s.ws.enabled?'대기':'끔')}</b>${s.ws.notice?' · 체결통보':''}</span>`);
+  c.push(`<span class="chip">${s.version}</span>`);$('#chips').innerHTML=c.join('')}
+function dash(s){const e=s.equity,a=[];
+  if(!s.scout.path)a.push('Scout(스윙 앱) 데이터가 없습니다 — %APPDATA%\\StockScout\\scout.db 필요 (Scout가 매일 일봉 · 수급을 모음)');
+  if(!s.configured)a.push('⚙️ 설정에서 KIS 모의투자 앱키 · 시크릿 · 계좌를 저장하세요');
+  if(s.halt)a.push('⛔ 자동주문 정지: '+s.halt);if(s.auto_pause)a.push('⏸ 계좌 안전장치로 새 매수 중지: '+s.auto_pause+' (설정에서 재개)');if(s.block_new)a.push('⚠️ 앱이 모르는 보유 종목: '+s.block_new);
+  $('#alerts').innerHTML=a.map(x=>`<div class="alert">${x}</div>`).join('');
+  const sv=s.start_value,val=e?e.value:null,prev=s.curve.length>1?s.curve[s.curve.length-2][1]:null;
+  const ev=s.lots.reduce((t,l)=>t+(l.eval||0),0),rz=s.sleeves.reduce((t,x)=>t+x.realized,0);
+  const k=(v,l)=>`<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  $('#kpis').innerHTML=k(val?won(val):'-','계좌 평가액 (장 마감)')+k(`<span class="${cls(val-prev)}">${prev?pct((val/prev-1)*100):'-'}</span>`,'오늘')+
+    k(`<span class="${cls(val-sv)}">${sv&&val?pct((val/sv-1)*100):'-'}</span>`,'시작 대비'+(sv?` (${man(sv)})`:''))+k(e?pct((e.value/e.peak-1)*100,1):'-','고점 대비 낙폭')+
+    k(sw(ev),'보유 평가 손익')+k(sw(rz),'누적 실현 손익')+k(e?man(e.cash):'-','현금 (D+2)');
+  $('#sleeves').innerHTML=s.sleeves.map(x=>`<div class="card sl" style="--c:${x.color}"><h2>${x.icon} ${x.name} <small>${x.pct}% · ${man(x.limit)}</small></h2>
+    <div class="bar"><i style="width:${Math.min(100,x.limit?x.value/x.limit*100:0).toFixed(0)}%"></i></div>
+    <div class="small">보유 ${x.npos}${x.key!=='ON'?' / '+x.slots+'자리':''} · 평가 ${man(x.value)} · ${sw(x.eval)}원</div>
+    <div class="small mut">누적 실현 ${sw(x.realized)}원${x.closed?` · 청산 ${x.closed}건 · 승률 ${x.win.toFixed(0)}% · 건당 ${pct(x.avg)}`:''}</div></div>`).join('');
+  $('#curve').innerHTML=line([{name:'계좌',color:'var(--ink)',pts:s.curve,w:2.2}]);
+  const p=s.plan,li=(arr,f,em)=>arr.length?'<ul style="margin:4px 0;padding-left:18px">'+arr.map(f).join('')+'</ul>':`<div class="mut small">${em}</div>`;
+  $('#planSub').textContent=s.signal_date?md(s.signal_date)+' 종가 신호':'신호 없음';
+  $('#plan').innerHTML=`<b>매도</b>${li(p.sells,l=>`<li>[${l.sleeve}] ${l.name} ${l.qty}주 · <span class="mut">${KIND[l.sell_reason]||l.sell_reason}</span></li>`,'없음')}
+    <b>매수</b>${li(p.buys.concat(p.defer),b=>`<li>[${b.sleeve}] <b>${b.name}</b> ${b.skip?`<span class="mut">${b.skip}${b.qty?' · '+b.qty+'주':''}</span>`:`${b.qty}주 ≈ ${man(b.amt)}`}</li>`,'없음')}
+    <div class="mut small">🌙 밤사이: 매일 15:20 ${'KODEX 코스닥150'} 약 ${man((s.equity?Math.min(s.equity.value,s.cap):s.cap)*s.alloc.ON/100)}</div>`}
+function pos(s){const live=s.ws.prices||{};
+  $('#lots').innerHTML=tbl([{h:'칸',f:l=>l.sleeve},{h:'종목',f:l=>`<b>${l.name}</b> <span class="mut">${l.ticker}</span>`},{h:'상태',f:l=>l.status+(l.sell_flag?' · 매도 예정':'')},{h:'매수일',f:l=>md(l.entry_date)},
+    {h:'보유일',r:1,f:l=>l.days},{h:'수량',r:1,f:l=>l.qty},{h:'매수가',r:1,f:l=>won(l.entry_px)},{h:'현재',r:1,f:l=>`<span style="${live[l.ticker]?'color:#16a34a':''}">${won(l.px)}</span>`},
+    {h:'평가',r:1,f:l=>`${sw(l.eval)} <span class="${cls(l.eval_pct)}">${pct(l.eval_pct)}</span>`},{h:'',f:l=>l.status==='보유'&&!l.sell_flag?`<button class="btn sm" onclick="sellLot(${l.id},'${l.name}')">매도</button>`:''}],s.lots,'보유 없음');
+  const f=$('#fSl').value,cl=s.closed.filter(r=>!f||r.sleeve===f),n=cl.length,pn=cl.reduce((a,r)=>a+(r.pnl||0),0),w=cl.filter(r=>r.pnl>0).length;
+  const k=(v,l)=>`<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  $('#closedK').innerHTML=k(n,'청산')+k(sw(pn),'실현 손익')+k(n?(w/n*100).toFixed(0)+'%':'-','승률')+k(n?pct(cl.reduce((a,r)=>a+(r.ret||0),0)/n):'-','건당');
+  $('#closed').innerHTML=tbl([{h:'칸',f:r=>r.sleeve},{h:'종목',f:r=>r.name},{h:'매수',f:r=>md(r.entry_date)},{h:'매도',f:r=>md(r.exit_date)},{h:'매수가',r:1,f:r=>won(r.entry_px)},{h:'매도가',r:1,f:r=>won(r.exit_px)},
+    {h:'손익',r:1,f:r=>sw(r.pnl)},{h:'수익률',r:1,f:r=>`<span class="${cls(r.ret)}">${pct(r.ret)}</span>`},{h:'사유',f:r=>KIND[r.sell_reason]||r.sell_reason||''}],cl,'아직 청산 없음');
+  $('#orders').innerHTML=tbl([{h:'날짜',f:o=>md(o.date)+' '+(o.ts||'').slice(11,16)},{h:'칸',f:o=>o.sleeve},{h:'종목',f:o=>o.name},{h:'구분',f:o=>(o.side==='buy'?'매수':'매도')+' · '+(KIND[o.kind]||o.kind)},
+    {h:'수량',r:1,f:o=>o.qty},{h:'체결',r:1,f:o=>o.filled?`${o.filled} @ ${won(o.avg)}`:'-'},{h:'상태',f:o=>o.status},{h:'메시지',f:o=>`<span class="mut">${(o.msg||'').slice(0,60)}</span>`}],s.orders,'주문 없음')}
+function sig(s){$('#sigSub').textContent=s.signal_date?md(s.signal_date)+' 종가 기준 → 다음 거래일 08:35':'';
+  $('#sig').innerHTML=tbl([{h:'칸',f:r=>r.sleeve},{h:'순위',r:1,f:r=>r.rank>100?'예비':r.rank},{h:'종목',f:r=>`<b>${r.name}</b> <span class="mut">${r.ticker}</span>`},{h:'점수',r:1,f:r=>r.score.toFixed(3)},{h:'종가',r:1,f:r=>won(r.ref)},
+    {h:'근거',f:r=>{const i=JSON.parse(r.info||'{}');return r.sleeve==='DV'?`배당 ${i.div}% · PBR ${i.pbr} · ${i.sector}`:(r.sleeve==='LVH'?`ATR ${(i.atrp*100).toFixed(1)}% · 고점 ${pct(i.fromhi*100,1)} · 과열 ${i.heat}`:`RSI ${i.rsi?.toFixed(0)} · 외국인 ${i.fr20!=null?(i.fr20*100).toFixed(1)+'%':'-'} · 연기금 ${i.pen20!=null?(i.pen20*100).toFixed(1)+'%':'-'}`)}}],s.signals,'신호 없음 (장 마감 뒤 Scout 데이터가 들어오면 계산)');
+  $('#rules').innerHTML=`<p><b>🏔 저변동고점 (${s.alloc.LVH}%)</b> — 후보풀(20일 평균 거래대금 30억+ · 1천~50만 원 · 이력 120일 · 당일 +20% 미만) 안에서 ATR14/종가 낮음 · 250일 고점 근접 · 25일 과열 없음 세 백분위 평균 상위 3 → 다음날 시가 매수 → 20거래일 보유 → 다음날 시가 매도 · 20자리. <span class="mut">Scout 보고서 18장: 계좌 +34.0% / +22.4% · 최대낙폭 −5.8% / −7.6% · 변형 8/8 통과</span></p>
+  <p><b>🔄 반전·수급 (${s.alloc.REV}%)</b> — [(RSI14 과매도 + 5일 하락)/2 + 외국인 20일 순매수 강도 + 연기금 20일 역방향] / 3 상위 3 → 종가 ≥ 9일 EMA 또는 10거래일이면 다음날 시가 매도 · 10자리. <span class="mut">Scout 11~12장: 4구간 4/4 플러스 · 하락장에 가장 강함 · 저변동고점과 일별 상관 +0.15</span></p>
+  <p><b>🏛 배당·가치 (${s.alloc.DV}%)</b> — 매월 코스피200 · 코스닥150 · 흑자 · 배당 · 편입 12개월+ → z(배당수익률)+z(1/PBR) · 업종당 4 · 15종목 · 30위 안이면 유지. <span class="mut">seed 월별 검증 2020~26: 연 +24.4% · 최대낙폭 −27% (기준 +11.3%) · 통계적 확신 중간</span></p>
+  <p><b>🌙 밤사이 ETF (${s.alloc.ON}%)</b> — 매일 15:20 KODEX 코스닥150 장마감 동시호가 매수 → 다음날 08:35 장전 매도. <span class="mut">밤사이 평균 +0.11 / +0.14% (t 3.7) · 왕복 비용 0.05% 넘으면 이득 사라짐</span></p>
+  <p class="mut">손절 없음 (Scout 검증: 좁은 손절 · 재난 손절 모두 평균 수익을 깎음) — 꼬리 위험은 종목당 비중(계좌 1.3~2.5%)으로 관리 · 계좌 안전장치: 고점 대비 −${s.cfg.dd_limit}% 또는 하루 −${s.cfg.day_loss_limit}%면 새 매수 자동 중지</p>`}
+function bt(s){const b=s.backtest;$('#btMsg').textContent=s.job.bt_running?'⏳ '+s.job.bt_msg:(s.job.bt_msg||'');
+  if(!b){$('#bt').innerHTML='<div class="mut">아직 결과 없음 — 실행하면 몇 분 걸립니다 (Scout 전종목 일봉)</div>';return}
+  const rows=Object.entries(b.models).concat(Object.entries(b.bench));const f=v=>v==null?'-':pct(v*100,1);
+  const pal=['var(--ink)','#0f766e','#7c3aed','#b45309','#1d4ed8','#9ca3af','#d1d5db'];
+  $('#bt').innerHTML=`<div class="mut small">${b.start} ~ ${b.end} · 만든 때 ${b.made} · 칸 ${Object.entries(b.alloc).map(([k,v])=>k+' '+(v*100).toFixed(0)+'%').join(' · ')} · 수급 ${b.flow_src||'없음'}</div>`+
+    line(rows.map(([k,v],i)=>({name:k.replace('만 100%',''),color:pal[i%pal.length],pts:v.curve,w:i?1.3:2.4})),420,1200)+
+    tbl([{h:'모델',f:r=>r[0]},{h:'누적',r:1,f:r=>f(r[1].total)},{h:'연수익',r:1,f:r=>f(r[1].cagr)},{h:'최대낙폭',r:1,f:r=>f(r[1].mdd)},{h:'샤프',r:1,f:r=>r[1].sharpe?.toFixed(2)},
+      {h:'조정 기간',r:1,f:r=>f(r[1]['조정']?.ret)},{h:'검증 기간',r:1,f:r=>f(r[1]['검증']?.ret)},{h:'검증 낙폭',r:1,f:r=>f(r[1]['검증']?.mdd)}],rows)+
+    `<h3 style="font-size:14px">칸별 거래 (합성 모델)</h3>`+tbl([{h:'칸',f:r=>r[0]},{h:'건수',r:1,f:r=>r[1].n},{h:'승률',r:1,f:r=>(r[1].win*100).toFixed(0)+'%'},{h:'건당',r:1,f:r=>pct(r[1].avg)},{h:'최악',r:1,f:r=>pct(r[1].worst,1)}],
+      Object.entries(b.models['★ TK Quant (합성)'].trades))}
+function sett(s){$('#bOn').textContent=s.kis_on?'자동주문 끄기':'자동주문 켜기';$('#bPause').textContent=(s.pause_buy||s.auto_pause)?'새 매수 재개':'새 매수 일시 중지';
+  $('#alloc').innerHTML=Object.entries(s.alloc).map(([k,v])=>`<span>${k} <input id="al_${k}" value="${v}" size="3"></span>`).join('');
+  $('#cap').value=s.cap;$('#dd').value=s.cfg.dd_limit;$('#dl').value=s.cfg.day_loss_limit;$('#ws_on').checked=s.cfg.ws_on!==false;
+  const c=s.cfg;$('#cfgNow').textContent=`저장됨 — KIS 키 ${c.kis_app_key||'없음'} · 계좌 ${c.kis_account||'없음'} · HTS ${c.kis_hts_id||'없음'} · KRX ${c.krx_id||'없음'} · 텔레그램 ${c.telegram_token?'있음':'없음'}`;
+  $('#data').innerHTML=`Scout 일봉 ${s.scout.path||'없음'} · 마지막 ${md(s.scout.last)} · 수급 ${md(s.scout.flows)} · ETF 자료 ${s.scout.etf?'있음':'없음'}<br>신호 계산 ${s.job.running?'⏳ ':''}${s.job.msg||''} ${s.job.err?'· ⚠️ '+s.job.err:''} · 체결 반영 ${s.trader.last_sync||'-'} ${s.trader.last_err?'· ⚠️ '+s.trader.last_err:''} · 📡 ${s.ws.err||''}`;
+  $('#log').textContent=s.log.map(x=>`${x.ts.slice(5,19).replace('T',' ')} ${x.level==='info'?'':'['+x.level+'] '}${x.msg}`).join('\n')}
+async function load(){try{ST=await get('/api/state');chips(ST);({dash,pos,sig,bt,set:sett})[TAB](ST)}catch(e){toast('불러오기 실패: '+e.message,false)}}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!=='t-'+TAB);load()});
+$('#fSl').innerHTML+=['LVH','REV','DV','ON'].map(k=>`<option>${k}</option>`).join('');$('#fSl').onchange=()=>pos(ST);
+async function sellLot(id,n){if(!confirm(`${n} 묶음을 매도할까요? (장중이면 지금 시장가 · 아니면 다음 장전)`))return;const r=await post('/api/sell',{id});toast(r.ok?r.msg:r.error,r.ok);load()}
+$('#btRun').onclick=async()=>{const r=await post('/api/job/backtest',{start:$('#btS').value,end:$('#btE').value});toast(r.ok?'백테스트 시작 (몇 분)':r.error,r.ok);setTimeout(load,1500)};
+$('#bOn').onclick=async()=>{const r=await post('/api/on',{on:!ST.kis_on});toast(r.ok?'저장':r.error,r.ok);load()};
+$('#bPause').onclick=async()=>{const r=await post('/api/pause',{pause:!(ST.pause_buy||ST.auto_pause)});toast(r.ok?'저장':r.error,r.ok);load()};
+$('#bHalt').onclick=async()=>{await post('/api/halt_clear');toast('정지 해제');load()};
+$('#bEmg').onclick=async()=>{if(!confirm('긴급 정지: 오늘 미체결 주문을 취소하고 자동주문을 끕니다. 보유 종목은 그대로.'))return;const r=await post('/api/emergency');toast(`정지 · 취소 ${r.cancelled}건`);load()};
+$('#bAlloc').onclick=async()=>{const al={};['LVH','REV','DV','ON'].forEach(k=>al[k]=+$('#al_'+k).value);const r=await post('/api/config',{alloc:al,cap:$('#cap').value,dd_limit:$('#dd').value,day_loss_limit:$('#dl').value});toast(r.ok?'저장 · 다음 주문부터':r.error,r.ok);load()};
+$('#bSave').onclick=async()=>{const b={ws_on:$('#ws_on').checked};['kis_app_key','kis_app_secret','kis_account','kis_hts_id','krx_id','krx_pw','telegram_token','telegram_chat'].forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});
+  const r=await post('/api/config',b);toast(r.ok?'저장':r.error,r.ok);if(r.ok)document.querySelectorAll('#t-set input[type=password]').forEach(i=>i.value='');load()};
+$('#bTest').onclick=async()=>{$('#testMsg').textContent='확인 중…';const r=await post('/api/kis/test');$('#testMsg').textContent=r.ok?`✅ ${r.account} · 예수금 ${won(r.cash)} · 평가 ${won(r.equity)} · 보유 ${r.holdings.join(', ')||'없음'}`:'❌ '+r.error};
+$('#bTg').onclick=async()=>{const r=await post('/api/tg_test');toast(r.ok?'보냄':r.error,r.ok)};
+$('#bSig').onclick=async()=>{const r=await post('/api/job/signal');toast(r.ok?r.date+' 신호 계산 시작':r.error,r.ok);setTimeout(load,3000)};
+$('#bSync').onclick=async()=>{const r=await post('/api/sync');toast(r.ok?'체결 반영':r.error,r.ok);load()};
+load();setInterval(()=>{if(!document.hidden)load()},20000);
+</script>
+</body>
+</html>
