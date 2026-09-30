@@ -425,3 +425,64 @@ def pool_tickers(min_value=3e9):
     q = ','.join('?' * len(days))
     return [r[0] for r in c.execute(f"""SELECT b.ticker FROM bars b JOIN stocks s ON s.ticker=b.ticker AND s.excluded=''
                                         WHERE b.date IN ({q}) GROUP BY b.ticker HAVING AVG(b.value) >= ?""", (*days, min_value))]
+
+
+# ════════════════════════════════════════════
+#  Scout 내보내기 zip 가져오기 (전종목_수집.bat이 바탕화면에 만든 파일) — KRX 수집 1~2시간을 건너뜀
+# ════════════════════════════════════════════
+def import_scout_zip(path):
+    """scout_allmarket_연도_*.zip (px_연도.csv · tickers.csv) · scout_allflow_연도_*.zip (flow_연도.csv) → market.db
+       가격은 원주가 + 등락률(수정주가는 불러올 때 계산) · 거래대금 · 수급은 백만원 → 원"""
+    c = db.mconn()
+    out = {'bars': 0, 'flows': 0, 'tickers': 0, 'days': 0}
+    with zipfile.ZipFile(path) as z:
+        for name in z.namelist():
+            base = os.path.basename(name)
+            text = io.TextIOWrapper(z.open(name), encoding='utf-8-sig')
+            if base == 'tickers.csv':
+                rows = [(r['ticker'].zfill(6), r['name'], r['market'], int(r.get('listed') or 1), classify(r['ticker'], r['name'], r['market']), db.now_s())
+                        for r in csv.DictReader(text)]
+                c.executemany("""INSERT INTO stocks (ticker, name, market, listed, excluded, updated) VALUES (?,?,?,?,?,?)
+                                 ON CONFLICT(ticker) DO UPDATE SET name=excluded.name, market=excluded.market, listed=excluded.listed,
+                                 excluded=CASE WHEN stocks.excluded LIKE '마스터:%' THEN stocks.excluded ELSE excluded.excluded END""", rows)
+                out['tickers'] += len(rows)
+            elif base.startswith('px_') and base.endswith('.csv'):
+                rows, days = [], {}
+                for r in csv.DictReader(text):
+                    cl = _f(r['close'])
+                    if not cl or cl <= 0:
+                        continue
+                    val = _f(r.get('value_mil'))
+                    rows.append((r['date'], r['ticker'].zfill(6), _f(r['open']), _f(r['high']), _f(r['low']), cl, _f(r['volume']),
+                                 val * 1e6 if val is not None else None, _f(r.get('chg')), 'scout'))
+                    days[r['date']] = days.get(r['date'], 0) + 1
+                    if len(rows) >= 200000:
+                        c.executemany('INSERT OR REPLACE INTO bars VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
+                        out['bars'] += len(rows)
+                        rows = []
+                c.executemany('INSERT OR REPLACE INTO bars VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
+                out['bars'] += len(rows)
+                c.executemany('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', [('bars', d, n, db.now_s()) for d, n in days.items()])
+                out['days'] += len(days)
+            elif base.startswith('flow_') and base.endswith('.csv'):
+                rd = csv.reader(text)
+                head = next(rd)
+                invs = [(i, h[:-4]) for i, h in enumerate(head) if h.endswith('_mil')]
+                rows, days = [], {}
+                for r in rd:
+                    d, tk = r[0], r[1].zfill(6)
+                    for i, inv in invs:
+                        v = _f(r[i])
+                        if v is not None:
+                            rows.append((d, tk, inv, v * 1e6))
+                            days[(inv, d)] = days.get((inv, d), 0) + 1
+                    if len(rows) >= 300000:
+                        c.executemany('INSERT OR REPLACE INTO flows VALUES (?,?,?,?)', rows)
+                        out['flows'] += len(rows)
+                        rows = []
+                c.executemany('INSERT OR REPLACE INTO flows VALUES (?,?,?,?)', rows)
+                out['flows'] += len(rows)
+                c.executemany('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', [(f'flow_{inv}', d, n, db.now_s()) for (inv, d), n in days.items()])
+    c.commit()
+    db.log(f'Scout 내보내기 가져옴 {os.path.basename(path)}: 일봉 {out["bars"]:,} · 수급 {out["flows"]:,} · 종목 {out["tickers"]:,}')
+    return out

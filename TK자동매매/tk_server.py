@@ -498,6 +498,34 @@ async def api_job_collect(req: Request):
     return {'ok': True, 'msg': '수집 시작'}
 
 
+@app.post('/api/job/import')
+async def api_job_import(req: Request):
+    """TK자동매매\\가져오기 폴더의 Scout 내보내기 zip(scout_allmarket_* · scout_allflow_*)을 모두 가져옴"""
+    await req.json()
+    if col.STATE['running']:
+        return {'ok': False, 'error': '수집 중 — 끝난 뒤에'}
+
+    def run():
+        import glob
+        folder = os.path.join(BASE_DIR, '가져오기')
+        os.makedirs(folder, exist_ok=True)
+        files = sorted(glob.glob(os.path.join(folder, '*.zip')))
+        col.STATE.update(running=True, err='', pct=0, msg=f'가져오기 {len(files)}개')
+        try:
+            for i, f in enumerate(files):
+                col.STATE.update(msg=f'가져오기 {os.path.basename(f)} ({i + 1}/{len(files)})', pct=int(i / max(1, len(files)) * 100))
+                col.import_scout_zip(f)
+            col.STATE.update(msg=f'가져오기 끝 {len(files)}개 · 마지막 일봉 {db.last_bar_day() or "-"} · 수급 {db.last_flow_day() or "-"}', pct=100)
+            if not files:
+                col.STATE['err'] = f'{folder} 에 zip이 없습니다'
+        except Exception as e:
+            col.STATE['err'] = CF.clean(e)
+        finally:
+            col.STATE['running'] = False
+    threading.Thread(target=run, daemon=True).start()
+    return {'ok': True, 'msg': '가져오기 시작'}
+
+
 @app.post('/api/job/signal')
 async def api_job_signal(req: Request):
     await req.json()
