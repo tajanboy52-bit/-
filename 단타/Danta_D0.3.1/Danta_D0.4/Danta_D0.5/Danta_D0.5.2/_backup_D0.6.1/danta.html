@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try { var _t = localStorage.getItem('danta_theme'); if (_t) document.documentElement.dataset.theme = _t;
+  var _x = localStorage.getItem('danta_text'); if (_x) document.documentElement.dataset.text = _x; } catch (e) { }</script>
+<title>🎯 자동단타매매 · TK Danta</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%23ea580c'/%3E%3Ctext x='50' y='70' font-size='62' text-anchor='middle'%3E🎯%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══ 기본 · 글씨 굵기 (Scout와 같은 방식 · 보통 / 진하게(기본) / 아주 진하게) ═══ */
+:root{--w4:500;--w6:700;--w7:700;--w8:800;--t1:#111827;--t2:#344054;--t3:#475467;--tab-fg:#e7e2dc;--good:#16825d;--bad:#c83d4b;--bd:#dde3ea}
+:root[data-text="normal"]{--w4:400;--w6:600;--w7:700;--w8:800;--t1:#1f2937;--t2:#475467;--t3:#667085;--tab-fg:#d6d3d1}
+:root[data-text="bolder"]{--w4:600;--w6:700;--w7:800;--w8:900;--t1:#0b1220;--t2:#1f2937;--t3:#344054;--tab-fg:#f5f5f4}
+/* ═══ 화면 테마 — 단타 기본은 '엠버'(차콜 + 오렌지) · Scout 테마 6가지도 고를 수 있음 ═══ */
+:root, [data-theme="ember"]{
+  --bg-a:#ffd9bd; --bg-b:#ffe6c9; --bg-c:#f3dccb; --bg-base1:#f6efe9; --bg-base2:#fbf8f5; --bg-base3:#f3ebe4;
+  --hdr-grad:linear-gradient(105deg,#1c1917,#44281a 54%,#ea580c); --tabbar:#1c1917; --tab-on:#2c2522; --tab-line:#fb923c;
+  --kpi-bg:#fff4eb; --kpi-bd:#f8d9bf; --tblh:#2c2522; --accent:#ea580c; --accent-soft:#fff1e6; --card:rgba(255,255,255,.8); --card-bd:rgba(228,212,200,.95);}
+[data-theme="blue"]{
+  --bg-a:#c9dcff; --bg-b:#cdeeff; --bg-c:#e0d8ff; --bg-base1:#e6edf9; --bg-base2:#f2f6fc; --bg-base3:#e9edf8;
+  --hdr-grad:linear-gradient(105deg,#12213e,#1f4f8c 54%,#2563eb); --tabbar:#172033; --tab-on:#202b42; --tab-line:#60a5fa;
+  --kpi-bg:#eaf2ff; --kpi-bd:#cfe0ff; --tblh:#26344e; --accent:#2563eb; --accent-soft:#eaf2ff; --card:rgba(255,255,255,.76); --card-bd:rgba(196,208,228,.9);}
+[data-theme="lavender"]{
+  --bg-a:#e2d2ff; --bg-b:#ffd6ec; --bg-c:#d4dcff; --bg-base1:#efe9fa; --bg-base2:#f8f5fd; --bg-base3:#ede8f8;
+  --hdr-grad:linear-gradient(105deg,#241a3d,#4c2f86 54%,#7c3aed); --tabbar:#1e1733; --tab-on:#2b2146; --tab-line:#c4a7ff;
+  --kpi-bg:#f3edff; --kpi-bd:#ddd0fb; --tblh:#2f2650; --accent:#7c3aed; --accent-soft:#f3edff; --card:rgba(255,255,255,.76); --card-bd:rgba(212,202,236,.9);}
+[data-theme="mint"]{
+  --bg-a:#c3f0de; --bg-b:#d2eef9; --bg-c:#dcf3cc; --bg-base1:#e8f5ef; --bg-base2:#f4faf7; --bg-base3:#e7f3ed;
+  --hdr-grad:linear-gradient(105deg,#0f2a2a,#12665c 54%,#14a37f); --tabbar:#132826; --tab-on:#1b3835; --tab-line:#5eead4;
+  --kpi-bg:#e8f7f0; --kpi-bd:#c3e6d7; --tblh:#1c3b38; --accent:#0f766e; --accent-soft:#e8f7f0; --card:rgba(255,255,255,.76); --card-bd:rgba(190,222,210,.95);}
+[data-theme="sand"]{
+  --bg-a:#f8dcb8; --bg-b:#f6e0d0; --bg-c:#ebdfc6; --bg-base1:#f6f0e6; --bg-base2:#fbf8f2; --bg-base3:#f3ece0;
+  --hdr-grad:linear-gradient(105deg,#2b2217,#6b4f2a 54%,#b7791f); --tabbar:#2a2319; --tab-on:#3a3023; --tab-line:#f6c56d;
+  --kpi-bg:#fcf4e7; --kpi-bd:#efdcbd; --tblh:#3b3124; --accent:#b45309; --accent-soft:#fcf4e7; --card:rgba(255,255,255,.78); --card-bd:rgba(224,210,186,.95);}
+[data-theme="rose"]{
+  --bg-a:#ffd2da; --bg-b:#ffdfcc; --bg-c:#ebd6f8; --bg-base1:#f9eaee; --bg-base2:#fdf6f8; --bg-base3:#f6e8ee;
+  --hdr-grad:linear-gradient(105deg,#35141f,#8a2b4a 54%,#db2777); --tabbar:#2c141c; --tab-on:#3d1c27; --tab-line:#f9a8d4;
+  --kpi-bg:#fdeff3; --kpi-bd:#f2cdd8; --tblh:#40202b; --accent:#be185d; --accent-soft:#fdeff3; --card:rgba(255,255,255,.77); --card-bd:rgba(232,202,212,.95);}
+[data-theme="slate"]{
+  --bg-a:#d9e1ec; --bg-b:#e0e6ee; --bg-c:#d3dbe6; --bg-base1:#e9edf2; --bg-base2:#f3f5f8; --bg-base3:#e7ebf0;
+  --hdr-grad:linear-gradient(105deg,#111827,#374151 54%,#4b5563); --tabbar:#1a202b; --tab-on:#262e3b; --tab-line:#9ca3af;
+  --kpi-bg:#eff2f6; --kpi-bd:#d4dbe5; --tblh:#2b3340; --accent:#475569; --accent-soft:#eff2f6; --card:rgba(255,255,255,.8); --card-bd:rgba(203,211,222,.95);}
+*{box-sizing:border-box}
+body{margin:0;color:var(--t1);font:15px/1.55 "Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",-apple-system,"Segoe UI",sans-serif;font-weight:var(--w4);background:var(--bg-base2);min-height:100vh}
+body::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:
+  radial-gradient(1100px 620px at 8% -8%, var(--bg-a) 0%, transparent 62%),
+  radial-gradient(900px 540px at 102% 4%, var(--bg-b) 0%, transparent 58%),
+  radial-gradient(1200px 760px at 48% 112%, var(--bg-c) 0%, transparent 62%),
+  linear-gradient(160deg, var(--bg-base1) 0%, var(--bg-base2) 46%, var(--bg-base3) 100%)}
+b,strong{font-weight:var(--w7)}
+/* 헤더 · 탭 */
+.hdr{position:sticky;top:0;z-index:100;box-shadow:0 6px 18px rgba(17,24,39,.14)}
+.hdr-top{display:flex;align-items:center;gap:14px;padding:16px 26px;background:var(--hdr-grad);color:#fff}
+.logo-mark{width:42px;height:42px;border-radius:11px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);display:grid;place-items:center;font-size:22px;flex-shrink:0}
+.hdr h1{margin:0;font-size:22px;letter-spacing:-.4px;font-weight:var(--w8)}.hdr h1 .tk{color:#fed7aa}
+.hdr-top small{display:block;color:rgba(255,255,255,.82);font-size:12.5px;font-weight:var(--w6);margin-top:2px}
+.hdr-right{margin-left:auto;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.chip{background:#fff;color:#1f2937;border-radius:999px;padding:6px 12px;font-size:13px;font-weight:var(--w8);white-space:nowrap}
+.chip.live{color:#0f5c41}.chip.idle{color:#57534e}.chip.warn{color:#9a3412}
+.mtabs{display:flex;overflow-x:auto;background:var(--tabbar);padding:0 14px;scrollbar-width:none}
+.mtabs::-webkit-scrollbar{display:none}
+.mtab{border:0;background:transparent;color:var(--tab-fg);font:inherit;font-size:14.5px;font-weight:var(--w7);padding:13px 17px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+.mtab:hover{background:var(--tab-on);color:#fff}.mtab.on{background:var(--tab-on);color:#fff;border-bottom-color:var(--tab-line)}
+.mtab .nb{display:inline-block;min-width:18px;padding:0 6px;margin-left:5px;border-radius:999px;background:var(--accent);color:#fff;font-size:11.5px;line-height:18px;text-align:center}
+.wrap{max-width:1440px;margin:0 auto;padding:20px 24px 70px}
+.pane{display:none}.pane.on{display:block}
+.ptitle{font-size:19px;font-weight:var(--w8);margin:2px 0 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ptitle small{font-size:13px;color:var(--t3);font-weight:var(--w4)}
+/* 카드 · 표 · 버튼 */
+.card{background:var(--card);border:1px solid var(--card-bd);border-radius:13px;padding:18px 20px;margin-bottom:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75),0 1px 2px rgba(16,24,40,.04),0 10px 28px rgba(16,24,40,.06)}
+.card-h{font-weight:var(--w8);font-size:17px;margin-bottom:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card-h small{font-weight:var(--w4);color:var(--t3);font-size:13px}
+.dgrid{display:grid;grid-template-columns:1.35fr 1fr;gap:14px}.dgrid>*{min-width:0}
+.road{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.step{border:1px solid rgba(15,23,42,.1);border-radius:12px;padding:11px 13px;font-size:13.5px;color:var(--t2);background:rgba(255,255,255,.7)}
+.step b{display:block;font-size:15px;color:var(--t1);margin-bottom:3px;font-weight:var(--w8)}.step.cur{border:2px solid var(--accent);background:#fff;box-shadow:0 6px 18px rgba(16,24,40,.08)}
+.step .bd{display:inline-block;font-size:11.5px;font-weight:var(--w8);border-radius:999px;padding:1px 9px;margin-bottom:4px;background:#eef2f6;color:var(--t2)}
+.step.cur .bd{background:var(--accent);color:#fff}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.kpi{border:1px solid var(--bd);border-radius:11px;padding:14px 15px;background:rgba(255,255,255,.92);min-width:0}
+.kpi.info{background:var(--kpi-bg);border-color:var(--kpi-bd)}
+.kpi .v{font-size:22px;font-weight:var(--w8);letter-spacing:-.4px;line-height:1.25;overflow-wrap:anywhere}.kpi .l{font-size:13px;color:var(--t3);margin-top:4px}
+.btn{border:1px solid #d7dee8;background:#fff;color:var(--t1);border-radius:8px;padding:9px 15px;font:inherit;font-size:14px;font-weight:var(--w8);cursor:pointer;transition:.12s}
+.btn:hover{border-color:var(--accent)}.btn:active{transform:scale(.97)}
+.btn-p{background:var(--accent);border-color:var(--accent);color:#fff}.btn-p:hover{filter:brightness(1.07)}
+.btn-r{color:var(--bad);border-color:#f3c3c9;background:#fff0f1}
+.btn:disabled{opacity:.45;cursor:default}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.bar{height:10px;border-radius:6px;background:#e7e5e4;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#16825d)}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:9px 11px;border-bottom:1px solid #ebeef2;text-align:left;white-space:nowrap}
+th{background:var(--tblh);color:#fff;font-weight:var(--w7);font-size:13px;position:sticky;top:0;z-index:1}
+tbody tr:hover td{background:rgba(248,250,252,.9)}
+.r{text-align:right}.mono{font-family:"JetBrains Mono",Consolas,"D2Coding",monospace}
+.scroll{overflow:auto;max-height:440px;border-radius:9px}.muted{color:var(--t3);font-size:13px;line-height:1.7}
+input,select{font:inherit;font-size:14.5px;padding:9px 11px;border:1px solid #cbd5e1;border-radius:8px;width:100%;background:#fff;color:var(--t1)}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,0,0,.05)}
+label{font-size:13px;color:var(--t2);font-weight:var(--w7);display:block;margin-bottom:4px}
+.g4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.ok{color:var(--good);font-weight:var(--w8)}.no{color:var(--bad);font-weight:var(--w8)}
+.alert{border-radius:9px;padding:11px 15px;font-size:14px;margin-top:8px;border-left:5px solid}
+.alert.bad{background:#fff0f1;color:#8c2834;border-color:#d84a5a}.alert.good{background:#e9f8f1;color:#19694f;border-color:#22a06b}
+.alert.info{background:var(--accent-soft);color:var(--t1);border-color:var(--accent)}
+#toast{position:fixed;right:16px;bottom:16px;padding:11px 17px;border-radius:10px;background:#111827;color:#fff;display:none;z-index:200;font-weight:var(--w7)}
+.tag{display:inline-block;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:var(--w8);background:#f1f5f9;color:#334155;margin-right:3px}
+.tag.pre{background:#fef3c7;color:#92400e}.tag.buy{background:var(--accent);color:#fff}.tag.pass{background:#e9f8f1;color:#0f5c41}
+.up{color:#c83d4b}.dn{color:#2563eb}tr.buy td{background:var(--accent-soft)}tr.fail td{color:#9ca3af}
+.sw{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:var(--w8);cursor:pointer}.sw input{width:auto}
+.lg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.lg fieldset{border:1px solid var(--bd);border-radius:11px;padding:8px 13px 13px;min-width:0;background:rgba(255,255,255,.7)}
+.lg legend{font-weight:var(--w8);font-size:14.5px;padding:0 6px}.lg .f{margin-top:8px}.lg .f small{color:var(--t3);font-size:11.5px}
+.wrapt td:first-child,.wrapt td:last-child{white-space:normal;min-width:190px}.wrapt td:last-child{min-width:260px}
+.subtabs{display:flex;gap:6px;margin:10px 0 8px;flex-wrap:wrap}.subtabs button{border:1px solid #d7dee8;background:#fff;border-radius:999px;padding:6px 14px;font:inherit;font-size:13.5px;font-weight:var(--w7);cursor:pointer;color:var(--t1)}
+.subtabs button.on{background:var(--tblh);color:#fff;border-color:var(--tblh)}
+.link{color:var(--accent);font-weight:var(--w8);cursor:pointer;text-decoration:none;font-size:13.5px}.link:hover{text-decoration:underline}
+.mini td,.mini th{padding:7px 9px;font-size:13.5px}
+.mgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.mgrid>*{min-width:0}
+.mc{background:var(--card);border:1px solid var(--card-bd);border-radius:13px;padding:15px 16px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 8px 22px rgba(16,24,40,.05);display:flex;flex-direction:column;gap:8px}
+.mc.z{background:rgba(248,250,252,.85);border-style:dashed}
+.mc-h{display:flex;align-items:center;gap:8px}.mc-h b{font-size:16.5px;font-weight:var(--w8)}.mc-k{font-family:"JetBrains Mono",monospace;font-weight:800;background:var(--tblh);color:#fff;border-radius:7px;padding:1px 7px;font-size:13px}
+.vd{margin-left:auto;font-size:12.5px;font-weight:var(--w8);padding:3px 10px;border-radius:999px;background:#eef2f6;color:#475467;white-space:nowrap}
+.vd.합격{background:#16825d;color:#fff}.vd.유망{background:#dcfce7;color:#166534}.vd.보류{background:#fef3c7;color:#92400e}.vd.탈락경향{background:#fee2e2;color:#991b1b}.vd.잣대{background:#e0e7ff;color:#3730a3}
+.mc-d{font-size:13.5px;color:var(--t2);line-height:1.55}.mc-e{font-size:12.5px;color:var(--t3);line-height:1.5}
+.mc-s{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.mc-s div{background:rgba(255,255,255,.9);border:1px solid var(--bd);border-radius:8px;padding:6px 8px;min-width:0}
+.mc-s b{display:block;font-size:15.5px;font-weight:var(--w8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mc-s div>span{font-size:11.5px;color:var(--t3)}
+.mc-c{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12.5px}.mc-c .y{color:#16825d;font-weight:700}.mc-c .n{color:#9ca3af}
+.mc-f{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap}.mc-f .btn{padding:6px 11px;font-size:13px}
+.mt{display:inline-block;font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:800;border-radius:5px;padding:0 5px;margin-right:2px;background:#e2e8f0;color:#334155}
+.mt.b{background:var(--accent);color:#fff}
+@media(max-width:1200px){.mgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.mgrid{grid-template-columns:1fr}.mc-s{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* 테마 고르기 (헤더 🎨 · 설정 탭) */
+.th-btn{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:999px;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px}
+.th-btn:hover{background:rgba(255,255,255,.28)}
+.th-pop{position:absolute;right:0;top:46px;background:#fff;border:1px solid #dde3ea;border-radius:14px;padding:14px;box-shadow:0 18px 44px rgba(17,24,39,.22);z-index:150;width:410px;display:none;color:var(--t1)}
+.th-pop.on{display:block}
+.th-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.th-grid.big{grid-template-columns:repeat(7,minmax(0,1fr));gap:12px}
+.th-sw{border:2px solid transparent;border-radius:11px;padding:6px 6px 7px;cursor:pointer;text-align:center;font-size:12.5px;color:#1f2937;font-weight:var(--w7);background:#fff}
+.th-sw:hover{background:#f5f7fa}.th-sw.on{border-color:var(--accent);background:#f8fafc}
+.th-sw i{display:block;position:relative;overflow:hidden;height:48px;border-radius:8px;margin-bottom:6px;border:1px solid rgba(15,23,42,.1);background:
+  radial-gradient(60px 44px at 0% 20%, var(--bg-a), transparent 75%), radial-gradient(60px 44px at 100% 20%, var(--bg-b), transparent 75%),
+  radial-gradient(90px 40px at 50% 120%, var(--bg-c), transparent 75%), linear-gradient(160deg, var(--bg-base1), var(--bg-base3))}
+.th-sw i::before{content:"";position:absolute;left:0;right:0;top:0;height:13px;background:var(--hdr-grad)}
+.th-sw i::after{content:"";position:absolute;left:9px;right:9px;bottom:8px;height:14px;border-radius:4px;background:rgba(255,255,255,.92);box-shadow:0 1px 3px rgba(16,24,40,.12)}
+.th-grid.big .th-sw i{height:70px}
+.tx-row{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid #e8edf3}
+.tx-l{font-size:13.5px;font-weight:800;color:#111827;white-space:nowrap}
+.tx-seg{display:flex;gap:6px;flex:1;max-width:520px}
+.tx-seg button{flex:1;border:1px solid #d7dee8;background:#fff;border-radius:8px;padding:8px 6px;font-family:inherit;font-size:13.5px;color:#111827;cursor:pointer;white-space:nowrap}
+.tx-seg button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;background:#f8fafc}
+.tx-seg button[data-x="normal"]{font-weight:400}.tx-seg button[data-x="bold"]{font-weight:600}.tx-seg button[data-x="bolder"]{font-weight:800}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.dgrid{grid-template-columns:1fr}.lg{grid-template-columns:1fr}.th-grid.big{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:1000px){.road{grid-template-columns:repeat(2,minmax(0,1fr))}.g4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.hdr{position:static}.hdr-top{flex-wrap:wrap;padding:14px 14px;gap:10px}.hdr-right{margin-left:0;width:100%}
+  .hdr-top small{display:none}.wrap{padding:14px 12px 60px}.card{padding:14px 12px}.mtab{padding:12px 13px;font-size:14px}
+  .th-pop{position:fixed;left:12px;right:12px;width:auto;top:84px}.th-grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi .v{font-size:19px}.road{grid-template-columns:1fr}.th-grid.big{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div class="hdr-top">
+    <div class="logo-mark">🎯</div>
+    <div><h1>台炅 자동단타매매 <span class="tk">TK Danta</span></h1>
+      <small>급등주 탐지 · 실시간 가상 단타 · 매도 규칙 연구 · 1분봉 수집 · 포트 8083 · 가상추천매매(📘 Scout · 8082)와 별개</small></div>
+    <div class="hdr-right">
+      <span class="chip" id="hState">● 확인 중</span>
+      <span class="chip" id="hVer">-</span>
+      <span class="chip warn" title="이 프로그램에는 주문 기능이 없습니다">주문 없음</span>
+      <span style="position:relative;display:inline-flex">
+        <span class="th-btn" id="thBtn" title="화면 테마 · 글씨 바꾸기">🎨</span>
+        <div class="th-pop" id="thPop"><div style="font-weight:800;font-size:15px;margin-bottom:2px">🎨 화면 테마 · 글씨</div>
+          <div style="font-size:12.5px;color:#667085;margin-bottom:10px">누르면 바로 바뀌고, 이 브라우저에 기억됩니다</div>
+          <div class="th-grid"></div>
+          <div class="tx-row"><span class="tx-l">글씨</span><div class="tx-seg"></div></div></div>
+      </span>
+    </div>
+  </div>
+  <div class="mtabs" id="mtabs">
+    <button class="mtab on" data-t="dash">🏠 대시보드</button>
+    <button class="mtab" data-t="models">🧪 모델</button>
+    <button class="mtab" data-t="cand">🔥 급등 후보<span class="nb" id="nbCand" style="display:none"></span></button>
+    <button class="mtab" data-t="live">💰 가상 매매<span class="nb" id="nbHold" style="display:none"></span></button>
+    <button class="mtab" data-t="research">🔬 매도 연구</button>
+    <button class="mtab" data-t="rules">📐 매매 규칙</button>
+    <button class="mtab" data-t="bars">📥 분봉 수집</button>
+    <button class="mtab" data-t="setup">⚙️ 설정 · 시스템</button>
+  </div>
+</div>
+<div class="wrap">
+  <div class="pane on" id="pane-dash">
+    <div class="ptitle">🏠 단타 대시보드 <small id="dSub"></small></div>
+    <div class="kpis" id="dKpis"></div>
+    <div id="dState"></div>
+    <div class="dgrid" style="margin-top:14px">
+      <div>
+        <div class="card"><div class="card-h">🔥 오늘 급등 후보 <small id="dCandSub"></small><a class="link" style="margin-left:auto" onclick="goTab('cand')">전체 보기 →</a></div>
+          <div class="scroll" style="max-height:360px"><table class="mini"><thead><tr><th>판정</th><th>종목</th><th class="r">현재가</th><th class="r">등락률</th><th class="r">거래대금</th><th>사유 · 결과</th></tr></thead><tbody id="dCands"></tbody></table></div></div>
+        <div class="card"><div class="card-h">🧪 오늘 가상 매매 <small id="dTrSub"></small><a class="link" style="margin-left:auto" onclick="goTab('live')">가상 단타 →</a></div>
+          <div class="scroll" style="max-height:320px"><table class="mini"><thead><tr><th>모델</th><th>종목</th><th>매수</th><th>매도</th><th class="r">수익률</th><th class="r">손익</th><th>사유</th></tr></thead><tbody id="dTrades"></tbody></table></div></div>
+      </div>
+      <div>
+        <div class="card"><div class="card-h">🧪 모델 현황 <small>판정은 📏 기준으로</small><a class="link" style="margin-left:auto" onclick="goTab('models')">모델 →</a></div>
+          <div class="scroll"><table class="mini"><thead><tr><th>모델</th><th class="r">건수</th><th class="r">평균</th><th class="r">손익</th><th>판정</th></tr></thead><tbody id="dModels"></tbody></table></div></div>
+        <div class="card"><div class="card-h">🧮 매도 규칙 비교 <small>같은 매수 · 동시 기록</small><a class="link" style="margin-left:auto" onclick="goTab('research')">매도 연구 →</a></div>
+          <div class="scroll"><table class="mini"><thead><tr><th>규칙</th><th class="r">건수</th><th class="r">평균</th><th class="r">손익</th></tr></thead><tbody id="dProf"></tbody></table></div></div>
+        <div class="card"><div class="card-h">📥 분봉 수집 <a class="link" style="margin-left:auto" onclick="goTab('bars')">분봉 수집 →</a></div><div id="dColl"></div></div>
+        <div class="card"><div class="card-h">🖥 시스템</div><div id="dSys"></div></div>
+      </div>
+    </div>
+  <div class="card"><div class="card-h">🧭 진행 단계 <small>데이터로 검증된 전략만 실전으로 — Scout와 같은 방식</small></div>
+    <div class="road">
+      <div class="step cur"><span class="bd">지금</span><b>① 1분봉 수집</b>거래대금 상위 + 그날 급등주의 1분봉을 날마다 쌓고 과거분도 채움</div>
+      <div class="step"><span class="bd">데이터 쌓이면</span><b>② 전략 검증</b>분봉으로 조정/검증 기간 · 같은 시각 무작위 대조군 · 비용 0.25% 반영 시험 (데이터를 Claude에게)</div>
+      <div class="step cur"><span class="bd">지금 · 함께</span><b>③ 실시간 가상 단타</b>모델 9개 + 대조군을 실제 시세로 동시에 가상 매매 → 3개월 뒤 📏 기준으로 합격 모델 판정 · 주문 없음</div>
+      <div class="step"><span class="bd">다음</span><b>④ 실전 소액</b>가상 기록이 기준을 넘은 뒤 · 일일 손실 한도 · 긴급 정지</div>
+    </div></div>
+  </div>
+  <div class="pane" id="pane-models">
+    <div class="ptitle">🧪 단타 모델 검증 <small>모델 9개 + 대조군을 같은 실시간 시세로 동시에 가상 운용 · 모델마다 따로 계좌(1회 금액 · 하루 · 동시 한도 같음) · 3개월 뒤 아래 기준으로 판정</small></div>
+    <div class="card"><div class="card-h">📏 검증 판정 기준 <small>미리 정해 둔 것 — 결과를 보고 기준을 바꾸지 않기</small></div>
+      <div id="mCrit" class="muted" style="font-size:14px;line-height:1.9"></div>
+      <div class="muted" style="margin-top:6px">판정: <span class="vd 합격">합격</span> 기준 모두 통과 · <span class="vd 유망">유망</span> 플러스지만 아직 부족 · <span class="vd 보류">보류</span> · <span class="vd 탈락경향">탈락 경향</span> 두 기간 모두 마이너스 · <span class="vd">데이터 부족</span> 실시간 30건 · 분봉 200건 미만 · 분봉 수치는 🔬 매도 연구 탭의 "모델 연구"를 돌린 뒤 채워집니다</div></div>
+    <div class="mgrid" id="mGrid"></div>
+    <div class="card" style="margin-top:14px"><div class="card-h">📦 검증 데이터 내려받기 <small>Scout의 검증 데이터 zip과 같은 방식 — 기간을 골라 받아 Claude에게 올리면 오류 · 성과를 점검합니다</small></div>
+      <div class="row"><div style="width:170px"><label>시작일</label><input type="date" id="vfFrom"></div>
+        <div style="width:170px"><label>끝일</label><input type="date" id="vfTo"></div>
+        <button class="btn btn-p" id="bVerify">⬇ 검증 데이터 zip</button><span class="muted" id="vfInfo"></span></div>
+      <div class="muted" style="margin-top:6px">담기는 것: 자동 점검(checks.txt) · 모델 판정 · 거래 · 매도 비교 · 매분 탐지 · 거래 종목 1분봉/일봉 · 날짜별 가동 기록 · 규칙 변경 이력 · 모델 연구 결과 · 서버 로그. 비밀 값은 가립니다.
+        <b>첫 주는 매일, 그 뒤로는 매주</b> 올려 주시면 됩니다.</div></div>
+  </div>
+  <div class="pane" id="pane-cand">
+  <div class="card"><div class="card-h">🔥 오늘의 급등 후보 <small id="lvSub">-</small>
+      <span style="margin-left:auto" class="row"><label class="sw"><input type="checkbox" id="lvOn"> 가상 단타 켜짐</label>
+      <button class="btn" id="bPreview" title="지금 순위로 한 번 조회 · 매수도 기록도 안 함">🔄 지금 후보 보기</button></span></div>
+    <div id="lvState"></div>
+    <div class="muted" style="margin:6px 0 8px">KIS 순위(거래량 · 거래대금 · 거래증가율 각 30위 · 13:00~15:19엔 등락률 30위도)를 매분 모아 → 관찰 종목(거래대금 순 최대 45) 시세로 <b>모델 9개 신호</b>를 확인 → 모델마다 따로 <b>가상 매수</b> (실제 매도1호가 + 슬리피지 · 대조군은 M1이 산 그 분에 무작위 1). 판정 · 통과는 M1(추격 돌파) 필터 기준. 매분 결과는 전부 기록되어 나중에 다시 검증합니다.
+      <span class="tag pre">장전</span>08:55 장전 순위에도 있던 종목 · <span class="tag pass">통과</span>필터 통과 · <span class="tag buy">매수</span>가상 매수 · <span class="mt">M3</span>모델 신호 · <span class="mt b">M3</span>그 모델이 가상 매수</div>
+    <div class="scroll" style="max-height:460px"><table><thead><tr><th>판정</th><th>종목</th><th>순위 출처</th><th class="r">현재가</th><th class="r">등락률</th><th class="r">거래대금</th><th class="r">시가 대비</th><th class="r">고가 대비</th><th>모델 신호</th><th>사유 · 결과</th></tr></thead><tbody id="lvCands"></tbody></table></div></div>
+  </div>
+  <div class="pane" id="pane-live">
+  <div class="card"><div class="card-h">💰 가상 단타매매 <small>실제 주문 없음 · 실제 호가 · 비용 0.25% · 슬리피지 반영 — 실전에서 이렇게 됐을 결과</small>
+      <span style="margin-left:auto" class="row"><select id="lvModel" style="width:auto"></select><button class="btn" id="bLiveEx">⬇ 가상 단타 기록 zip</button></span></div>
+    <div class="kpis" id="lvKpis"></div>
+    <div class="subtabs" id="lvTabs"><button data-t="hold" class="on">보유 중</button><button data-t="trades">거래 내역</button><button data-t="days">일별</button><button data-t="why">매도 사유</button></div>
+    <div class="scroll" style="max-height:440px"><table id="lvTbl"></table></div>
+    <div class="muted" style="margin-top:8px">매도 규칙은 10초마다 현재가로 확인: 손절 → 익절 → 트레일링(고점 대비) → 최대 보유 시간 → 청산 시각(마지막 날) · 상한가면 보류 → 풀리면 매도 · 15:19까지 상한가면 다음날 시가. 밤을 넘기면 다음날 시가(동시호가)로 갭 판단. 하한가는 못 파는 것으로 처리. 휴장일은 자동으로 쉽니다.
+      <b>zip을 Claude에게 올리면</b> 거래 · 매분 탐지 기록으로 오류와 규칙을 점검합니다.</div></div>
+  </div>
+  <div class="pane" id="pane-research">
+    <div class="ptitle">🔬 매도 연구 <small>같은 매수 · 매도 규칙 동시 비교 → 분봉 되감기 → 일봉 근거</small></div>
+  <div class="card"><div class="card-h">🧮 매도 규칙 비교 <small>같은 가상 매수에 매도 규칙 6개를 동시에 적용 · 실제 시세로 · 모두 청산된 매수만 비교</small><select id="pfModel" style="width:auto;margin-left:auto"></select></div>
+    <div class="scroll"><table><thead><tr><th>규칙</th><th class="r">비교 건수</th><th class="r">승률</th><th class="r">1회 평균</th><th class="r">누적 손익</th><th class="r">보유(중앙)</th><th class="r">최악 / 최고</th><th>매도 사유</th><th></th></tr></thead><tbody id="pfBody"></tbody></table></div>
+    <div class="muted" style="margin-top:6px">매수는 모델이 한 것 하나 — 매도만 다르게 해서 기록하므로 <b>매도 규칙만의 차이</b>가 드러납니다. 어느 규칙이 나은지는 건수가 쌓인 뒤(최소 수십 건 · 여러 날) 판단하세요. '현재 설정으로'를 누르면 그 매도 규칙이 다음 매수부터 적용됩니다.</div></div>
+  <div class="card"><div class="card-h">🔬 분봉 연구실 <small>쌓인 1분봉을 되감아 모델 · 매도 규칙을 비교 — 실시간 가상 단타와 같은 매수 · 매도 코드</small></div>
+    <div class="row"><button class="btn btn-p" id="bLabM">▶ 모델 연구 (모델 9개 + 대조군 × 매도 6개)</button><button class="btn" id="bLab">▶ M1 매도 규칙 78개 격자</button><button class="btn" id="bLabV">▶ 실제 가상 매수만 (78개)</button></div>
+    <div class="muted" id="labInfo" style="margin-top:6px"></div>
+    <div id="labJob" style="margin-top:8px"></div>
+    <div id="labModels" style="margin-top:8px"></div>
+    <div class="scroll" style="max-height:520px;margin-top:8px"><table><thead><tr><th>#</th><th>매도 규칙</th><th class="r">건수</th><th class="r">평균(전체)</th><th class="r">앞 기간</th><th class="r">뒤 기간</th><th class="r">승률</th><th class="r">t</th><th>매도 사유</th><th></th></tr></thead><tbody id="labBody"></tbody></table></div>
+    <div class="muted" style="margin-top:6px">순위 = 앞 · 뒤 기간 중 <b>나쁜 쪽</b> 평균 (한 기간만 좋은 규칙은 우연일 수 있음) · 각 기간 30건 미만이면 순위 없음. 분봉 안에서는 저가 → 고가 → 종가 순으로 봐서 손절을 먼저 칩니다(보수적). 다음날 분봉이 없으면 Scout 일봉으로 대신.
+      실시간은 KIS 순위 상위 30 안에서만 매수하지만 연구실은 수집된 종목 전체에서 조건을 찾으므로 결과는 <b>참고용</b> — 적용은 직접 버튼으로.</div></div>
+  <div class="card"><div class="card-h">📚 일봉 연구 근거 <small>Scout 전종목 일봉 2022-09 ~ 2026-09 · 장중 +5% 돌파 매수 16.2만 건 · 비용 0.25% · 앞(~2024) / 뒤(2025~) 기간</small></div>
+    <div class="scroll"><table class="wrapt"><thead><tr><th>매도 방식 (진입가 대비 · 비용 후)</th><th class="r">앞 기간</th><th class="r">뒤 기간</th><th>판단</th></tr></thead><tbody>
+      <tr><td>그날 종가에 전량</td><td class="r mono dn">−0.45%</td><td class="r mono dn">−0.21%</td><td>급등 추격 매수 자체가 불리 — 매수 조건 개선이 먼저</td></tr>
+      <tr><td>익절 +3 ~ +10% (닿으면) · 아니면 종가</td><td class="r mono">≈ 0%</td><td class="r mono up">+0.09 ~ +0.25%</td><td>익절은 필요 · 폭(3~10%) 차이는 뚜렷하지 않음 · 손절 순서는 일봉으로 모름 → 분봉 연구실</td></tr>
+      <tr><td>다음날 시가에 전량</td><td class="r mono dn">−0.13%</td><td class="r mono up">+0.34%</td><td>그날 종가보다 +0.3~0.5% · 시장 차감하면 +0.13% — 약한 우위</td></tr>
+      <tr><td>다음날 종가 / 이틀째 종가</td><td class="r mono dn">−0.47 / −0.52%</td><td class="r mono dn">−0.23 / −0.28%</td><td>오래 들수록 나빠짐 → 오버나잇은 <b>다음날 시가 매도</b></td></tr>
+      <tr style="background:#fff7ed"><td><b>상한가로 마감한 종목 → 다음날 시가</b> (종가 매도 대비)</td><td class="r mono up"><b>+6.5%</b></td><td class="r mono up"><b>+7.1%</b></td><td>t 25 / 23 · 2022~2026 매년 + · 다음날 시가 음수 22% · −5% 이하 5% → <b>상한가 오버나잇 규칙</b></td></tr>
+      <tr><td>+20~29% 마감 (상한가 아님) → 다음날 시가</td><td class="r mono">−0.02%</td><td class="r mono">+0.16%</td><td>효과 없음 — '상한가 마감'일 때만</td></tr>
+    </tbody></table></div>
+    <div class="muted" style="margin-top:6px">진입가 = 그날 처음 닿은 max(전일 종가 +5%, 시가 +2%) · 거래대금 10억 이상 · 1천~5만원 · 보통주. 일봉이라 매수 시각(09:01~10:00)과 장중 손절/익절 순서는 알 수 없음 → 분봉이 쌓이면 연구실로 다시 확인.</div></div>
+  </div>
+  <div class="pane" id="pane-rules">
+  <div class="card"><div class="card-h">📐 매매 규칙 (M1 추격 돌파 · 대조군 · 공통 한도) <small>바꾸면 다음 매수부터 적용 · 이력 기록 · 거래마다 매수 당시 설정을 같이 저장</small></div>
+    <div class="alert info" style="margin:0 0 10px">여기 값 중 <b>탐지 · 매수 조건 · 매도 규칙</b>은 M1 추격 돌파(와 대조군)에 쓰입니다. <b>가격 범위 · 1회 매수 금액 · 하루 최대 매수 · 동시 보유 · 슬리피지</b>는 모든 모델에 공통(모델마다 따로 계좌). M2~M9는 비교가 흔들리지 않게 규칙을 고정했고, 값은 🧪 모델 탭에서 볼 수 있습니다.</div>
+    <div class="alert info" style="margin:0 0 10px">매도 규칙: <b>보유 거래일</b> 0 = 그날 청산 · 1 = 다음날 · 2 = 이틀 (청산 시각 09:00 = 마지막 날 시가 매도) · <b>상한가 오버나잇</b> 1 = 청산할 때 상한가면 팔지 않고, 풀리면 매도 · 15:19까지 상한가면 다음날 시가 매도 (근거: 🔬 매도 연구 탭의 일봉 연구). 익절 0 = 없음 · 트레일링 시작 0 = 끔.</div>
+    <div class="alert info" style="margin:0 0 10px">⚠️ 지금 값은 <b>검증 전 시작값</b>입니다 (예전 v8 자동매매 필터 + 일반적인 단타 매도 규칙). Scout 일봉 연구에서는 '당일 급등 추격'이 평균적으로 손해였기 때문에, 이 가상 기록과 분봉으로 <b>통하는 조건을 찾는 것</b>이 목적입니다. 실제 돈은 검증 뒤에.</div>
+    <div class="lg" id="lvForm"></div>
+    <div class="row" style="margin-top:10px"><button class="btn btn-p" id="bLvSave">규칙 저장</button><button class="btn" id="bLvReset">시작값으로</button><span class="muted" id="lvLogHint"></span></div>
+    <div id="lvLog" style="margin-top:8px"></div></div>
+  </div>
+  <div class="pane" id="pane-bars">
+    <div class="ptitle">📥 1분봉 수집 <small>전략 검증 · 매도 연구에 쓰는 1분봉 — 거래대금 상위 + 그날 급등주</small></div>
+  <div class="card"><div class="card-h">📥 1분봉 수집 현황 <small id="sSub"></small></div>
+    <div class="kpis" id="kpis"></div>
+    <div id="jobBox"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn btn-p" id="bToday">오늘 분봉 받기</button>
+      <button class="btn" id="bBack">과거 분봉 채우기</button>
+      <button class="btn btn-r" id="bStop">중단</button>
+      <button class="btn" id="bProbe">🔌 KIS 분봉 조회 점검</button></div>
+    <div id="probeBox"></div>
+    <div class="muted" style="margin-top:10px">매일 <b id="ctime">15:45</b>에 오늘 분봉을 자동으로 받고, 장 마감 뒤(18:30 · 22:00 · 02:00)와 주말에 과거 분봉을 이어서 채웁니다 (평일 장중에는 멈춤 — 가상 단타 탐지와 KIS 호출을 나눠 쓰지 않게 · 버튼으로 시작해도 08:30~15:40엔 멈춤). 받은 분은 다시 받지 않아 끊겨도 이어집니다.
+      수집 대상은 날짜마다 <b>그날 기준 직전 20거래일 평균 거래대금 상위 N종목</b> + <b>그날 장중 +3% 이상 올랐던 급등주</b> + 가상 단타 탐지 후보 (ETF · 스팩 · 리츠 · 우선주 제외) — 급등주 단타를 분봉으로 검증하려면 그날 올랐던 종목이 빠짐없이 있어야 함.
+      급등주 목록은 Scout 일봉(15:50 동기화) 뒤에 알 수 있어서 수집 시각이 16:30입니다.
+      거래대금 순위는 같은 PC의 Scout 일봉을 <b>읽기만</b> 합니다 (<span id="scoutState">-</span>).</div></div>
+  <div class="card"><div class="card-h">📅 날짜별 수집 <small>대상 = 거래대금 상위 N + 급등주 · 완료 = 300봉 이상 받은 종목</small></div>
+    <div class="scroll"><table><thead><tr><th>날짜</th><th class="r">대상</th><th class="r">급등·후보</th><th class="r">완료</th><th class="r">일부</th><th class="r">진행</th><th></th></tr></thead><tbody id="days"></tbody></table></div></div>
+  <div class="card"><div class="card-h">🔍 분봉 미리보기 <small>받은 데이터가 맞는지 눈으로 확인</small></div>
+    <div class="row"><div style="width:170px"><label>날짜</label><select id="pvDate"></select></div>
+      <div style="width:260px"><label>종목</label><select id="pvTk"></select></div></div>
+    <div id="pvChart" style="margin-top:10px"></div></div>
+  <div class="card"><div class="card-h">📦 분봉 데이터 내려받기 <small>② 전략 검증용 — 이 zip을 Claude에게 올리면 됩니다</small></div>
+    <div class="row"><div style="width:170px"><label>시작일</label><input type="date" id="exFrom"></div>
+      <div style="width:170px"><label>끝일</label><input type="date" id="exTo"></div>
+      <button class="btn btn-p" id="bExport">⬇ zip 다운로드</button></div>
+    <div class="muted" style="margin-top:6px">하루치(200종목)는 압축 약 3~5MB · 기간이 길면 한 달씩 나눠 올리세요. 앱키 · 텔레그램 값은 들어가지 않습니다.</div></div>
+  </div>
+  <div class="pane" id="pane-setup">
+    <div class="ptitle">⚙️ 설정 · 시스템 <small>KIS 앱키 · 수집 설정 · 화면 테마 · 작업 기록</small></div>
+  <div class="card"><div class="card-h">⚙️ 설정 <small>저장 위치: <span id="ddir"></span> (Scout와 따로)</small></div>
+    <div class="g4">
+      <div><label>KIS 앱키 (실전 · 시세 조회용)</label><input id="app_key" type="password"></div>
+      <div><label>KIS 시크릿</label><input id="app_secret" type="password"></div>
+      <div><label>텔레그램 봇 토큰 (선택)</label><input id="telegram_token" type="password"></div>
+      <div><label>텔레그램 채팅 ID</label><input id="telegram_chat" type="password"></div>
+      <div><label>수집 종목 수 (거래대금 상위)</label><input id="top_n"></div>
+      <div><label>+ 급등주 최대 (그날 +3% 이상 · 0=안 함)</label><input id="surge_n"></div>
+      <div><label>과거 분봉 채울 거래일 수</label><input id="backfill_days"></div>
+      <div><label>초당 KIS 호출 (Scout와 같은 앱키면 5~6)</label><input id="rps"></div>
+      <div><label>오늘 분봉 받는 시각 (Scout 15:50 뒤)</label><input id="collect_time"></div></div>
+    <div class="row" style="margin-top:10px"><button class="btn btn-p" id="bSave">설정 저장</button>
+      <span class="muted">앱키는 Scout와 같아도 되지만 호출 한도를 나눠 씁니다 — 가능하면 단타용 앱키를 따로 발급하세요. 텔레그램 알림은 [단타]로 시작합니다.</span></div></div>
+  <div class="card"><div class="card-h">🎨 화면 테마 · 글씨 <small>엠버가 단타 기본 · 이 브라우저에 기억 · Scout(8082)와 따로</small></div>
+    <div class="th-grid big"></div>
+    <div class="tx-row tx-big"><span class="tx-l">글씨</span><div class="tx-seg"></div></div></div>
+  <div class="card"><div class="card-h">🖥 시스템 정보</div><div id="sysInfo" class="muted"></div></div>
+  <div class="card"><div class="card-h">🧾 작업 기록</div><div class="scroll" style="max-height:260px"><table><thead><tr><th>시작</th><th>작업</th><th>결과</th><th>내용</th></tr></thead><tbody id="runs"></tbody></table></div></div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+const toast = (m, ok = true) => { const t = $('#toast'); t.textContent = m; t.style.background = ok ? '#111827' : '#c83d4b'; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', 3500); };
+const fd = d => d ? `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6)}` : '-';
+const md = d => d ? `${d.slice(4, 6)}/${d.slice(6)}` : '-';
+const num = v => Number(v || 0).toLocaleString('ko-KR');
+const KIND = { today: '오늘 분봉', backfill: '과거 채우기' };
+let ST = null, timer = null;
+async function load() {
+  let d; try { d = await (await fetch('/api/status')).json(); } catch (e) { $('#sSub').textContent = '서버에 연결할 수 없습니다'; return; }
+  ST = d; const s = d.status, j = d.job;
+  $('#hVer').textContent = d.version; $('#ddir').textContent = d.data_dir; $('#ctime').textContent = d.cfg.collect_time;
+  $('#scoutState').innerHTML = d.scout_db ? '<span class="ok">Scout 일봉 찾음</span>' : '<span class="no">Scout 일봉 없음 — 오늘분만 KIS 거래대금 순위 30종목으로</span>';
+  $('#sSub').textContent = `${d.now} 기준 · 과거 채우기 ${d.backfill_open ? '가능 시간' : '장중이라 쉬는 시간'}`;
+  const last = (s.per_day || [])[0];
+  $('#kpis').innerHTML = [[num(s.days) + '일', '받은 날짜 수'], [s.first ? `${md(s.first)} ~ ${md(s.last)}` : '-', '기간'],
+    [num(s.pairs), '받은 종목·일'], [last ? `${last.got}/${last.want}` : '-', `최근 날짜 ${last ? md(last.date) : ''} 완료`],
+    [s.db_mb + 'MB', 'DB 크기'], [d.cfg.top_n + '종목', '날짜별 수집 대상']]
+    .map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  $('#jobBox').innerHTML = j.running ? `<div class="alert info"><b>${KIND[j.kind] || j.kind} 진행 중</b> — ${j.msg}</div>
+      <div class="bar"><i style="width:${j.total ? (j.done / j.total * 100).toFixed(1) : 3}%"></i></div>`
+    : (j.error ? `<div class="alert bad">마지막 작업 실패: ${j.error}</div>` : (j.msg ? `<div class="muted">마지막 작업: ${j.msg}</div>` : ''));
+  ['bToday', 'bBack'].forEach(id => $('#' + id).disabled = j.running); $('#bStop').disabled = !j.running;
+  $('#days').innerHTML = (s.per_day || []).map(x => `<tr><td class="mono">${fd(x.date)}</td><td class="r mono">${x.want}</td><td class="r mono">${x.surge || 0}</td><td class="r mono">${x.got || 0}</td>
+      <td class="r mono">${x.part || 0}</td><td class="r"><div class="bar" style="width:120px;display:inline-block;margin:0"><i style="width:${x.want ? (x.got / x.want * 100) : 0}%"></i></div></td>
+      <td><a href="#" onclick="pvPick('${x.date}');return false">보기</a></td></tr>`).join('') || '<tr><td colspan="7" class="muted" style="text-align:center;padding:20px">아직 수집한 날짜가 없습니다 — 설정에 KIS 앱키를 넣고 "오늘 분봉 받기" 또는 "과거 분봉 채우기"</td></tr>';
+  const sel = $('#pvDate'), cur = sel.value;
+  sel.innerHTML = (s.per_day || []).filter(x => x.got || x.part).map(x => `<option value="${x.date}">${fd(x.date)}</option>`).join('');
+  if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+  if (!$('#pvTk').options.length && sel.value) pvLoadTk();
+  if (!$('#exFrom').value && s.first) { $('#exFrom').value = fd(s.first); $('#exTo').value = fd(s.last); }
+  const p = d.probe;
+  if (p && !$('#probeBox').dataset.shown) showProbe(p);
+  $('#runs').innerHTML = d.runs.map(r => `<tr><td class="mono">${(r.started || '').slice(5, 16).replace('T', ' ')}</td><td>${KIND[r.kind] || r.kind}</td>
+      <td class="${r.status === 'ok' ? 'ok' : 'no'}">${r.status === 'ok' ? '완료' : '실패'}</td><td style="white-space:normal">${r.msg || ''}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">기록 없음</td></tr>';
+  dashDraw();
+  clearTimeout(timer); timer = setTimeout(load, j.running ? 3000 : 15000);
+}
+function showProbe(p) {
+  $('#probeBox').dataset.shown = 1;
+  $('#probeBox').innerHTML = p.ok ? `<div class="alert good">✓ 과거 분봉 조회 가능 — ${p.ticker} ${fd(p.date)} ${p.rows}봉 (${p.ms}ms) · 날짜 ${(p.dates || []).join(', ')}</div>`
+    : `<div class="alert bad">✗ 과거 분봉 조회 안 됨 — ${p.msg || '응답 없음'} · 오늘 분봉은 장 마감 뒤 매일 받을 수 있습니다. 이 문구를 Claude에게 알려 주세요.</div>`;
+}
+async function pvLoadTk() {
+  const d = $('#pvDate').value; if (!d) return;
+  const u = await (await fetch('/api/universe?date=' + d)).json();
+  $('#pvTk').innerHTML = u.rows.filter(r => r.n).map(r => `<option value="${r.ticker}">${r.rank}. ${r.name} (${r.ticker}) · ${r.n}봉</option>`).join('');
+  pvDraw();
+}
+function pvPick(d) { $('#pvDate').value = d; pvLoadTk(); $('#pvDate').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+async function pvDraw() {
+  const tk = $('#pvTk').value, d = $('#pvDate').value; if (!tk || !d) { $('#pvChart').innerHTML = '<div class="muted">받은 종목이 없습니다</div>'; return; }
+  const r = await (await fetch(`/api/bars?ticker=${tk}&date=${d}`)).json(), B = r.bars;
+  if (!B.length) { $('#pvChart').innerHTML = '<div class="muted">분봉 없음</div>'; return; }
+  const W = Math.min(1240, $('#pvChart').clientWidth || 900), H = 260, VH = 60, pad = 44;
+  const hi = Math.max(...B.map(b => b.high)), lo = Math.min(...B.map(b => b.low)), vmax = Math.max(...B.map(b => b.vol)) || 1;
+  const x = i => pad + i * (W - pad - 8) / Math.max(1, B.length - 1), y = v => 8 + (hi - v) / ((hi - lo) || 1) * (H - 16);
+  const bw = Math.max(1, (W - pad) / B.length * .7);
+  const candles = B.map((b, i) => { const up = b.close >= b.open, c = up ? '#c83d4b' : '#2563eb';
+    return `<line x1="${x(i)}" x2="${x(i)}" y1="${y(b.high)}" y2="${y(b.low)}" stroke="${c}" stroke-width="1"/>
+      <rect x="${x(i) - bw / 2}" y="${y(Math.max(b.open, b.close))}" width="${bw}" height="${Math.max(1, Math.abs(y(b.open) - y(b.close)))}" fill="${c}"/>
+      <rect x="${x(i) - bw / 2}" y="${H + 10 + VH - b.vol / vmax * VH}" width="${bw}" height="${b.vol / vmax * VH}" fill="#a8a29e"/>`; }).join('');
+  const ticks = [900, 1000, 1100, 1200, 1300, 1400, 1500].map(t => { const i = B.findIndex(b => b.hm >= t); return i < 0 ? '' :
+    `<text x="${x(i)}" y="${H + VH + 26}" font-size="11" text-anchor="middle" fill="#6b7280">${String(t).slice(0, -2)}시</text>`; }).join('');
+  const f = B[0], l = B[B.length - 1], chg = (l.close / f.open - 1) * 100, amt = B.reduce((s, b) => s + (b.amt || 0), 0);
+  $('#pvChart').innerHTML = `<div class="muted">${r.name} (${tk}) · ${fd(d)} · ${B.length}봉 · 시가 ${num(f.open)} → 종가 ${num(l.close)} (<b style="color:${chg >= 0 ? '#c83d4b' : '#2563eb'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</b>) · 고가 ${num(hi)} · 저가 ${num(lo)} · 거래대금 ${(amt / 1e8).toFixed(0)}억</div>
+    <svg width="${W}" height="${H + VH + 32}" style="max-width:100%"><text x="4" y="${y(hi) + 4}" font-size="11" fill="#6b7280">${num(hi)}</text><text x="4" y="${y(lo)}" font-size="11" fill="#6b7280">${num(lo)}</text>${candles}${ticks}</svg>`;
+}
+$('#pvDate').onchange = pvLoadTk; $('#pvTk').onchange = pvDraw;
+const post = async (u, b) => { const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b || {}) }); return r.json(); };
+$('#bToday').onclick = async () => { const r = await post('/api/job/today'); toast(r.ok ? '오늘 분봉 받기 시작' : r.error, r.ok); load(); };
+$('#bBack').onclick = async () => { if (!confirm('과거 분봉 채우기를 지금 시작할까요? (장중 08:30~15:40에는 가상 단타를 위해 저절로 멈추고 18:30에 이어갑니다)')) return;
+  const r = await post('/api/job/backfill'); toast(r.ok ? '과거 분봉 채우기 시작' : r.error, r.ok); load(); };
+$('#bStop').onclick = async () => { await post('/api/stop'); toast('중단 요청 — 지금 종목까지 받고 멈춥니다'); };
+$('#bProbe').onclick = async () => { $('#probeBox').innerHTML = '<div class="muted">점검 중…</div>'; const r = await post('/api/probe'); showProbe(r); };
+(async function vfInit() {
+  try { const r = await (await fetch('/api/verify/info')).json(); $('#vfFrom').value = fd(r.first); $('#vfTo').value = fd(r.last); $('#vfInfo').textContent = `기록 시작 ${fd(r.first)} · 가상 거래 ${r.trades}건`; } catch (e) { }
+})();
+$('#bVerify').onclick = () => { const f = $('#vfFrom').value.replace(/-/g, ''), t = $('#vfTo').value.replace(/-/g, '');
+  location.href = `/api/verify/export?frm=${f}&to=${t}`; toast('검증 데이터 zip을 만드는 중 — 곧 다운로드됩니다'); };
+$('#bLiveEx').onclick = () => { location.href = '/api/export?kind=live'; toast('가상 단타 기록 zip을 만드는 중'); };
+$('#bExport').onclick = () => { const f = $('#exFrom').value.replace(/-/g, ''), t = $('#exTo').value.replace(/-/g, '');
+  if (!f || !t) return toast('받을 기간이 없습니다', false); location.href = `/api/export?frm=${f}&to=${t}`; toast('zip을 만드는 중 — 곧 다운로드됩니다'); };
+$('#bSave').onclick = async () => { const b = {}; ['app_key', 'app_secret', 'telegram_token', 'telegram_chat', 'top_n', 'surge_n', 'backfill_days', 'rps', 'collect_time']
+    .forEach(k => { const v = $('#' + k).value.trim(); if (v) b[k] = v; });
+  const r = await post('/api/config', b); toast(r.ok ? '저장 완료' : r.error, r.ok); if (r.ok) ['app_key', 'app_secret', 'telegram_token', 'telegram_chat'].forEach(k => $('#' + k).value = ''); load(); fillCfg(); };
+async function fillCfg() { const d = await (await fetch('/api/status')).json(), c = d.cfg;
+  [['app_key', c.app_key ? '저장됨 ' + c.app_key : '미입력'], ['app_secret', c.app_secret ? '저장됨' : '미입력'], ['telegram_token', c.telegram_token ? '저장됨' : '선택'], ['telegram_chat', c.telegram_chat ? '저장됨' : '선택']]
+    .forEach(([k, p]) => $('#' + k).placeholder = p);
+  ['top_n', 'surge_n', 'backfill_days', 'rps', 'collect_time'].forEach(k => $('#' + k).value = c[k] ?? ''); }
+load(); fillCfg();
+
+// ───────── 가상 단타 ─────────
+const pct = (v, d = 2) => v == null ? '-' : `<span class="${v > 0 ? 'up' : v < 0 ? 'dn' : ''}">${v > 0 ? '+' : ''}${Number(v).toFixed(d)}%</span>`;
+const won = v => v == null ? '-' : `<span class="${v > 0 ? 'up' : v < 0 ? 'dn' : ''}">${v > 0 ? '+' : ''}${num(Math.round(v))}원</span>`;
+const hm = t => t ? String(t).slice(11, 16) : '';
+let LVM = '', PFM = '';
+try { LVM = localStorage.getItem('danta_lvm') || ''; PFM = localStorage.getItem('danta_pfm') || ''; } catch (e) { }
+const MNAME = {};
+function mtags(x) { const b = x.bought || [], m = x.models || []; return m.map(k => `<span class="mt${b.includes(k) ? ' b' : ''}">${k}</span>`).join('') + b.filter(k => !m.includes(k)).map(k => `<span class="mt b">${k}</span>`).join(''); }
+function selFill(d) {
+  (d.models || []).forEach(m => MNAME[m.key] = m.name);
+  const opts = (cur, all) => [['', all], ...(d.order || []).map(k => [k, `${k} ${MNAME[k] || ''}`]), ['ALL', '전체 + 대조군']].filter(o => o[0] !== 'ALL' || all.startsWith('모델'))
+    .map(([k, n]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${n}</option>`).join('');
+  if (!$('#lvModel').options.length) { $('#lvModel').innerHTML = opts(LVM, '모델 전체 (대조군 제외)'); $('#lvModel').onchange = e => { LVM = e.target.value; try { localStorage.setItem('danta_lvm', LVM); } catch (x) { } lvLoad(); }; }
+  if (!$('#pfModel').options.length) { $('#pfModel').innerHTML = opts(PFM, '모든 모델의 매수'); $('#pfModel').onchange = e => { PFM = e.target.value; try { localStorage.setItem('danta_pfm', PFM); } catch (x) { } lvLoad(); }; }
+}
+function showModel(k, tab) {
+  if (tab === 'live') { LVM = k; $('#lvModel').value = k; } else { PFM = k; $('#pfModel').value = k; }
+  goTab(tab); lvLoad();
+}
+const vdc = v => (v || '').replace(/\s/g, '');
+function mDraw() {
+  if (!LV || !LV.models) return;
+  $('#mCrit').innerHTML = (LV.criteria || []).map((t, i) => `${i + 1}. ${t}`).join('<br>');
+  const ex = e => `${e.tp ? '익절 +' + e.tp : '익절 없음'} · 손절 ${e.sl}${e.trail_start ? ` · 트레일링 ${e.trail_start}→${e.trail_gap}` : ''}${e.hold_min ? ` · ${e.hold_min}분` : ''} · ${e.hold_days ? (e.exit_by <= '09:00' ? `D+${e.hold_days} 시가 매도` : `D+${e.hold_days} ${e.exit_by}`) : e.exit_by + ' 청산'}${e.carry_limit ? ' · 상한가면 다음날 시가' : ''}`;
+  $('#mGrid').innerHTML = LV.models.map(m => {
+    const L = m.lab;
+    return `<div class="mc${m.key === 'Z' ? ' z' : ''}"><div class="mc-h"><span class="mc-k">${m.key}</span><b>${m.name}</b><span class="vd ${vdc(m.verdict)}">${m.verdict}</span></div>
+      <div class="mc-d">${m.desc}</div>
+      <div class="mc-e">⏱ ${m.win_time} · 매도: ${ex(m.exit)}<br>📚 ${m.evidence}</div>
+      <div class="mc-s"><div><b>${m.n}${m.open ? `<small class="muted"> +${m.open}</small>` : ''}</b><span>실시간 청산</span></div><div><b>${m.avg == null ? '-' : pct(m.avg)}</b><span>1회 평균</span></div>
+        <div><b>${m.win == null ? '-' : m.win + '%'}</b><span>승률</span></div><div><b>${m.n ? won(m.pnl) : '-'}</b><span>손익</span></div></div>
+      <div class="mc-s"><div><b>${L ? L.n : '-'}</b><span>분봉 연구 건수</span></div><div><b>${L && L.n ? pct(L.avg) : '-'}</b><span>분봉 평균</span></div>
+        <div><b>${L && L.n ? `${L.is_avg > -99 ? L.is_avg.toFixed(2) : '-'} / ${L.oos_avg > -99 ? L.oos_avg.toFixed(2) : '-'}` : '-'}</b><span>앞 / 뒤 기간</span></div><div><b>${m.key === 'Z' ? '잣대' : (L && L.vs_z != null ? (L.vs_z > 0 ? '+' : '') + L.vs_z.toFixed(2) : (m.vs_z != null ? (m.vs_z > 0 ? '+' : '') + m.vs_z.toFixed(2) : '-'))}</b><span>대조군 대비 %p</span></div></div>
+      <div class="mc-c">${m.checks.map(([k, ok, t]) => `<span class="${ok ? 'y' : 'n'}" title="${t}">${ok ? '✓' : '·'} ${k} <small class="muted">${t}</small></span>`).join('')}</div>
+      <div class="mc-f"><button class="btn" onclick="showModel('${m.key}','live')">매매 보기</button><button class="btn" onclick="showModel('${m.key}','research')">매도 비교</button></div></div>`; }).join('');
+  $('#dModels').innerHTML = LV.models.map(m => `<tr><td><span class="mt">${m.key}</span> ${m.name}</td><td class="r mono">${m.n}${m.open ? `<span class="muted"> +${m.open}</span>` : ''}</td><td class="r mono">${pct(m.avg)}</td>
+    <td class="r mono">${m.n ? won(m.pnl) : '-'}</td><td><span class="vd ${vdc(m.verdict)}" style="margin:0">${m.verdict}</span></td></tr>`).join('');
+}
+const GROUPS = [['🔎 탐지 (필터)', ['price_min', 'price_max', 'chg_min', 'chg_max', 'vol_min', 'amt_min_eok', 'scan_start', 'scan_end']],
+  ['🟢 매수 조건 · 한도', ['buy_chg_min', 'near_high', 'above_open', 'max_buys', 'max_hold', 'amount']],
+  ['🔴 매도 규칙', ['tp', 'sl', 'trail_start', 'trail_gap', 'hold_min', 'exit_by', 'hold_days', 'carry_limit', 'slip']]];
+let LV = null, lvTab = 'hold', lvTimer = null, lvFormDone = false;
+async function lvLoad() {
+  let d; try { d = await (await fetch(`/api/live?model=${encodeURIComponent(LVM)}&pmodel=${encodeURIComponent(PFM)}`)).json(); } catch (e) { return; }
+  LV = d; const L = d.live, sm = d.summary, s = d.settings;
+  $('#lvOn').checked = d.on;
+  const nowHm = d.now.slice(11, 16), wd = new Date(d.now.replace(' ', 'T')).getDay();
+  let st;
+  if (!d.key) st = '<div class="alert bad">KIS 앱키가 없어 쉬는 중 — ⚙️ 설정 · 시스템 탭에서 넣어 주세요</div>';
+  else if (!d.on) st = '<div class="alert bad">가상 단타가 꺼져 있습니다 (분봉 수집은 계속)</div>';
+  else if (wd === 0 || wd === 6) st = '<div class="muted">주말 — 다음 평일 08:55 장전 기록부터 시작</div>';
+  else if (L.open === '0') st = '<div class="alert info">오늘은 휴장일 — 가상 단타 쉼</div>';
+  else if (nowHm < '08:55') st = `<div class="muted">장 시작 전 — 08:55 장전 순위 기록 → ${s.scan_start}부터 매분 탐지</div>`;
+  else if (nowHm < s.scan_start) st = `<div class="alert info">장전 순위 기록 ${L.pre ? '완료' : '대기'} — ${s.scan_start}부터 매분 탐지</div>`;
+  else if (nowHm <= s.scan_end) st = `<div class="alert good">● 탐지 중 (${s.scan_start}~${s.scan_end} 매분) · 마지막 ${hm(d.last_scan) || '-'} · 보유 감시 10초</div>`;
+  else if (nowHm <= '15:20') st = `<div class="alert info">신규 매수 마감 (${s.scan_end}) · ${sm.open ? `보유 ${sm.open}종목 감시 중 (10초)` : '보유 없음'}</div>`;
+  else st = '<div class="muted">장 마감 — 오늘 기록은 아래 가상 단타매매에서 · 16:30 분봉 수집</div>';
+  const err = L.err || d.err;
+  $('#lvState').innerHTML = st + (err ? `<div class="alert bad">${err}</div>` : '');
+  $('#lvSub').textContent = d.last_scan ? `${d.preview ? '미리보기 (기록 안 함)' : '마지막 탐지'} ${d.last_scan.replace('T', ' ').slice(0, 16)} · ${d.cands.length}종목` : '아직 탐지 기록 없음';
+  $('#lvCands').innerHTML = d.cands.map(x => {
+    const vo = x.open ? (x.price / x.open - 1) * 100 : null, vh = x.high ? (x.price / x.high - 1) * 100 : null;
+    const tag = x.buy ? '<span class="tag buy">매수</span>' : x.passed ? '<span class="tag pass">통과</span>' : (x.models || []).length ? '<span class="tag pass">신호</span>' : '<span class="tag">탈락</span>';
+    return `<tr class="${x.buy ? 'buy' : x.passed || (x.models || []).length ? '' : 'fail'}"><td>${tag}${x.pre ? '<span class="tag pre">장전</span>' : ''}</td><td><b>${x.name}</b> <span class="mono muted">${x.ticker}</span></td>
+      <td>${(x.src || []).join(' · ')}</td><td class="r mono">${num(x.price)}</td><td class="r mono">${pct(x.chg, 1)}</td><td class="r mono">${num(Math.round((x.amt || 0) / 1e8))}억</td>
+      <td class="r mono">${vo == null ? '-' : pct(vo, 1)}</td><td class="r mono">${vh == null ? '-' : pct(vh, 1)}</td><td>${mtags(x)}</td><td style="white-space:normal">${x.why || (x.passed ? '필터 통과' : '')}</td></tr>`; }).join('')
+    || '<tr><td colspan="10" class="muted" style="text-align:center;padding:20px">장중(09:01~)에 매분 채워집니다 · 지금 확인하려면 "🔄 지금 후보 보기" (장 밖이면 마지막 거래일 순위)</td></tr>';
+  $('#lvKpis').innerHTML = [[num(sm.n) + '건', '가상 청산 거래'], [sm.win == null ? '-' : sm.win + '%', '승률'], [sm.avg == null ? '-' : pct(sm.avg), '1회 평균 (비용 후)'],
+    [won(sm.pnl), '누적 손익'], [num(sm.open) + '종목', '보유 중'], [num(sm.days) + '일', '매매한 날']]
+    .map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  selFill(d); lvDraw(); pfDraw(); mDraw(); dashDraw();
+  if (!lvFormDone) lvForm();
+  $('#lvLog').innerHTML = d.settings_log.length ? `<details><summary class="muted" style="cursor:pointer">규칙 변경 이력 ${d.settings_log.length}건</summary><div class="scroll" style="max-height:220px"><table><thead><tr><th>시각</th><th>시작값과 다른 항목</th></tr></thead><tbody>${
+    d.settings_log.map(r => { const v = JSON.parse(r.settings); const diff = Object.keys(v).filter(k => String(v[k]) !== String(d.default[k])).map(k => `${d.label[k]} ${v[k]}`).join(' · ');
+      return `<tr><td class="mono">${r.ts.replace('T', ' ').slice(0, 16)}</td><td style="white-space:normal">${diff || '시작값 그대로'}</td></tr>`; }).join('')}</tbody></table></div></details>` : '';
+  clearTimeout(lvTimer); lvTimer = setTimeout(lvLoad, (nowHm >= '08:50' && nowHm <= '15:25' && wd > 0 && wd < 6) ? 5000 : 30000);
+}
+function lvDraw() {
+  if (!LV) return; const sm = LV.summary, rows = sm.rows, T = $('#lvTbl');
+  if (lvTab === 'hold') {
+    const h = rows.filter(r => r.status === '보유');
+    T.innerHTML = '<thead><tr><th>모델</th><th>종목</th><th>매수</th><th class="r">매수가</th><th class="r">수량</th><th class="r">현재가</th><th class="r">수익률</th><th class="r">고점</th><th>신호 당시</th></tr></thead><tbody>' +
+      (h.map(r => `<tr><td><span class="mt b">${r.model || 'M1'}</span></td><td><b>${r.name}</b> <span class="mono muted">${r.ticker}</span></td><td class="mono">${r.date.slice(4, 6)}/${r.date.slice(6)} ${hm(r.buy_ts)}</td><td class="r mono">${num(Math.round(r.buy_px))}</td>
+        <td class="r mono">${num(r.qty)}</td><td class="r mono">${num(r.last_px)}</td><td class="r mono">${pct((r.last_px / r.buy_px - 1) * 100)}</td><td class="r mono">${num(Math.round(r.peak))}</td>
+        <td>${pct(r.sig_chg, 1)} · ${num(Math.round(r.sig_amt / 1e8))}억</td></tr>`).join('') || '<tr><td colspan="9" class="muted" style="text-align:center;padding:16px">보유 중인 가상 종목 없음</td></tr>') + '</tbody>';
+  } else if (lvTab === 'trades') {
+    T.innerHTML = '<thead><tr><th>날짜</th><th>모델</th><th>종목</th><th>매수</th><th class="r">매수가</th><th>매도</th><th class="r">매도가</th><th class="r">수익률(비용 후)</th><th class="r">손익</th><th>사유</th><th>출처</th></tr></thead><tbody>' +
+      (rows.map(r => `<tr><td class="mono">${fd(r.date)}</td><td><span class="mt b">${r.model || 'M1'}</span></td><td><b>${r.name}</b></td><td class="mono">${hm(r.buy_ts)}</td><td class="r mono">${num(Math.round(r.buy_px))}</td>
+        <td class="mono">${r.status === '보유' ? '<b>보유</b>' : hm(r.sell_ts)}</td><td class="r mono">${r.sell_px ? num(Math.round(r.sell_px)) : '-'}</td><td class="r mono">${r.status === '보유' ? '-' : pct(r.ret)}</td>
+        <td class="r mono">${r.status === '보유' ? '-' : won(r.pnl)}</td><td>${r.reason || ''}</td><td class="muted">${(r.src || '').replace(/,/g, ' · ')}${r.pre ? ' · 장전' : ''}</td></tr>`).join('')
+       || '<tr><td colspan="11" class="muted" style="text-align:center;padding:16px">아직 가상 거래 없음</td></tr>') + '</tbody>';
+  } else if (lvTab === 'days') {
+    T.innerHTML = '<thead><tr><th>날짜</th><th class="r">거래</th><th class="r">승</th><th class="r">평균 수익률</th><th class="r">손익</th></tr></thead><tbody>' +
+      (sm.by_day.map(x => `<tr><td class="mono">${fd(x.date)}</td><td class="r mono">${x.n}</td><td class="r mono">${x.win}</td><td class="r mono">${pct(x.ret / x.n)}</td><td class="r mono">${won(x.pnl)}</td></tr>`).join('')
+       || '<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">기록 없음</td></tr>') + '</tbody>';
+  } else {
+    const w = Object.entries(sm.why).sort((a, b) => b[1] - a[1]);
+    T.innerHTML = '<thead><tr><th>매도 사유</th><th class="r">건수</th></tr></thead><tbody>' + (w.map(([k, v]) => `<tr><td>${k}</td><td class="r mono">${v}</td></tr>`).join('') || '<tr><td colspan="2" class="muted">기록 없음</td></tr>') + '</tbody>';
+  }
+}
+function lvForm() {
+  if (!LV) return; lvFormDone = true; const s = LV.settings, D = LV.default, L = LV.label;
+  $('#lvForm').innerHTML = GROUPS.map(([g, ks]) => `<fieldset><legend>${g}</legend>${ks.map(k => `<div class="f"><label>${L[k]}</label><input data-k="${k}" value="${s[k]}"><small>시작값 ${D[k]}</small></div>`).join('')}</fieldset>`).join('');
+}
+$('#lvTabs').onclick = e => { const b = e.target.closest('button'); if (!b) return; lvTab = b.dataset.t; [...$('#lvTabs').children].forEach(x => x.classList.toggle('on', x === b)); lvDraw(); };
+$('#bLvSave').onclick = async () => { const v = {}; document.querySelectorAll('#lvForm input').forEach(i => v[i.dataset.k] = i.value.trim());
+  const r = await post('/api/live/settings', { values: v }); toast(r.ok ? '규칙 저장 — 다음 매수부터 적용' : r.error, r.ok); if (r.ok) { lvFormDone = false; lvLoad(); } };
+$('#bLvReset').onclick = async () => { if (!confirm('가상 단타 규칙을 시작값으로 되돌릴까요? (이력에 기록됨)')) return;
+  const r = await post('/api/live/settings', { reset: true }); toast(r.ok ? '시작값으로 되돌림' : r.error, r.ok); lvFormDone = false; lvLoad(); };
+$('#lvOn').onchange = async e => { const r = await post('/api/live/toggle', { on: e.target.checked }); toast(r.on ? '가상 단타 켜짐' : '가상 단타 꺼짐'); lvLoad(); };
+$('#bPreview').onclick = async () => { $('#bPreview').disabled = true; toast('KIS 순위 조회 중…');
+  const r = await post('/api/live/preview'); $('#bPreview').disabled = false; toast(r.ok ? `후보 ${r.n}종목 (미리보기 · 기록 안 함)` : r.error, r.ok); lvLoad(); };
+lvLoad();
+
+// ───────── 매도 규칙 비교 · 분봉 연구실 ─────────
+function pfDraw() {
+  if (!LV || !LV.profiles) return;
+  $('#pfBody').innerHTML = LV.profiles.map(p => `<tr${p.key === 'M' ? ' style="background:#fff7ed"' : ''}><td style="white-space:normal;min-width:220px"><b>${p.key === 'M' ? '★' : p.key} ${p.name}</b><div class="muted" style="font-size:12px;line-height:1.4">${p.desc}</div></td>
+    <td class="r mono">${p.n}${p.open ? ` <span class="muted">(+보유 ${p.open})</span>` : ''}</td><td class="r mono">${p.win == null ? '-' : p.win + '%'}</td><td class="r mono">${pct(p.avg)}</td><td class="r mono">${p.n ? won(p.pnl) : '-'}</td>
+    <td class="r mono">${p.hold_min == null ? '-' : p.hold_min >= 1440 ? (p.hold_min / 1440).toFixed(1) + '일' : p.hold_min + '분'}</td><td class="r mono">${p.worst == null ? '-' : pct(p.worst, 1) + ' / ' + pct(p.best, 1)}</td>
+    <td style="white-space:normal;font-size:12.5px">${Object.entries(p.why).map(([k, v]) => `${k} ${v}`).join(' · ')}</td>
+    <td>${p.key === 'M' ? '' : `<button class="btn" style="padding:4px 10px" onclick="pfApply('${p.key}')">현재 설정으로</button>`}</td></tr>`).join('');
+}
+async function pfApply(k) { if (!confirm(`프로필 ${k}의 매도 규칙을 현재 설정으로 바꿀까요? (다음 매수부터 · 이력 기록)`)) return;
+  const r = await post('/api/live/profile', { key: k }); toast(r.ok ? '매도 규칙 적용 — 다음 매수부터' : r.error, r.ok); lvFormDone = false; lvLoad(); }
+let labTimer = null;
+async function labLoad() {
+  const d = await (await fetch('/api/lab')).json(), j = d.job, r = d.result, M = d.models;
+  if (M && M.models) {
+    const EX = ['own', 'A', 'B', 'C', 'D', 'E'], by = {};
+    M.models.forEach(x => (by[x.model] = by[x.model] || {})[x.exit] = x);
+    const cell = x => !x || !x.n ? '<td class="r muted">-</td>' : `<td class="r mono" title="앞 ${x.is_avg} / 뒤 ${x.oos_avg} · 승률 ${x.win}% · t ${x.t}">${pct(x.avg)}<br><small class="muted">${x.n}건 · ${x.is_avg > -99 ? x.is_avg.toFixed(2) : '-'}/${x.oos_avg > -99 ? x.oos_avg.toFixed(2) : '-'}</small></td>`;
+    $('#labModels').innerHTML = `<div class="card-h" style="font-size:15px;margin:6px 0">모델 × 매도 (1회 평균 · 건수 · 앞/뒤 기간) <small>${M.ts.replace('T', ' ').slice(0, 16)} · ${M.n_days}일${M.dates.length ? ` ${md(M.dates[0])}~${md(M.dates[1])}` : ''} · 기간 나눔 ${md(M.split)}</small></div>
+      <div class="scroll" style="max-height:520px"><table><thead><tr><th>모델</th><th class="r">자체 매도</th><th class="r">A 빠른 단타</th><th class="r">B 당일 추세</th><th class="r">C 상한가 추적</th><th class="r">D 다음날 시가</th><th class="r">E 최대 2일</th><th class="r">대조군 대비</th></tr></thead><tbody>${
+      (LV ? LV.order : Object.keys(by)).filter(k => by[k]).map(k => `<tr${k === 'Z' ? ' style="background:#f8fafc"' : ''}><td><span class="mt">${k}</span> ${by[k].own.model_name}</td>${EX.map(e => cell(by[k][e])).join('')}
+        <td class="r mono">${by[k].own.vs_z == null ? '-' : pct(by[k].own.vs_z)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="muted" style="margin-top:6px">분봉에서 모델 신호를 분마다 다시 계산 → 다음 분 시가 + 슬리피지로 매수(종가 매수 모델은 그 분 종가 · 상한가 모델은 상한가에 거래가 있을 때만). 수집된 종목 전체가 대상이라 실시간(순위 상위 30 · 하루 한도)보다 건수가 많습니다.</div>`;
+  } else $('#labModels').innerHTML = '';
+  $('#labInfo').textContent = `쌓인 분봉 ${d.bars_days}일` + (r ? ` · 78개 격자 마지막 연구 ${r.ts.replace('T', ' ').slice(0, 16)} (${r.src === 'vtrades' ? '실제 가상 매수' : '분봉'} · 진입 ${r.n_entries}건 · ${r.n_days}일${r.dates.length ? ` ${md(r.dates[0])}~${md(r.dates[1])} · 기간 나눔 ${md(r.split)}` : ''})` : '');
+  $('#labJob').innerHTML = j.running ? `<div class="alert info">연구 중 — ${j.msg} · ${j.done}/${j.total}</div><div class="bar"><i style="width:${j.total ? j.done / j.total * 100 : 3}%"></i></div>`
+    : j.error ? `<div class="alert bad">연구 실패: ${j.error}</div>` : '';
+  ['#bLab', '#bLabV', '#bLabM'].forEach(id => $(id).disabled = j.running);
+  const rows = r ? r.rows : [];
+  $('#labBody').innerHTML = rows.length ? rows.map((x, i) => `<tr${x.key === 'M' ? ' style="background:#fff7ed"' : /^[A-E]$/.test(x.key) ? ' style="background:#f8fafc"' : ''}><td class="mono">${x.score == null ? '-' : i + 1}</td>
+      <td style="white-space:normal;min-width:260px">${x.key === 'M' ? '<b>★ 현재 설정</b>' : x.name}</td><td class="r mono">${x.n}</td><td class="r mono">${pct(x.avg)}</td>
+      <td class="r mono">${x.is_n ? pct(x.is_avg) : '-'} <span class="muted">${x.is_n}</span></td><td class="r mono">${x.oos_n ? pct(x.oos_avg) : '-'} <span class="muted">${x.oos_n}</span></td>
+      <td class="r mono">${x.win == null ? '-' : x.win + '%'}</td><td class="r mono">${x.t == null ? '-' : Math.abs(x.t) > 99 ? (x.t > 0 ? '>99' : '<-99') : x.t}</td><td style="white-space:normal;font-size:12.5px">${Object.entries(x.why).map(([k, v]) => `${k} ${v}`).join(' · ')}</td>
+      <td>${x.key === 'M' ? '' : `<button class="btn" style="padding:4px 10px" onclick="labApply('${x.key}')">적용</button>`}</td></tr>`).join('')
+    : `<tr><td colspan="10" class="muted" style="text-align:center;padding:18px">${d.bars_days ? '▶ 버튼으로 연구를 시작하세요' : '아직 분봉이 없습니다 — 과거 분봉 채우기가 끝나면 (급등주 포함) 수천 건으로 바로 연구할 수 있습니다'}</td></tr>`;
+  clearTimeout(labTimer); if (j.running) labTimer = setTimeout(labLoad, 2000);
+}
+async function labRun(src) { const r = await post('/api/lab/run', { src }); toast(r.ok ? '연구 시작' : r.error, r.ok); setTimeout(labLoad, 500); }
+async function labApply(k) { if (!confirm('이 매도 규칙을 현재 설정으로 바꿀까요? (다음 매수부터 · 이력 기록)')) return;
+  const r = await post('/api/lab/apply', { key: k }); toast(r.ok ? '매도 규칙 적용 — 다음 매수부터' : r.error, r.ok); lvFormDone = false; lvLoad(); }
+$('#bLab').onclick = () => labRun('bars'); $('#bLabV').onclick = () => labRun('vtrades'); $('#bLabM').onclick = () => labRun('models');
+labLoad();
+
+// ───────── 탭 · 테마 · 대시보드 (D0.4) ─────────
+function goTab(t) {
+  if (!document.getElementById('pane-' + t)) t = 'dash';
+  document.querySelectorAll('.mtab').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + t));
+  try { localStorage.setItem('danta_tab', t); } catch (e) { }
+  if (location.hash !== '#' + t) history.replaceState(null, '', '#' + t);
+  if (t === 'research') labLoad();
+  if (t === 'bars' && $('#pvDate').value && !$('#pvChart').innerHTML) pvDraw();
+  window.scrollTo({ top: 0 });
+}
+document.querySelectorAll('.mtab').forEach(b => b.onclick = () => goTab(b.dataset.t));
+(function () { let t = (location.hash || '').slice(1); if (!t) { try { t = localStorage.getItem('danta_tab') || 'dash'; } catch (e) { t = 'dash'; } } goTab(t); })();
+window.addEventListener('hashchange', () => goTab((location.hash || '').slice(1)));
+
+const THEMES = [['ember', '엠버'], ['blue', '블루 미스트'], ['lavender', '라벤더'], ['mint', '민트 가든'], ['sand', '샌드 골드'], ['rose', '로즈'], ['slate', '슬레이트']];
+function applyTheme(name) {
+  if (!THEMES.some(t => t[0] === name)) name = 'ember';
+  document.documentElement.dataset.theme = name;
+  try { localStorage.setItem('danta_theme', name); } catch (e) { }
+  document.querySelectorAll('.th-sw').forEach(el => el.classList.toggle('on', el.dataset.t === name));
+}
+const TEXTS = [['normal', '보통'], ['bold', '진하게'], ['bolder', '아주 진하게']];
+function applyText(x) {
+  if (!TEXTS.some(t => t[0] === x)) x = 'bold';
+  document.documentElement.dataset.text = x;
+  try { localStorage.setItem('danta_text', x); } catch (e) { }
+  document.querySelectorAll('.tx-seg button').forEach(b => b.classList.toggle('on', b.dataset.x === x));
+}
+(function initLook() {
+  let th = 'ember', tx = 'bold';
+  try { th = localStorage.getItem('danta_theme') || 'ember'; tx = localStorage.getItem('danta_text') || 'bold'; } catch (e) { }
+  const sw = THEMES.map(([k, n]) => `<div class="th-sw" data-t="${k}" title="${n}"><i data-theme="${k}"></i>${n}</div>`).join('');
+  document.querySelectorAll('.th-grid').forEach(g => { g.innerHTML = sw; });
+  document.querySelectorAll('.tx-seg').forEach(g => { g.innerHTML = TEXTS.map(([k, n]) => `<button type="button" data-x="${k}">${n}</button>`).join(''); });
+  applyTheme(th); applyText(tx);
+  document.querySelectorAll('.th-sw').forEach(el => { el.onclick = () => { applyTheme(el.dataset.t); toast('화면 테마: ' + el.textContent.trim()); }; });
+  document.querySelectorAll('.tx-seg button').forEach(b => { b.onclick = e => { e.stopPropagation(); applyText(b.dataset.x); toast('글씨: ' + b.textContent); }; });
+  const btn = $('#thBtn'), pop = $('#thPop');
+  btn.onclick = e => { e.stopPropagation(); pop.classList.toggle('on'); };
+  document.addEventListener('click', e => { if (!pop.contains(e.target) && e.target !== btn) pop.classList.remove('on'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') pop.classList.remove('on'); });
+})();
+
+function liveState() {
+  if (!LV) return ['● 확인 중', 'idle'];
+  const L = LV.live, s = LV.settings, nowHm = LV.now.slice(11, 16), wd = new Date(LV.now.replace(' ', 'T')).getDay();
+  if (!LV.key) return ['● 앱키 없음', 'warn'];
+  if (!LV.on) return ['● 가상 단타 꺼짐', 'warn'];
+  if (wd === 0 || wd === 6) return ['● 주말', 'idle'];
+  if (L.open === '0') return ['● 휴장일', 'idle'];
+  if (nowHm < '08:55') return ['● 장 시작 전', 'idle'];
+  if (nowHm < s.scan_start) return ['● 장전 기록', 'live'];
+  if (nowHm <= s.scan_end) return ['● 탐지 중', 'live'];
+  if (nowHm <= '15:20') return [LV.summary.open ? `● 보유 감시 ${LV.summary.open}` : '● 매수 마감', 'live'];
+  return ['● 장 마감', 'idle'];
+}
+function dashDraw() {
+  const [txt, cls] = liveState(); const h = $('#hState'); h.textContent = txt; h.className = 'chip ' + cls;
+  if (!LV) return;
+  const sm = LV.summary, today = LV.now.slice(0, 10).replace(/-/g, ''), tr = sm.rows.filter(r => r.date === today);
+  const done = tr.filter(r => r.status === '청산'), tpnl = done.reduce((a, r) => a + (r.pnl || 0), 0);
+  const nPass = LV.cands.filter(x => x.passed).length, nBuy = LV.cands.filter(x => x.buy).length;
+  const nb = (id, n) => { const e = $(id); e.style.display = n ? '' : 'none'; e.textContent = n; };
+  nb('#nbCand', LV.last_scan && LV.last_scan.slice(0, 10).replace(/-/g, '') === today ? nPass : 0); nb('#nbHold', sm.open);
+  $('#dSub').textContent = `${LV.now.slice(0, 16)} 기준`;
+  $('#dKpis').innerHTML = [[txt.replace('● ', ''), '지금 상태', 'info'], [`${nPass}종목`, `필터 통과 (${LV.last_scan ? hm(LV.last_scan) : '-'})`],
+    [`${tr.length}건`, '오늘 가상 매수'], [done.length ? won(tpnl) : '-', '오늘 손익 (청산분)'],
+    [won(sm.pnl), `누적 손익 · ${num(sm.n)}건`], [sm.win == null ? '-' : sm.win + '%', `승률 · 평균 ${sm.avg == null ? '-' : pct(sm.avg)}`]]
+    .map(([v, l, c]) => `<div class="kpi ${c || ''}"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  $('#dState').innerHTML = $('#lvState').innerHTML;
+  $('#dCandSub').textContent = LV.last_scan ? `${LV.preview ? '미리보기' : '마지막 탐지'} ${hm(LV.last_scan)} · 통과 ${nPass} · 매수 ${nBuy}` : '';
+  $('#dCands').innerHTML = LV.cands.filter(x => x.passed).slice(0, 10).map(x => `<tr class="${x.buy ? 'buy' : ''}"><td>${x.buy ? '<span class="tag buy">매수</span>' : '<span class="tag pass">통과</span>'}${x.pre ? '<span class="tag pre">장전</span>' : ''}</td>
+      <td><b>${x.name}</b></td><td class="r mono">${num(x.price)}</td><td class="r mono">${pct(x.chg, 1)}</td><td class="r mono">${num(Math.round((x.amt || 0) / 1e8))}억</td><td style="white-space:normal">${x.why || ''}</td></tr>`).join('')
+    || '<tr><td colspan="6" class="muted" style="text-align:center;padding:16px">장중(09:01~10:00)에 매분 채워집니다</td></tr>';
+  $('#dTrSub').textContent = tr.length ? `${tr.length}건 · 청산 ${done.length} · 보유 ${tr.length - done.length}` : '';
+  $('#dTrades').innerHTML = tr.map(r => `<tr><td><span class="mt b">${r.model || 'M1'}</span></td><td><b>${r.name}</b></td><td class="mono">${hm(r.buy_ts)}</td><td class="mono">${r.status === '보유' ? '<b>보유</b>' : hm(r.sell_ts)}</td>
+      <td class="r mono">${r.status === '보유' ? pct((r.last_px / r.buy_px - 1) * 100) : pct(r.ret)}</td><td class="r mono">${r.status === '보유' ? '-' : won(r.pnl)}</td><td>${r.reason || ''}</td></tr>`).join('')
+    || '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">오늘 가상 매수 없음</td></tr>';
+  $('#dProf').innerHTML = (LV.profiles || []).map(p => `<tr${p.key === 'M' ? ' style="background:var(--accent-soft)"' : ''}><td><b>${p.key === 'M' ? '★' : p.key} ${p.name}</b></td><td class="r mono">${p.n}${p.open ? `<span class="muted"> +${p.open}</span>` : ''}</td>
+      <td class="r mono">${pct(p.avg)}</td><td class="r mono">${p.n ? won(p.pnl) : '-'}</td></tr>`).join('');
+  if (ST) {
+    const s = ST.status, last = (s.per_day || [])[0], j = ST.job;
+    $('#dColl').innerHTML = `<div class="kv muted" style="font-size:14px;line-height:1.9">받은 날짜 <b>${num(s.days)}일</b> ${s.first ? `(${md(s.first)} ~ ${md(s.last)})` : ''} · 종목·일 <b>${num(s.pairs)}</b> · DB <b>${s.db_mb}MB</b><br>
+      최근 ${last ? `${md(last.date)} <b>${last.got}/${last.want}</b> 완료` : '-'} · 오늘분 자동 수집 <b>${ST.cfg.collect_time}</b></div>` +
+      (j.running ? `<div class="alert info">${KIND[j.kind] || j.kind} 진행 중 — ${j.msg}</div>` : j.error ? `<div class="alert bad">마지막 작업 실패: ${j.error}</div>` : '');
+    const ok = (b, t, f) => b ? `<span class="ok">✓ ${t}</span>` : `<span class="no">✗ ${f}</span>`;
+    const sys = `${ok(ST.cfg.app_key, 'KIS 앱키 설정됨', 'KIS 앱키 없음 — 설정 탭')}<br>${ok(ST.scout_db, 'Scout 일봉 찾음 (읽기 전용)', 'Scout 일봉 없음')}<br>
+      ${ok(ST.cfg.telegram_token, '텔레그램 [단타] 알림', '텔레그램 미설정 (선택)')}<br>${ST.probe ? ok(ST.probe.ok, '과거 분봉 조회 가능', '과거 분봉 조회 안 됨 — 점검 결과 확인') : '<span class="muted">🔌 분봉 조회 점검 전</span>'}`;
+    $('#dSys').innerHTML = `<div style="font-size:14px;line-height:1.9">${sys}</div>`;
+    $('#sysInfo').innerHTML = `<div style="font-size:14px;line-height:1.9">${sys}<br>버전 <b>${ST.version}</b> · 포트 <b>${ST.port}</b> · 데이터 폴더 <span class="mono">${ST.data_dir}</span><br>
+      주문 기능: <b>없음</b> (코드에 주문 API 호출 자체가 없음) · 가상추천매매 📘 Scout(8082)와 별개 프로그램 — 서로 파일을 바꾸지 않음</div>`;
+  }
+}
+</script>
+</body>
+</html>
