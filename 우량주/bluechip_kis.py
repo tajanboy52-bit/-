@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 
 PAPER_BASE = 'https://openapivts.koreainvestment.com:29443'
+_APPROVAL = {}                                  # 웹소켓 접속키 캐시 {앱키 끝 6자리: (키, 발급 시각)}
 
 
 class KISError(RuntimeError):
@@ -101,6 +102,23 @@ class KISPaper:
             pass
         return tok
 
+    def approval_key(self):
+        """실시간 웹소켓 접속키 (B1.2) — 24시간 유효, 프로세스 안에서 앱키별로 12시간 재사용"""
+        k = _APPROVAL.get(self.appkey[-6:])
+        if k and time.time() - k[1] < 12 * 3600:
+            return k[0]
+        self._throttle()
+        try:
+            _, j, _ = self._http('POST', '/oauth2/Approval', {'content-type': 'application/json; charset=utf-8'},
+                                 body={'grant_type': 'client_credentials', 'appkey': self.appkey, 'secretkey': self.appsecret})
+        except Exception as e:
+            raise KISError(f'웹소켓 접속키 발급 실패: {str(e)[:150]}')
+        key = j.get('approval_key')
+        if not key:
+            raise KISError(f"웹소켓 접속키 발급 실패: {j.get('error_description') or j.get('msg1') or '응답 없음'}")
+        _APPROVAL[self.appkey[-6:]] = (key, time.time())
+        return key
+
     def _headers(self, tr_id, hashkey=None, tr_cont=''):
         h = {'content-type': 'application/json; charset=utf-8', 'authorization': f'Bearer {self.token()}',
              'appkey': self.appkey, 'appsecret': self.appsecret, 'tr_id': tr_id, 'custtype': 'P'}
@@ -138,10 +156,16 @@ class KISPaper:
 
     def _post_order(self, path, tr_id, body):
         """주문 POST — 한 번만. 거절(rt_cd≠0)은 KISError, 전송 결과가 불분명하면 ORDER_SUBMISSION_AMBIGUOUS"""
-        hk = self._hashkey(body)                      # 여기서 실패하면 주문은 안 나감 (불분명 아님)
+        try:                                          # hashkey · 토큰 실패는 주문이 안 나간 것 → 거절 (불분명 아님, B1.2)
+            hk = self._hashkey(body)
+            headers = self._headers(tr_id, hk)
+        except KISError:
+            raise
+        except Exception as e:
+            raise KISError(f'주문 전 준비 실패(주문 안 나감): {str(e)[:150]}')
         self._throttle()
         try:
-            _, j, _ = self._http('POST', path, self._headers(tr_id, hk), body=body, timeout=25)
+            _, j, _ = self._http('POST', path, headers, body=body, timeout=25)
         except urllib.error.HTTPError as e:
             if e.code in (400, 401, 403, 404):
                 raise KISError(f'주문 거절 HTTP {e.code}')

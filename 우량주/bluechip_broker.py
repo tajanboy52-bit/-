@@ -20,7 +20,11 @@ import bluechip_db as db
 import bluechip_engine as eng
 from bluechip_kis import KISError, KISPaper, tick_up
 
-HOLIDAYS = {'20261005', '20261009', '20261225', '20261231', '20270101', '20270208', '20270209', '20270301', '20270505'}
+# KRX 휴장일 (주말 제외) — 2027년은 공휴일 · 대체공휴일(python holidays 패키지 기준)로 넣음 · 연말 KRX 휴장일 공지로 다시 확인할 것 (B1.2)
+# 목록에 없는 휴장일은 주문 거절 메시지(장운영 · 휴장)로 알아채고 그날 쉼 (loop)
+HOLIDAYS = {'20261005', '20261009', '20261225', '20261231',
+            '20270101', '20270208', '20270209', '20270301', '20270503', '20270505', '20270513', '20270719', '20270816',
+            '20270914', '20270915', '20270916', '20271004', '20271011', '20271227', '20271231'}
 PART, TRAIL, STOP, HOLD, MAXPOS, SECCAP, SLOTS = 0.30, 4.0, 15.0, 40, 14, 2, 10
 S5_PCT, S5_MAX, S5_TH, S5_MAXD = 5.0, 6, -0.07, 7          # S5: 종목당 계좌 5% · 최대 6종목 · 5일 −7% · 최대 7일
 ON_TICKER, ON_NAME = '229200', 'KODEX 코스닥150'           # 밤사이 칸 ETF (1배 · 매매차익 비과세)
@@ -224,18 +228,27 @@ def send(cfg, kc, side, kind, ticker, name, qty, ord_dvsn='01', price=0, strat=N
         else:
             log(f'주문 거절 {name} {KIND.get(kind, kind)}: {msg}', 'warn')
         return None
+    except Exception as e:                            # kc.order는 전송 뒤 오류를 모두 KISError로 바꿈 → 여기는 전송 전 오류
+        x.execute("UPDATE kis_orders SET status='거절', msg=? WHERE id=?", (f'전송 전 오류: {str(e)[:180]}', oid))
+        x.commit()
+        log(f'주문 전송 전 오류 {name} {KIND.get(kind, kind)}: {str(e)[:150]}', 'warn')
+        return None
 
 
 def cancel_open(kc, ticker, kinds=('tp',)):
+    """반환: 취소 요청한 주문 수"""
     x = c()
+    n = 0
     for o in [dict(r) for r in x.execute(f"SELECT * FROM kis_orders WHERE date=? AND ticker=? AND status IN ('접수','부분') AND kind IN ({','.join('?' * len(kinds))})",
                                           (today(), ticker, *kinds))]:
         try:
             kc.cancel(o['order_no'], o['org_no'])
             x.execute("UPDATE kis_orders SET status='취소요청' WHERE id=?", (o['id'],))
+            n += 1
         except KISError as e:
             log(f"취소 실패 {o['name']}: {e}", 'warn')
     x.commit()
+    return n
 
 
 def sync(kc, d=None):
@@ -279,9 +292,11 @@ def _apply(x, o, filled, avg, d):
         log(f"보유 기록 없는 매도 체결 {o['name']} {filled}주 — 확인 필요", 'warn')
         return
     p = dict(p)
+    # B1.2: 이 보유분의 매수 주문 뒤에 나온 매도만 셈 (예전엔 date>=entry_date → 같은 날 아침에 판 지난 밤사이 ETF까지 더해 손익이 부풀려짐)
+    buy_id = x.execute("SELECT COALESCE(MAX(id),0) FROM kis_orders WHERE ticker=? AND side='buy' AND filled>0 AND id<?", (o['ticker'], o['id'])).fetchone()[0]
     sells = x.execute("SELECT COALESCE(SUM(CASE WHEN id=? THEN ? ELSE filled END),0), COALESCE(SUM(CASE WHEN id=? THEN ?*? ELSE filled*avg END),0) "
-                      "FROM kis_orders WHERE ticker=? AND side='sell' AND date>=? AND filled>0 OR id=?",
-                      (o['id'], filled, o['id'], filled, avg, o['ticker'], p['entry_date'], o['id'])).fetchone()
+                      "FROM kis_orders WHERE ticker=? AND side='sell' AND id>? AND (filled>0 OR id=?)",
+                      (o['id'], filled, o['id'], filled, avg, o['ticker'], buy_id, o['id'])).fetchone()
     sold_qty, proceeds = int(sells[0]), float(sells[1])
     left = max(0, p['qty_total'] - sold_qty)
     upd = {'qty': left, 'realized': proceeds}
@@ -298,6 +313,30 @@ def _apply(x, o, filled, avg, d):
                                                                 p.get('strat') or 'H1'))
         x.execute('DELETE FROM kis_pos WHERE ticker=?', (p['ticker'],))
         log(f"{'💰' if pnl > 0 else '🔴'} [{p.get('strat') or 'H1'}] 청산 {p['name']} {pnl / p['cost'] * 100:+.2f}% · {pnl:+,.0f}원 ({KIND.get(o['kind'], o['kind'])})")
+
+
+def repair_closed():
+    """B1.2 한 번만: B1.0~1.1의 매도 합산 버그로 부풀려진 청산 기록(kis_closed)을 주문 기록에서 다시 계산"""
+    if db.meta_get('fix_b12_closed') == '1':
+        return 0
+    x = c()
+    n = 0
+    for r in [dict(r) for r in x.execute('SELECT * FROM kis_closed')]:
+        b = x.execute("SELECT MAX(id) FROM kis_orders WHERE ticker=? AND side='buy' AND filled>0 AND date=?", (r['ticker'], r['entry_date'])).fetchone()[0]
+        if not b:
+            continue
+        nb = x.execute("SELECT MIN(id) FROM kis_orders WHERE ticker=? AND side='buy' AND filled>0 AND id>?", (r['ticker'], b)).fetchone()[0] or 1 << 62
+        pr = x.execute("SELECT COALESCE(SUM(filled*avg),0) FROM kis_orders WHERE ticker=? AND side='sell' AND filled>0 AND id>? AND id<? AND date<=?",
+                       (r['ticker'], b, nb, r['exit_date'])).fetchone()[0]
+        if pr and abs(pr - (r['proceeds'] or 0)) > 1:
+            fee = (r['cost'] or 0) * COSTS.get(r.get('strat') or 'H1', eng.COST) / 100
+            pnl = pr - r['cost'] - fee
+            x.execute('UPDATE kis_closed SET proceeds=?, pnl=?, ret=? WHERE id=?', (pr, pnl, pnl / r['cost'] * 100 if r['cost'] else 0, r['id']))
+            log(f"청산 기록 고침 {r['name']} {r['exit_date']}: {r['pnl']:+,.0f}원 → {pnl:+,.0f}원 (B1.0~1.1 매도 합산 버그)", 'warn')
+            n += 1
+    x.commit()
+    db.meta_set('fix_b12_closed', '1')
+    return n
 
 
 # ════════════════════════════════════════════
@@ -539,22 +578,53 @@ def place_tp(cfg, kc, d):
             return
 
 
-def monitor(cfg, kc, d):
-    """장중 30초 — −15% 재난 손절"""
+STOP_TRIES = 3
+
+
+def try_stop(cfg, kc, p, px, src='30초 감시'):
+    """−15% 재난 손절 주문 한 번 (30초 감시 · 웹소켓 공용). 거절되면 하루 STOP_TRIES번까지만 다시 (B1.2 — 예전엔 30초마다 끝없이)"""
     x = c()
+    k = f"kis_stopfail_{p['ticker']}_{today()}"
+    fails = int(db.meta_get(k) or 0)
+    if fails >= STOP_TRIES:
+        return False
+    if cancel_open(kc, p['ticker'], ('tp',)):
+        time.sleep(1.0)                                               # 익절 지정가에 묶인 수량이 풀릴 시간
+    if send(cfg, kc, 'sell', 'stop', p['ticker'], p['name'], p['qty'], strat='H1'):
+        x.execute("UPDATE kis_pos SET status='손절 주문' WHERE ticker=?", (p['ticker'],))
+        x.commit()
+        log(f"재난 손절 발동 {p['name']} 현재가 {px:,.0f} ≤ {p['entry_px'] * (1 - STOP / 100):,.0f} ({src})", 'warn')
+        return True
+    if not halted():
+        db.meta_set(k, fails + 1)
+        if fails + 1 >= STOP_TRIES:
+            alert(f"{p['name']} 재난 손절 주문이 {STOP_TRIES}번 거절됨 — KIS 앱에서 직접 확인하세요", f"stopfail_{p['ticker']}")
+    return False
+
+
+def stop_hit(p, px):
+    return (p.get('strat') or 'H1') == 'H1' and p.get('status') == '보유' and px > 0 and px <= p['entry_px'] * (1 - STOP / 100)
+
+
+def monitor(cfg, kc, d, live_px=None):
+    """장중 30초 — −15% 재난 손절 (웹소켓이 살아 있으면 틱마다 먼저 잡고, 이건 예비)
+    live_px: {종목: 가격} 웹소켓 시세가 신선한 종목 → KIS 현재가 조회 없이 그 값으로 (조회 호출 절약)"""
+    x = c()
+    live_px = live_px or {}
     for p in [dict(r) for r in x.execute("SELECT * FROM kis_pos WHERE qty>0 AND status='보유'")]:
-        try:
-            px, _ = kc.price(p['ticker'])
-        except KISError as e:
-            STATE['last_err'] = str(e)[:150]
-            continue
+        px = live_px.get(p['ticker'])
+        if px is None:
+            try:
+                px, _ = kc.price(p['ticker'])
+            except KISError as e:
+                STATE['last_err'] = str(e)[:150]
+                continue
         if px <= 0:
             continue
         x.execute('UPDATE kis_pos SET last_px=? WHERE ticker=?', (px, p['ticker']))
-        if (p.get('strat') or 'H1') == 'H1' and px <= p['entry_px'] * (1 - STOP / 100) and can_order(cfg):
-            cancel_open(kc, p['ticker'], ('tp',))
-            if send(cfg, kc, 'sell', 'stop', p['ticker'], p['name'], p['qty'], strat='H1'):
-                x.execute("UPDATE kis_pos SET status='손절 주문' WHERE ticker=?", (p['ticker'],))
+        x.commit()
+        if stop_hit(p, px) and can_order(cfg):
+            try_stop(cfg, kc, p, px)
             if halted():
                 break
     x.commit()
@@ -704,7 +774,13 @@ def loop(get_cfg):
                             log(f'{d} 휴장으로 판단 — 오늘 모의투자 쉼', 'warn')
                     if '09:05' <= hm <= '15:18' and time.time() - last_mon > 30:
                         last_mon = time.time()
-                        monitor(cfg, kc, d)
+                        try:
+                            import bluechip_ws
+                            fr = bluechip_ws.fresh()                  # B1.2: 실시간 시세가 신선한 종목은 조회 없이 그 값으로
+                            live_px = {k: v[0] for k, v in list(bluechip_ws.PRICE.items()) if k in fr}
+                        except Exception:
+                            live_px = {}
+                        monitor(cfg, kc, d, live_px)
                     if '15:20' <= hm <= '15:27' and not _done('time', d) and can_order(cfg):
                         _mark('time', d)
                         time_exit(cfg, kc, d)
@@ -923,7 +999,8 @@ def criteria(cfg):
     """사전 등록 3개월 판정 기준 진행 (모의투자 계좌 기준)"""
     x = c()
     cmp_ = compare()
-    closed = [r[0] for r in x.execute('SELECT ret FROM kis_closed')]
+    closed = [r[0] for r in x.execute("SELECT ret FROM kis_closed WHERE COALESCE(strat,'H1')='H1'")]       # B1.2: 판정은 H1만 (밤사이 ETF는 매일 청산돼 건수를 채워 버림)
+    night = [r[0] for r in x.execute("SELECT ret FROM kis_closed WHERE strat='ON'")]
     incidents = x.execute("SELECT COUNT(*) FROM kis_orders WHERE status='불분명'").fetchone()[0] + \
         x.execute("SELECT COUNT(*) FROM kis_log WHERE level='error' AND msg LIKE '%정지%'").fetchone()[0]
     eq = [dict(r) for r in x.execute('SELECT * FROM kis_equity ORDER BY date')]
@@ -940,8 +1017,10 @@ def criteria(cfg):
         {'k': '주문 사고 0', 'v': f'{incidents}건', 'ok': incidents == 0, 'prog': 1 if incidents == 0 else 0},
         {'k': 'H1 체결 차이 ±0.3% (계산 대비)', 'v': '-' if d is None else f'{d:+.2f}% ({cmp_["n_entry"]}건)', 'ok': d is not None and abs(d) <= 0.3, 'prog': None},
         {'k': '미체결 · 거절 5% 이하', 'v': '-' if miss is None else f'{miss:.1f}%', 'ok': miss is not None and miss <= 5, 'prog': None},
-        {'k': '청산 30건+', 'v': f'{len(closed)} / 30', 'ok': len(closed) >= 30, 'prog': min(1, len(closed) / 30)},
-        {'k': '건당 > 0', 'v': '-' if avg is None else f'{avg:+.2f}%', 'ok': avg is not None and avg > 0, 'prog': None},
+        {'k': 'H1 청산 30건+', 'v': f'{len(closed)} / 30', 'ok': len(closed) >= 30, 'prog': min(1, len(closed) / 30)},
+        {'k': 'H1 건당 > 0', 'v': '-' if avg is None else f'{avg:+.2f}%', 'ok': avg is not None and avg > 0, 'prog': None},
+        {'k': '밤사이 ETF 건당 > 0 (비용 뺀 뒤 · 참고)', 'v': '-' if not night else f'{sum(night) / len(night):+.3f}% ({len(night)}건)',
+         'ok': bool(night) and sum(night) / len(night) > 0, 'prog': None},
         {'k': '계좌 수익 > 0', 'v': '-' if kret is None else f'{kret:+.2f}%', 'ok': kret is not None and kret > 0, 'prog': None},
         {'k': '최대 낙폭 −20% 이내', 'v': f"{p['mdd']:.1f}%", 'ok': p['mdd'] >= -20, 'prog': None}]
 

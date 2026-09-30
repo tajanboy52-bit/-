@@ -13,7 +13,7 @@ if /i "%~1"=="silent" ( set SILENT=1 & set WAIT=rem )
 echo.
 echo  ==========================================
 echo    台炅 우량주 반등  TK Bluechip  (포트 8084)
-echo    우량주 100 · 모델 A/B + 대조군 가상 매매 - 주문 기능 없음
+echo    우량주 100 · KIS 모의투자 전용 (실전 주문 없음) · 장중 실시간 웹소켓
 echo    Scout(8082) · Danta(8083)와 별개 프로그램
 echo  ==========================================
 echo.
@@ -34,6 +34,8 @@ if errorlevel 1 (
 )
 %PY% -c "import pykrx" > nul 2>&1
 if errorlevel 1 %PY% -m pip install "pykrx>=1.2.9"
+%PY% -c "import websocket" > nul 2>&1
+if errorlevel 1 %PY% -m pip install websocket-client
 
 netstat -ano | findstr ":8084 " | findstr "LISTENING" > nul
 if not errorlevel 1 (

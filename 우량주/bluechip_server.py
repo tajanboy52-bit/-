@@ -36,15 +36,16 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 import bluechip_db as db
 import bluechip_engine as eng
 import bluechip_broker as brk
+import bluechip_ws as rtws
 
 APP_NAME = '台炅 우량주 반등 (TK Bluechip)'
-APP_VERSION = 'B1.1'
+APP_VERSION = 'B1.2'
 PORT = int(os.environ.get('BLUECHIP_PORT', '8084'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(db.DATA_DIR, 'bluechip_config.json')
 START_DATE = '20260929'                 # 가상 검증 시작일 (9/28 종가 신호 → 9/29 시가 매수)
 DEFAULT_CFG = {'krx_id': '', 'krx_pw': '', 'telegram_token': '', 'telegram_chat': '', 'run_time': '16:40', 'start_date': START_DATE}
-SECRET_KEYS = ('krx_id', 'krx_pw', 'telegram_token', 'telegram_chat', 'kis_app_key', 'kis_app_secret', 'kis_account')
+SECRET_KEYS = ('krx_id', 'krx_pw', 'telegram_token', 'telegram_chat', 'kis_app_key', 'kis_app_secret', 'kis_account', 'kis_hts_id')
 log = eng.log
 app = FastAPI(title=APP_NAME)
 
@@ -355,6 +356,9 @@ async def api_config(req: Request):
         if k in b:
             CFG[k] = bool(b[k])
             brk.log(f"{'S5 칸' if k == 'kis_s5_on' else '밤사이 칸'} {'켬' if b[k] else '끔'} (사용자)")
+    if 'ws_on' in b:                                           # B1.2: 실시간 웹소켓 (기본 켜짐)
+        CFG['ws_on'] = bool(b['ws_on'])
+        brk.log(f"실시간 웹소켓 {'켬' if b['ws_on'] else '끔'} (사용자)")
     if b.get('kis_cap'):
         try:
             v = int(float(str(b['kis_cap']).replace(',', '')))
@@ -373,7 +377,14 @@ async def api_kis():
     st = await asyncio.to_thread(brk.status, CFG)
     st['account'] = mask(CFG.get('kis_account'), 2)
     st['key'] = mask(CFG.get('kis_app_key'))
+    st['ws'] = {**rtws.status(), 'enabled': CFG.get('ws_on', True), 'hts': bool(CFG.get('kis_hts_id'))}
     return st
+
+
+@app.get('/api/kis/ws')
+async def api_kis_ws():
+    """실시간 웹소켓 상태 · 구독 종목 시세 (B1.2)"""
+    return {**rtws.status(), 'enabled': CFG.get('ws_on', True), 'hts': bool(CFG.get('kis_hts_id'))}
 
 
 @app.get('/api/kis/quote')
@@ -585,11 +596,13 @@ if __name__ == '__main__':
     try:
         brk.c()
         eng.ensure_h_orders()
+        brk.repair_closed()                                  # B1.2: 매도 합산 버그로 부풀려진 청산 기록 한 번 다시 계산
     except Exception as e:
         log(f'H1 준비 오류: {e}')
     threading.Thread(target=scheduler, daemon=True).start()
     brk.NOTIFY = lambda m: telegram(m)                      # B0.6: 모의투자 중요 경고만 (건별 매매 알림 없음)
     threading.Thread(target=brk.loop, args=(lambda: CFG,), daemon=True).start()
+    rtws.start(lambda: CFG)                                  # B1.2: 장중 실시간 체결가 · 체결 통보 (모의투자 웹소켓)
     print(f"""
 ╔══════════════════════════════════════════╗
 ║   💎 台炅 우량주 반등 (TK Bluechip) {APP_VERSION}   ║

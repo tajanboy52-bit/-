@@ -278,6 +278,9 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
       <label style="margin-top:6px">모의투자 앱시크릿</label><input id="kis_app_secret" type="password" style="width:100%">
       <label style="margin-top:6px">모의계좌번호 (8자리-2자리)</label><input id="kis_account" type="password" style="width:100%">
       <label style="margin-top:6px">운용 한도 (원) — 칸 비율의 기준 금액 (KIS 평가액과 한도 중 작은 값)</label><input id="kis_cap" placeholder="10000000" style="width:100%">
+      <label style="margin-top:6px">HTS ID (선택) — 넣으면 실시간 체결 통보로 체결을 바로 반영</label><input id="kis_hts_id" type="password" style="width:100%">
+      <label style="margin-top:8px"><input type="checkbox" id="ws_on"> 📡 장중 실시간 웹소켓 (체결가로 −15% 손절 즉시 · 끄면 30초 조회만)</label>
+      <div class="mut" id="wsNow" style="margin:4px 0"></div>
       <div class="mut" id="kNow" style="margin:6px 0"></div><div class="row"><button class="btn p" id="kSave">저장</button><button class="btn" id="kTest">🔌 연결 테스트</button><button class="btn" id="kSync">🔄 체결 반영</button></div>
       <div class="mut" id="kTestMsg" style="margin-top:6px"></div></div>
     <div class="card"><h2>텔레그램 <small>장 마감 실적 한 통 + 중요 경고 · 머리말 [우량주]</small></h2>
@@ -347,7 +350,7 @@ async function loadKis(liveToo){
   if(k.state.last_err)al+=`<div class="alert w">최근 오류: ${k.state.last_err}</div>`;$('#kAlert').innerHTML=al;if($('#kClr'))$('#kClr').onclick=async()=>{await post('/api/kis/halt_clear');toast('정지 해제');loadKis()};
   const nx=k.schedule.find(s=>s.state==='대기'||s.state==='진행 중');
   $('#kBar').innerHTML=(k.halt?`<span class="pill off">⛔ 정지</span>`:k.on?`<span class="pill on">● 자동주문 ON</span>`:`<span class="pill off">○ 자동주문 OFF</span>`)+(k.pause?`<span class="pill w">신규 매수 일시 중지</span>`:'')+
-    `<span class="pill">장 상태 <b>${k.phase}</b></span>`+(nx?`<span class="pill">다음 <b>${nx.time}</b> ${nx.what}</span>`:'')+`<span class="pill">손절 감시 <b>${k.state.last_monitor||'-'}</b></span><span class="pill">KIS 조회 <b>${LIVE?LIVE.at:'-'}</b></span><span class="pill">계좌 <b>${k.account||'-'}</b></span>`;
+    `<span class="pill">장 상태 <b>${k.phase}</b></span>`+(nx?`<span class="pill">다음 <b>${nx.time}</b> ${nx.what}</span>`:'')+`<span class="pill">손절 감시 <b>${k.state.last_monitor||'-'}</b></span>${k.ws&&k.ws.enabled!==false?`<span class="pill">📡 실시간 <b>${k.ws.connected?'연결 · '+k.ws.subs.length+'종목'+(k.ws.notice?' · 체결통보':''):(k.ws.on?'재연결 중':'대기')}</b></span>`:''}<span class="pill">KIS 조회 <b>${LIVE?LIVE.at:'-'}</b></span><span class="pill">계좌 <b>${k.account||'-'}</b></span>`;
   const A=acct(),st=k.strats,rz=st.reduce((a,s)=>a+s.realized,0),ur=k.positions.reduce((a,p)=>a+(((LIVE&&(LIVE.positions.find(q=>q.ticker===p.ticker)||{}).price)||p.last_px||p.entry_px)-p.entry_px)*p.qty,0);
   const inv=st.reduce((a,s)=>a+s.invested,0),todayRz=st.reduce((a,s)=>a+s.today_realized,0);
   const kt=(v,l,s,c='')=>`<div class="kpi ${c}"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
@@ -434,11 +437,12 @@ $('#uMonth').onchange=loadUniv;
 async function loadSys(){const[s,k]=await Promise.all([get('/api/status'),get('/api/kis')]);K=k;
   $('#krxNow').textContent=s.cfg.krx_id?`저장됨 ${s.cfg.krx_id}`:'미입력 — 없으면 매월 우량주 100 갱신이 안 되고 지난달 목록을 씀';$('#tgNow').textContent=s.cfg.telegram_token?'저장됨':'미입력 — 장 마감 리포트 · 경고가 안 옴';$('#run_time').value=s.cfg.run_time||'16:40';
   $('#kNow').textContent=k.configured?`저장됨 · 키 ${k.key} · 계좌 ${k.account}`:'미입력';$('#kis_cap').value=k.cap;
+  const W=k.ws||{};$('#ws_on').checked=W.enabled!==false;$('#wsNow').textContent=`HTS ID ${W.hts?'저장됨':'없음 (체결 통보 안 받음 · 3분 조회)'} · 지금 ${W.connected?'연결됨 · 구독 '+W.subs.length+'종목':(W.on?'연결 시도 중':'장중에만 연결')}${W.err?' · 마지막 오류 '+W.err:''}`;
   $('#sData').innerHTML=`<div class="kv" style="grid-template-columns:1fr"><span>데이터 폴더<b>${s.data_dir}</b></span><span>Scout 일봉 (읽기 전용)<b>${s.scout_db||'없음'} · 마지막 ${md(s.scout_last)}</b></span>
     <span>구성 종목 월<b>${s.months.join(' · ')}</b></span><span>신호 계산<b>${s.state.msg||''} ${s.state.err?'· ⚠️ '+s.state.err:''}</b></span></div>`;
   const w=$('#kLogW').checked;$('#kLog').textContent=k.log.filter(x=>!w||x.level!=='info').map(x=>`${x.ts.slice(5,19).replace('T',' ')} ${x.level==='info'?'':'['+x.level+'] '}${x.msg}`).join('\n');$('#sLog').textContent=s.log}
 $('#kLogW').onchange=loadSys;
-$('#kSave').onclick=async()=>{const b={};['kis_app_key','kis_app_secret','kis_account','kis_cap'].forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});const r=await post('/api/config',b);toast(r.ok?'저장 완료':r.error,r.ok);if(r.ok)['kis_app_key','kis_app_secret','kis_account'].forEach(k=>$('#'+k).value='');loadSys()};
+$('#kSave').onclick=async()=>{const b={ws_on:$('#ws_on').checked};['kis_app_key','kis_app_secret','kis_account','kis_cap','kis_hts_id'].forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});const r=await post('/api/config',b);toast(r.ok?'저장 완료':r.error,r.ok);if(r.ok)['kis_app_key','kis_app_secret','kis_account','kis_hts_id'].forEach(k=>$('#'+k).value='');loadSys()};
 $('#kTest').onclick=async()=>{$('#kTestMsg').textContent='연결 중...';const r=await post('/api/kis/test');$('#kTestMsg').textContent=r.ok?`✅ 연결 성공 · ${r.account} · 평가 ${man(r.equity)} · 현금 ${man(r.cash)} · 보유 ${r.holdings.length}종목 ${r.holdings.join(', ')}`:'❌ '+r.error};
 $('#kSync').onclick=async()=>{const r=await post('/api/kis/sync');toast(r.ok?'체결 반영':r.error,r.ok)};
 const saveKeys=async ks=>{const b={};ks.forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});const r=await post('/api/config',b);toast(r.ok?'저장 완료':r.error,r.ok);if(r.ok)ks.filter(k=>k!=='run_time').forEach(k=>$('#'+k).value='');loadSys()};
