@@ -160,6 +160,9 @@ def _day_text(d):
         L.append(f" 💎 H1 매수: {', '.join(b1) or '없음'}")
         if brk.on(CFG, 'S5'):
             L.append(f" ⚡ S5 매수: {', '.join(b5) or '없음'}")
+        if brk.on(CFG, 'CORE') and brk.pct(CFG, 'CORE') > 0:
+            bc = [f"{p['name']} {p['qty']}주" for p in pv.get('core', []) if not p['skip']]
+            L.append(f" 🏛 코어 매수: {', '.join(bc) or '없음 (다 채움)'}")
         if pv['sells']:
             L.append(' 매도: ' + ', '.join(f"[{p['strat']}] {p['name']}" for p in pv['sells']))
         if sk:
@@ -169,8 +172,8 @@ def _day_text(d):
     except Exception as e:
         log(f'내일 계획 줄 실패: {e}')
     mk = c.execute('SELECT * FROM market WHERE date=?', (d,)).fetchone()
-    if mk and mk['breadth'] == mk['breadth']:
-        L.append(f"\n🌡 공포 온도 {mk['breadth'] * 100:.0f}% · 코스피200 5일 {mk['mkt_r5'] * 100:+.1f}%")
+    if mk and mk['breadth'] is not None and mk['breadth'] == mk['breadth']:
+        L.append(f"\n🌡 공포 온도 {mk['breadth'] * 100:.0f}%" + (f" · 코스피200 5일 {mk['mkt_r5'] * 100:+.1f}%" if mk['mkt_r5'] is not None else ''))
     if not CFG.get('kis_on'):
         L.append('\n○ 자동주문 꺼짐')
     return '\n'.join(L)
@@ -181,8 +184,8 @@ def _day_text_old(d):
     c = db.conn()
     lines = [f'📊 {d[4:6]}/{d[6:]} 우량주 장 마감 리포트 (가상 · 주문 없음)']
     mk = c.execute('SELECT * FROM market WHERE date=?', (d,)).fetchone()
-    if mk and mk['breadth'] == mk['breadth']:
-        lines.append(f"시장 공포 온도 {mk['breadth'] * 100:.0f}% · 지수 5일 {mk['mkt_r5'] * 100:+.1f}%")
+    if mk and mk['breadth'] is not None and mk['breadth'] == mk['breadth']:
+        lines.append(f"시장 공포 온도 {mk['breadth'] * 100:.0f}%" + (f" · 지수 5일 {mk['mkt_r5'] * 100:+.1f}%" if mk['mkt_r5'] is not None else ''))
     mf = mkt_flow(d)
     if mf:
         lines.append(f"수급 5일({mf['flow_date'][4:6]}/{mf['flow_date'][6:]}까지): 외국인 {eok(mf['fo5'])} · 기관 {eok(mf['ins5'])} · 연기금 {eok(mf['pen5'])}")
@@ -211,6 +214,11 @@ def daily_job(force=False):
             brk.make_s5(last_after)                            # B1.0: S5 신호 (다음날 08:35 매수용)
         except Exception as e:
             log(f'S5 신호 계산 실패: {e}')
+    if last_after:
+        try:
+            brk.core_mark(last_after)                          # B1.2: 새 달 자료가 들어오면 코어 순위 갱신 · 밀린 종목 매도 표시
+        except Exception as e:
+            log(f'코어 순위 계산 실패: {e}')
     if last_after and last_after != last_before:
         telegram(day_text(last_after))
     return msgs
@@ -344,18 +352,21 @@ async def api_config(req: Request):
     try:                                                       # B1.0: 칸 설정
         h1 = float(b['kis_h1_pct']) if b.get('kis_h1_pct') not in (None, '') else float(CFG.get('kis_h1_pct') or 70)
         nt = float(b['kis_night_pct']) if b.get('kis_night_pct') not in (None, '') else float(CFG.get('kis_night_pct') if CFG.get('kis_night_pct') is not None else 30)
+        co = float(b['kis_core_pct']) if b.get('kis_core_pct') not in (None, '') else float(CFG.get('kis_core_pct') or 0)
     except ValueError:
         return JSONResponse({'ok': False, 'error': '칸 비율은 숫자'}, 400)
-    if not (30 <= h1 <= 100 and 0 <= nt <= 60 and h1 + nt <= 100):
-        return JSONResponse({'ok': False, 'error': 'H1 칸 30~100% · 밤사이 칸 0~60% · 합계 100% 이하'}, 400)
+    if not (30 <= h1 <= 100 and 0 <= nt <= 60 and 0 <= co <= 60 and h1 + nt + co <= 100):
+        return JSONResponse({'ok': False, 'error': 'H1 칸 30~100% · 밤사이 칸 0~60% · 코어 칸 0~60% · 합계 100% 이하'}, 400)
+    if b.get('kis_core_pct') not in (None, ''):
+        CFG['kis_core_pct'] = co
     if b.get('kis_h1_pct') not in (None, ''):
         CFG['kis_h1_pct'] = h1
     if b.get('kis_night_pct') not in (None, ''):
         CFG['kis_night_pct'] = nt
-    for k in ('kis_s5_on', 'kis_night_on'):
-        if k in b:
+    for k in ('kis_s5_on', 'kis_night_on', 'kis_core_on'):
+        if k in b and bool(b[k]) != bool(CFG.get(k, k == 'kis_night_on')):
             CFG[k] = bool(b[k])
-            brk.log(f"{'S5 칸' if k == 'kis_s5_on' else '밤사이 칸'} {'켬' if b[k] else '끔'} (사용자)")
+            brk.log(f"{ {'kis_s5_on': 'S5 칸', 'kis_night_on': '밤사이 칸', 'kis_core_on': '🏛 코어 칸'}[k]} {'켬' if b[k] else '끔'} (사용자)")
     if 'ws_on' in b:                                           # B1.2: 실시간 웹소켓 (기본 켜짐)
         CFG['ws_on'] = bool(b['ws_on'])
         brk.log(f"실시간 웹소켓 {'켬' if b['ws_on'] else '끔'} (사용자)")
@@ -593,6 +604,10 @@ if __name__ == '__main__':
         eng.seed_flows(os.path.join(BASE_DIR, 'seed'))
     except Exception as e:
         log(f'초기 수급 자료 넣기 실패: {e}')
+    try:
+        eng.backfill_pbr(os.path.join(BASE_DIR, 'seed'))
+    except Exception as e:
+        log(f'PBR 채우기 실패: {e}')
     try:
         brk.c()
         eng.ensure_h_orders()

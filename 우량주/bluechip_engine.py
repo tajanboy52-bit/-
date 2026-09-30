@@ -119,11 +119,31 @@ def seed_import(seed_dir):
     out = []
     for (d, tk), r in sec.items():
         fu = fund.get((d, tk), {})
-        out.append((d[:6], d, tk, r['market'], r['name'], SECTOR_MAP.get(r['sector'], r['sector']), _f(r['marcap']), _f(fu.get('EPS')), _f(fu.get('DIV'))))
-    c.executemany('INSERT OR IGNORE INTO monthly VALUES (?,?,?,?,?,?,?,?,?)', out)
+        out.append((d[:6], d, tk, r['market'], r['name'], SECTOR_MAP.get(r['sector'], r['sector']), _f(r['marcap']), _f(fu.get('EPS')), _f(fu.get('DIV')),
+                    _f(fu.get('PBR'))))
+    c.executemany(f'INSERT OR IGNORE INTO monthly ({MONTHLY_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?)', out)
     c.commit()
     log(f'초기 자료 넣음: 구성 종목 {len(rows):,}행 · 월별 스냅샷 {len(out):,}행')
     return n
+
+
+MONTHLY_COLS = 'month, date, ticker, market, name, sector, marcap, eps, div, pbr'
+
+
+def backfill_pbr(seed_dir):
+    """B1.2 한 번만: 예전 버전으로 넣은 월별 자료에 PBR 채우기 (seed/fund.csv) — 코어(DV) 칸 점수용"""
+    c = db.conn()
+    if db.meta_get('pbr_backfill') == '1' or not c.execute('SELECT COUNT(*) FROM monthly').fetchone()[0]:
+        return 0
+    p = os.path.join(seed_dir, 'fund.csv')
+    if not os.path.exists(p):
+        return 0
+    rows = [(_f(r['PBR']), r['date'][:6], r['ticker'].zfill(6)) for r in csv.DictReader(open(p, encoding='utf-8-sig'))]
+    c.executemany('UPDATE monthly SET pbr=? WHERE month=? AND ticker=? AND pbr IS NULL', rows)
+    c.commit()
+    db.meta_set('pbr_backfill', '1')
+    log(f'월별 자료 PBR 채움: {len(rows):,}행 (seed)')
+    return len(rows)
 
 
 def seed_flows(seed_dir):
@@ -295,10 +315,10 @@ def krx_month(d, cfg):
         for tk, r in s.iterrows():
             fu = f.loc[tk] if tk in f.index else {}
             rows.append((m, d, tk, mk, r['종목명'], SECTOR_MAP.get(r['업종명'], r['업종명']), _f(r['시가총액']),
-                         _f(fu.get('EPS') if len(fu) else None), _f(fu.get('DIV') if len(fu) else None)))
+                         _f(fu.get('EPS') if len(fu) else None), _f(fu.get('DIV') if len(fu) else None), _f(fu.get('PBR') if len(fu) else None)))
     c.execute('DELETE FROM members WHERE month=?', (m,))
     c.executemany('INSERT OR REPLACE INTO members VALUES (?,?,?)', mem)
-    c.executemany('INSERT OR REPLACE INTO monthly VALUES (?,?,?,?,?,?,?,?,?)', rows)
+    c.executemany(f'INSERT OR REPLACE INTO monthly ({MONTHLY_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
     c.commit()
     log(f'KRX {d} 월별 자료: 구성 종목 {len(mem)} · 스냅샷 {len(rows)}')
 

@@ -60,6 +60,8 @@ def conn():
         for col, typ in (('part_qty', 'INTEGER DEFAULT 0'), ('part_px', 'REAL'), ('peak', 'REAL'), ('sell_next', 'INTEGER DEFAULT 0')):
             if col not in have:                            # B0.4 H1 모델용 열 추가
                 c.execute(f'ALTER TABLE trades ADD COLUMN {col} {typ}')
+        if 'pbr' not in {r[1] for r in c.execute('PRAGMA table_info(monthly)')}:
+            c.execute('ALTER TABLE monthly ADD COLUMN pbr REAL')            # B1.2 코어(DV) 칸: 배당 + 저PBR 점수용
         c.commit()
         _local.c = c
     return c

@@ -28,7 +28,8 @@ HOLIDAYS = {'20261005', '20261009', '20261225', '20261231',
 PART, TRAIL, STOP, HOLD, MAXPOS, SECCAP, SLOTS = 0.30, 4.0, 15.0, 40, 14, 2, 10
 S5_PCT, S5_MAX, S5_TH, S5_MAXD = 5.0, 6, -0.07, 7          # S5: 종목당 계좌 5% · 최대 6종목 · 5일 −7% · 최대 7일
 ON_TICKER, ON_NAME = '229200', 'KODEX 코스닥150'           # 밤사이 칸 ETF (1배 · 매매차익 비과세)
-COSTS = {'H1': 0.25, 'S5': 0.25, 'ON': 0.03}               # 손익 계산용 왕복 비용 추정 % (주식: 수수료 · 세금 · 여유 / ETF: 수수료)
+COSTS = {'H1': 0.25, 'S5': 0.25, 'ON': 0.03, 'CORE': 0.25}  # 손익 계산용 왕복 비용 추정 % (주식: 수수료 · 세금 · 여유 / ETF: 수수료)
+CORE_N, CORE_BUF, CORE_SEC = 15, 30, 4                     # 코어: 15종목 · 30위 안이면 계속 보유 · 업종당 4
 STRATS = {
     'H1': {'name': 'H1 우량주 반등', 'icon': '💎', 'color': '#0f766e',
            'rule': '우량주 100 중 종가가 20일선보다 10% 이상 아래 → 다음날 08:35 장전 시장가 매수 · +5% 지정가로 30% 익절(3주 이하는 전량) · 나머지는 종가가 보유 중 최고 종가 −4%면 다음날 시가 매도 · −15% 재난 손절 · 최대 40거래일',
@@ -42,6 +43,10 @@ STRATS = {
            'rule': '매일 15:21 장마감 동시호가 시장가로 KODEX 코스닥150 매수(종가 체결) → 다음날 08:35 장전 시장가 매도(시가 체결)',
            'size': '계좌의 30% (H1 · S5 칸과 돈을 섞지 않음)',
            'evidence': '코스닥150 밤사이 평균 +0.107%(2019~22, t 3.7) · +0.136%(2023~26, t 3.7), 낮은 마이너스 · 왕복 비용 0.05% 이하일 때만 확실히 이득 → 모의투자로 실제 비용 확인'},
+    'CORE': {'name': '코어 배당·가치 15', 'icon': '🏛', 'color': '#b45309',
+             'rule': '매월 첫 거래일 코스피200 · 코스닥150 중 흑자 · 배당 · 편입 1년 이상 → 배당수익률 + 저PBR 점수 상위 15(업종당 4) → 다음날 08:35 장전 시장가 매수 · 30위 밖으로 밀린 종목만 판다(완충) · 손절 없음',
+             'size': '칸 한도(기본 꺼짐 · 켜면 계좌의 %) ÷ 15 종목당 · 다른 칸이 가진 종목은 건너뜀',
+             'evidence': 'seed 월별 검증(2020-01~2026-09, 비용 뺌): 연 +24.4% · 최대 낙폭 −27% vs 구성 350 동일가중 +11.3% · −28% · 2020~22 +12.0% / 2023~26 +35.6% · 배당세 빼도 초과 · 초과 t 1.7(강하지 않음) · 반은 배당 자체 (research/monthly_study_result.md)'},
 }
 STATE = {'last_monitor': '', 'last_err': '', 'running': False}
 _lock = threading.Lock()
@@ -58,7 +63,8 @@ CREATE TABLE IF NOT EXISTS kis_equity (date TEXT PRIMARY KEY, cash REAL, value R
 CREATE TABLE IF NOT EXISTS kis_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, level TEXT, msg TEXT);
 """
 KIND = {'entry': '매수', 'tp': '1차 익절 +5%', 'trail': '추적 매도', 'stop': '재난 손절', 'time': '40일 만료', 'manual': '수동',
-        'exit': '반등 매도(5일선)', 'exit7': '7일 만료 매도', 'night': '밤사이 매수(종가)', 'nsell': '밤사이 매도(시가)'}
+        'exit': '반등 매도(5일선)', 'exit7': '7일 만료 매도', 'night': '밤사이 매수(종가)', 'nsell': '밤사이 매도(시가)',
+        'core': '코어 매수', 'crebal': '코어 교체 매도'}
 
 
 _ready = set()
@@ -80,16 +86,19 @@ def c():
 
 def on(cfg, k):
     """칸 켜짐 (기본 켜짐)"""
-    return {'S5': cfg.get('kis_s5_on', False), 'ON': cfg.get('kis_night_on', True), 'H1': True}.get(k, False) is not False   # B1.1: S5 기본 끔
+    return {'S5': cfg.get('kis_s5_on', False), 'ON': cfg.get('kis_night_on', True), 'H1': True,
+            'CORE': cfg.get('kis_core_on', False)}.get(k, False) is not False   # B1.1: S5 기본 끔 · B1.2: 코어 기본 끔
 
 
 def pct(cfg, k):
     try:
         if k == 'H1':
             return min(100.0, max(30.0, float(cfg.get('kis_h1_pct') or 70)))
+        if k == 'CORE':
+            return min(60.0, max(0.0, float(cfg.get('kis_core_pct') or 0)))
         return min(60.0, max(0.0, float(cfg.get('kis_night_pct') if cfg.get('kis_night_pct') is not None else 30)))
     except Exception:
-        return 70.0 if k == 'H1' else 30.0
+        return {'H1': 70.0, 'CORE': 0.0}.get(k, 30.0)
 
 
 def now():
@@ -188,8 +197,7 @@ def expire_limits():
     x = c()
     n = x.execute("UPDATE kis_orders SET status='만료' WHERE status IN ('접수','부분','취소요청') AND ord_dvsn='00' AND (date<? OR (date=? AND ?>='15:31'))",
                   (today(), today(), hm)).rowcount
-    if n:
-        x.commit()
+    x.commit()          # B1.2: 바뀐 행이 0이어도 커밋 — 안 하면 UPDATE가 연 쓰기 잠금이 남아 16:40 계산 등 다른 스레드 쓰기가 'database is locked'로 실패
     return n
 
 
@@ -277,6 +285,8 @@ def _apply(x, o, filled, avg, d):
         if not p:
             if st == 'ON':
                 sig = (d, 'ETF')
+            elif st == 'CORE':
+                sig = x.execute('SELECT month, sector FROM monthly WHERE ticker=? ORDER BY month DESC LIMIT 1', (o['ticker'],)).fetchone()
             else:
                 sig = x.execute("SELECT signal_date, sector FROM orders WHERE model=? AND ticker=? ORDER BY signal_date DESC LIMIT 1",
                                 ('S5' if st == 'S5' else 'H', o['ticker'])).fetchone()
@@ -356,7 +366,7 @@ def preopen(cfg, kc, d):
         db.meta_set('kis_block_new', '')
     for p in [dict(r) for r in x.execute('SELECT * FROM kis_pos WHERE qty>0 AND sell_next=1')]:
         st = p.get('strat') or 'H1'
-        kind = {'H1': 'trail', 'ON': 'nsell'}.get(st) or ('exit7' if (p['days'] or 0) >= S5_MAXD else 'exit')
+        kind = {'H1': 'trail', 'ON': 'nsell', 'CORE': 'crebal'}.get(st) or ('exit7' if (p['days'] or 0) >= S5_MAXD else 'exit')
         send(cfg, kc, 'sell', kind, p['ticker'], p['name'], p['qty'], strat=st)
         if halted():
             return
@@ -376,13 +386,127 @@ def preopen(cfg, kc, d):
     cash = min(bal['cash_d2'] or bal['cash'], bal['cash'] or bal['cash_d2'])
     plan = build_plan(cfg, bal['equity'], cash, last, d)
     plan += build_s5(cfg, bal['equity'], cash, last, d, plan)
+    try:
+        plan += build_core(cfg, bal['equity'], cash - sum(p['qty'] * p['ref'] * 1.02 for p in plan if not p['skip']), last, d)
+    except Exception as e:
+        log(f'코어 계획 실패: {str(e)[:150]}', 'warn')
     for p in plan:
         if p['skip']:
             log(f"[{p['strat']}] {p['name']} 건너뜀 — {p['skip']}")
             continue
-        send(cfg, kc, 'buy', 'entry', p['ticker'], p['name'], p['qty'], strat=p['strat'])
+        send(cfg, kc, 'buy', 'core' if p['strat'] == 'CORE' else 'entry', p['ticker'], p['name'], p['qty'], strat=p['strat'])
         if halted():
             return
+
+
+# ════════════════════════════════════════════
+#  🏛 코어 배당·가치 칸 (B1.2 · 기본 꺼짐)
+# ════════════════════════════════════════════
+def core_rank(month=None):
+    """그달 코스피200 · 코스닥150 중 흑자 · 배당 · PBR>0 · 편입 12개월+ → z(배당수익률) + z(1/PBR) 순위 (업종당 CORE_SEC)"""
+    x = db.conn()
+    month = month or x.execute('SELECT MAX(month) FROM members').fetchone()[0]
+    if not month:
+        return month, []
+    ten = {r[0]: r[1] for r in x.execute('SELECT ticker, COUNT(*) FROM members WHERE month<? GROUP BY ticker', (month,))}
+    rows = [dict(r) for r in x.execute('''SELECT m.ticker, m.name, m.sector, m.div, m.pbr, m.eps FROM monthly m
+                                          JOIN members b ON b.month=m.month AND b.ticker=m.ticker WHERE m.month=?''', (month,))]
+    rows = [r for r in rows if (r['eps'] or 0) > 0 and (r['div'] or 0) > 0 and (r['pbr'] or 0) > 0 and ten.get(r['ticker'], 0) >= 12]
+    if len(rows) < 40:
+        return month, []
+
+    def z(vals):
+        v = sorted(vals)
+        lo, hi = v[int(len(v) * .02)], v[int(len(v) * .98) - 1]
+        c_ = [min(max(a, lo), hi) for a in vals]
+        mu = sum(c_) / len(c_)
+        sd = (sum((a - mu) ** 2 for a in c_) / (len(c_) - 1)) ** .5 or 1
+        return [(a - mu) / sd for a in c_]
+    zd, zb = z([r['div'] for r in rows]), z([1 / r['pbr'] for r in rows])
+    for r, a, b in zip(rows, zd, zb):
+        r['score'] = a + b
+    rows.sort(key=lambda r: -r['score'])
+    secn, out = {}, []
+    for r in rows:
+        if secn.get(r['sector'], 0) >= CORE_SEC:
+            continue
+        secn[r['sector']] = secn.get(r['sector'], 0) + 1
+        out.append(r)
+    for i, r in enumerate(out):
+        r['rank'] = i + 1
+    return month, out
+
+
+def core_mark(d):
+    """장 마감 계산 뒤(매일, 새 달 자료가 들어오면 실제로 바뀜): 코어 보유 중 순위 CORE_BUF 밖 → 다음 장전 매도 표시"""
+    month, rank = core_rank()
+    if not rank or db.meta_get('core_month') == month:
+        return 0
+    pos = {r['ticker']: r['rank'] for r in rank}
+    x = c()
+    n = 0
+    for p in [dict(r) for r in x.execute("SELECT * FROM kis_pos WHERE qty>0 AND strat='CORE'")]:
+        if pos.get(p['ticker'], 10 ** 6) > CORE_BUF:
+            x.execute('UPDATE kis_pos SET sell_next=1 WHERE ticker=?', (p['ticker'],))
+            log(f"[CORE] 교체 매도 표시 {p['name']} (순위 {pos.get(p['ticker'], '밖')}) → 다음 장전 시장가")
+            n += 1
+    x.commit()
+    db.meta_set('core_month', month)
+    log(f"{month} 코어 순위 갱신: 상위 {', '.join(r['name'] for r in rank[:CORE_N])}")
+    return n
+
+
+def build_core(cfg, equity, cash, last, d=None):
+    """코어 매수 계획: 목표 = 보유 중 순위 CORE_BUF 안 + 빈자리는 상위부터 · 칸 한도 ÷ CORE_N 종목당 · 모자란 종목은 다음 날 다시 (자동으로 채워짐)"""
+    if not on(cfg, 'CORE') or pct(cfg, 'CORE') <= 0:
+        return []
+    month, rank = core_rank()
+    if not rank:
+        return []
+    x = c()
+    cap = _cap(cfg)
+    base = min(equity or cap, cap)
+    budget = base * pct(cfg, 'CORE') / 100
+    size = budget / CORE_N
+    held_all = {r[0]: r[1] for r in x.execute("SELECT ticker, COALESCE(strat,'H1') FROM kis_pos WHERE qty>0")}
+    mine = {t for t, st in held_all.items() if st == 'CORE'}
+    selling = {r[0] for r in x.execute("SELECT ticker FROM kis_pos WHERE qty>0 AND strat='CORE' AND sell_next=1")}
+    keep = mine - selling
+    room = budget - sleeve_invested(('CORE',)) + sum(r[0] for r in x.execute("SELECT qty*entry_px FROM kis_pos WHERE qty>0 AND strat='CORE' AND sell_next=1"))
+    cash = cash if cash is not None else budget
+    need = CORE_N - len(keep)
+    px = eng.prices([r['ticker'] for r in rank[:CORE_BUF]], last, last) if last and need > 0 else {}
+    out = []
+    for r in rank:
+        if need <= 0:
+            break
+        t = r['ticker']
+        if t in keep:
+            continue
+        o = {'ticker': t, 'name': r['name'], 'sector': r['sector'], 'ref': 0.0, 'ma20gap': None, 'qty': 0, 'amt': 0, 'skip': '', 'strat': 'CORE',
+             'rank': r['rank'], 'div': r['div'], 'pbr': r['pbr']}
+        bar = px.get(t)
+        ref = float(bar.close.iloc[-1]) if bar is not None and len(bar) else 0.0
+        o['ref'] = ref
+        if t in held_all:
+            o['skip'] = '다른 칸이 보유 중'
+        elif d and x.execute("SELECT 1 FROM kis_orders WHERE date=? AND ticker=? AND side='buy' AND status NOT LIKE '거절%'", (d, t)).fetchone():
+            o['skip'] = '오늘 이미 주문'
+        elif ref <= 0:
+            o['skip'] = '기준 가격 없음'
+        else:
+            amt = min(size, room, cash / 1.03)
+            qty = int(amt // (ref * 1.02)) if amt > 0 else 0
+            if qty <= 0:
+                o['skip'] = '1주 가격 > 종목당 금액' if ref * 1.02 > size else '칸 한도 · 현금 부족'
+            else:
+                o.update(qty=qty, amt=qty * ref)
+                room -= qty * ref * 1.02
+                cash -= qty * ref * 1.02
+        out.append(o)
+        if not o['skip']:
+            need -= 1
+    return [o for o in out if not o['skip'] or o['skip'] not in ('다른 칸이 보유 중',)][:CORE_N + 5]
 
 
 def build_plan(cfg, equity, cash, last, d=None):
@@ -658,6 +782,13 @@ def eod(cfg, kc, d):
         k = kpos.get(p['ticker'])
         cl = (k or {}).get('price') or p['last_px'] or p['entry_px']
         st = p.get('strat') or 'H1'
+        if st == 'CORE':                                          # B1.2 코어: 매도는 월 교체 표시(core_mark)만 · 여기선 평가만
+            if not k:
+                bad.append(f"{p['name']} 앱 {p['qty']}주 · KIS 없음")
+            elif k['qty'] != p['qty']:
+                bad.append(f"{p['name']} 앱 {p['qty']}주 · KIS {k['qty']}주")
+            x.execute('UPDATE kis_pos SET days=days+1, last_px=? WHERE ticker=?', (cl, p['ticker']))
+            continue
         if st != 'H1':
             if not k:
                 bad.append(f"{p['name']} 앱 {p['qty']}주 · KIS 없음")
@@ -727,7 +858,7 @@ def precheck(cfg, kc, d):
         probs.append(f"매수 신호가 전 거래일 것이 아님({pv['signal_date']}) → 오늘 신규 매수 안 함 (우량주 계산 확인)")
     if halted():
         probs.append(f'자동주문 정지 상태: {halted()}')
-    buys = [f"[{b['strat']}] {b['name']}" for b in pv.get('buys', []) + pv.get('s5', []) if not b.get('skip')]
+    buys = [f"[{b['strat']}] {b['name']}" for b in pv.get('buys', []) + pv.get('s5', []) + pv.get('core', []) if not b.get('skip')]
     if probs:
         log('장전 점검 — ' + ' / '.join(probs), 'warn')
         alert('H1 모의투자 장전 점검(08:20) 문제 — ' + ' / '.join(probs), 'precheck')
@@ -873,7 +1004,12 @@ def preview(cfg):
     cash_am = (cash or 0) - (held_on or 0) if eq else cash               # 08:35엔 밤사이 ETF가 아직 안 팔려 있음
     buys = build_plan(cfg, equity, cash_am, last) if last else []
     s5 = build_s5(cfg, equity, cash_am, last, None, buys) if last else []
-    WHY = {'H1': '추적 매도 (종가 ≤ 최고 종가 −4%) → 장전 시장가', 'S5': 'S5 매도 (5일선 회복 · 7일) → 장전 시장가', 'ON': '밤사이 ETF → 장전 시장가 (시가 체결)'}
+    try:
+        core = build_core(cfg, equity, (cash_am or 0) - sum(p['qty'] * p['ref'] * 1.02 for p in buys + s5 if not p['skip']), last) if last else []
+    except Exception:
+        core = []
+    WHY = {'H1': '추적 매도 (종가 ≤ 최고 종가 −4%) → 장전 시장가', 'S5': 'S5 매도 (5일선 회복 · 7일) → 장전 시장가', 'ON': '밤사이 ETF → 장전 시장가 (시가 체결)',
+           'CORE': f'코어 교체 (순위 {CORE_BUF}위 밖) → 장전 시장가'}
     sells = [{'name': p['name'], 'ticker': p['ticker'], 'qty': p['qty'], 'strat': p['strat'] or 'H1', 'why': WHY.get(p['strat'] or 'H1', '')}
              for p in x.execute('SELECT * FROM kis_pos WHERE qty>0 AND sell_next=1')]
     sells += [{'name': p['name'], 'ticker': p['ticker'], 'qty': p['qty'], 'strat': 'H1', 'why': f"40일 만료 ({p['days']}일째) → 15:20 장마감"}
@@ -889,7 +1025,7 @@ def preview(cfg):
                 break
     used = db.meta_get(f'kis_plan_used_{last}') == '1'
     stale = bool(nxt) and last != prev_trading_day(nxt)
-    return {'signal_date': last, 'for_date': nxt, 'buys': buys, 's5': s5, 'sells': sells, 'used': used, 'stale': stale,
+    return {'signal_date': last, 'for_date': nxt, 'buys': buys, 's5': s5, 'core': core, 'sells': sells, 'used': used, 'stale': stale,
             'night': night_plan(cfg, equity, cash), 'basis': '마지막 KIS 평가 기록' if eq else '운용 한도 (평가 기록 없음)', 'equity': equity, 'cash': cash}
 
 
@@ -985,10 +1121,10 @@ def strat_summary(cfg, lp=None):
         part = sum(partial_pnl(p) for p in ps)
         rets = [r['ret'] for r in cl]
         today_rz = sum(r['pnl'] for r in cl if r['exit_date'] == t)
-        limit = base * (pct(cfg, 'H1') / 100 if st in ('H1', 'S5') else pct(cfg, 'ON') / 100)
+        limit = base * (pct(cfg, 'H1') / 100 if st in ('H1', 'S5') else pct(cfg, st) / 100)
         if st == 'S5':
             limit = min(limit, base * S5_PCT / 100 * S5_MAX)
-        out.append({'key': st, **m, 'on': on(cfg, st) and (st != 'ON' or pct(cfg, 'ON') > 0), 'limit': limit, 'invested': inv, 'value': val,
+        out.append({'key': st, **m, 'on': on(cfg, st) and (st not in ('ON', 'CORE') or pct(cfg, st) > 0), 'limit': limit, 'invested': inv, 'value': val,
                     'unreal': val - inv, 'realized': sum(r['pnl'] for r in cl) + part, 'partial': part, 'today_realized': today_rz,
                     'npos': len(ps), 'closed': len(cl), 'win': sum(1 for v in rets if v > 0) / len(rets) * 100 if rets else None,
                     'avg': sum(rets) / len(rets) if rets else None, 'use': inv / limit * 100 if limit else 0})
@@ -1077,6 +1213,7 @@ def status(cfg):
             'stats': {'n': len(rets), 'win': sum(1 for v in rets if v > 0) / len(rets) * 100 if rets else None, 'avg': sum(rets) / len(rets) if rets else None,
                       'pnl': sum(r['pnl'] for r in closed), 'best': max(rets) if rets else None, 'worst': min(rets) if rets else None},
             'strats': strat_summary(cfg), 'alloc': {'h1_pct': pct(cfg, 'H1'), 'night_pct': pct(cfg, 'ON'), 's5_on': on(cfg, 'S5'), 'night_on': on(cfg, 'ON'),
+                                                     'core_pct': pct(cfg, 'CORE'), 'core_on': on(cfg, 'CORE'), 'core_n': CORE_N,
                                                      's5_pct': S5_PCT, 's5_max': S5_MAX, 'on_ticker': ON_TICKER, 'on_name': ON_NAME},
             'start': start_value(), 'state': dict(STATE), 'compare': compare(), 'trading_day': is_trading_day(), 'perf': perf(), 'criteria': criteria(cfg), 'dash': dash(cfg)}
 

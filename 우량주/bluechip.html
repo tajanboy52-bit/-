@@ -229,7 +229,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 <section id="t-hist" hidden>
   <div class="kpis" id="hKpi"></div>
   <div class="card"><h2>청산 내역 <small>다 판 거래 · 손익 = 판 돈 − 산 돈 − 비용(추정: 주식 0.25% · ETF 0.03%)</small></h2>
-    <div class="row" style="margin-bottom:10px"><select id="hStrat"><option value="">모든 칸</option><option value="H1">💎 H1</option><option value="S5">⚡ S5</option><option value="ON">🌙 밤사이</option></select></div>
+    <div class="row" style="margin-bottom:10px"><select id="hStrat"><option value="">모든 칸</option><option value="H1">💎 H1</option><option value="S5">⚡ S5</option><option value="ON">🌙 밤사이</option><option value="CORE">🏛 코어</option></select></div>
     <div class="tw" id="hClosed"></div></div>
   <div class="grid g2">
     <div class="card"><h2>칸 · 사유별</h2><div class="tw" id="hReason"></div></div>
@@ -244,7 +244,8 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
     <div class="grid g2" style="margin-top:14px">
       <div><label>💎 H1 + ⚡ S5 칸 (계좌의 %)</label><div class="rng"><input type="range" id="aH1" min="30" max="100" step="5"><b id="aH1v"></b></div>
         <label style="margin-top:10px">🌙 밤사이 ETF 칸 (계좌의 %)</label><div class="rng"><input type="range" id="aON" min="0" max="60" step="5"><b id="aONv"></b></div>
-        <div class="row" style="margin-top:10px;gap:14px"><label class="swt"><input type="checkbox" id="aS5"> ⚡ S5 켜기</label><label class="swt"><input type="checkbox" id="aNT"> 🌙 밤사이 켜기</label></div>
+        <label style="margin-top:10px">🏛 코어 배당·가치 15 칸 (계좌의 % · B1.2 새 모델, 기본 0)</label><div class="rng"><input type="range" id="aCO" min="0" max="60" step="5"><b id="aCOv"></b></div>
+        <div class="row" style="margin-top:10px;gap:14px"><label class="swt"><input type="checkbox" id="aS5"> ⚡ S5 켜기</label><label class="swt"><input type="checkbox" id="aNT"> 🌙 밤사이 켜기</label><label class="swt"><input type="checkbox" id="aCOon"> 🏛 코어 켜기</label></div>
         <div class="row" style="margin-top:12px"><button class="btn p" id="aSave">칸 설정 저장</button><span class="mut" id="aMsg"></span></div></div>
       <div class="alert" style="margin:0">바꾼 설정은 <b>다음 주문부터</b> 적용됩니다 (이미 산 종목은 그대로). H1 종목당 금액은 계좌의 10%로 고정 — 칸이 작아지면 동시에 들고 있을 수 있는 종목 수만 줄어듭니다. 합계 100% 이하.</div>
     </div></div>
@@ -309,9 +310,9 @@ const pct=(v,d=2)=>v==null||isNaN(v)?'-':(v>0?'+':'')+Number(v).toFixed(d)+'%', 
 const sw=v=>v==null?'-':`<span class="${cls(v)} pl">${v>0?'+':''}${won(v)}</span>`;
 const toast=(t,ok=true)=>{const e=$('#toast');e.textContent=t;e.style.background=ok?'#111827':'#b91c1c';e.style.display='block';setTimeout(()=>e.style.display='none',2600)};
 const get=u=>fetch(u).then(r=>r.json()), post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})}).then(r=>r.json());
-const SC={H1:'#0f766e',S5:'#7c3aed',ON:'#1d4ed8',KIS:'#111827'}, SN={H1:'💎 H1',S5:'⚡ S5',ON:'🌙 밤사이'};
+const SC={H1:'#0f766e',S5:'#7c3aed',ON:'#1d4ed8',CORE:'#b45309',KIS:'#111827'}, SN={H1:'💎 H1',S5:'⚡ S5',ON:'🌙 밤사이',CORE:'🏛 코어'};
 const sb=s=>`<span class="sb" style="--c:${SC[s||'H1']}">${SN[s||'H1']||s}</span>`;
-const KIND={entry:'매수',tp:'1차 익절 +5%',trail:'추적 매도',stop:'재난 손절',time:'40일 만료',manual:'수동',exit:'반등 매도(5일선)',exit7:'7일 만료',night:'밤사이 매수(종가)',nsell:'밤사이 매도(시가)'};
+const KIND={entry:'매수',tp:'1차 익절 +5%',trail:'추적 매도',stop:'재난 손절',time:'40일 만료',manual:'수동',exit:'반등 매도(5일선)',exit7:'7일 만료',night:'밤사이 매수(종가)',nsell:'밤사이 매도(시가)',core:'코어 매수',crebal:'코어 교체 매도'};
 let TAB='dash';try{TAB=localStorage.getItem('bc_tab2')||'dash'}catch(e){}
 let K=null,LIVE=null,KT=null,DASH=null;
 function show(t){TAB=t;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!=='t-'+t);try{localStorage.setItem('bc_tab2',t)}catch(e){}load()}
@@ -389,6 +390,7 @@ async function loadKis(liveToo){
   const li=(a,f,e)=>a.length?'<ul>'+a.map(f).join('')+'</ul>':`<div class="mut">${e}</div>`;
   $('#kPlan').innerHTML=`<div><h3>💎 H1 매수</h3>${li(pv.buys,b=>`<li><b>${b.name}</b> ${b.skip?`<span class="mut">건너뜀 · ${b.skip}</span>`:`${b.qty}주 ≈ ${man(b.amt)} <span class="mut">(20일선 ${pct(b.ma20gap*100,1)})</span>`}</li>`,'신호 없음')}</div>
     <div><h3>⚡ S5 매수${k.alloc.s5_on?'':' (꺼짐)'}</h3>${li(pv.s5,b=>`<li><b>${b.name}</b> ${b.skip?`<span class="mut">건너뜀 · ${b.skip}</span>`:`${b.qty}주 ≈ ${man(b.amt)} <span class="mut">(5일 ${pct(b.r5*100,1)})</span>`}</li>`,'신호 없음')}</div>
+    ${k.alloc.core_on&&k.alloc.core_pct>0?`<div><h3>🏛 코어 매수</h3>${li(pv.core||[],b=>`<li><b>${b.name}</b> ${b.skip?`<span class="mut">건너뜀 · ${b.skip}</span>`:`${b.qty}주 ≈ ${man(b.amt)} <span class="mut">(${b.rank}위 · 배당 ${b.div}% · PBR ${b.pbr})</span>`}</li>`,'다 채움')}</div>`:''}
     <div><h3>매도 · 🌙 밤사이</h3>${li(pv.sells,b=>`<li>${sb(b.strat)} <b>${b.name}</b> ${b.qty}주 · <span class="mut">${b.why}</span></li>`,'매도 예정 없음')}
       <div class="mini" style="margin-top:6px">🌙 매일 15:21 ${pv.night.name} 약 ${man(pv.night.budget)}${pv.night.skip&&!pv.night.skip.includes('안 팔림')?' · '+pv.night.skip:''}</div></div>`;
   clearTimeout(KT);if(TAB==='dash'&&['장전 동시호가','장중','장마감 동시호가'].includes(k.phase)&&!document.hidden)KT=setTimeout(()=>{if(TAB==='dash')loadKis(true)},30000)}
@@ -410,16 +412,16 @@ async function loadHist(){K=await get('/api/kis');const k=K,f=$('#hStrat').value
     {h:'수량',r:1,f:r=>r.qty},{h:'방식',f:r=>r.ord_dvsn==='01'?'시장가':'지정가 '+won(r.price)},{h:'상태',f:r=>r.status},{h:'체결',r:1,f:r=>r.filled?`${r.filled}주 @ ${won(r.avg)}`:'-'},{h:'메시지',f:r=>`<span class="mut">${r.msg||''}</span>`}],k.orders,'주문 없음')}
 $('#hStrat').onchange=loadHist;
 async function loadModel(){K=await get('/api/kis');const k=K,a=k.alloc;
-  $('#aH1').value=a.h1_pct;$('#aON').value=a.night_pct;$('#aS5').checked=a.s5_on;$('#aNT').checked=a.night_on;
-  const upd=()=>{const h=+$('#aH1').value,o=+$('#aON').value;$('#aH1v').textContent=h+'%';$('#aONv').textContent=o+'%';const rest=Math.max(0,100-h-o);
-    $('#mStack').innerHTML=`<i style="width:${h}%;background:${SC.H1}"></i><i style="width:${o}%;background:${SC.ON}"></i><i style="width:${rest}%;background:#cbd5e1"></i>`;
-    $('#mStackL').innerHTML=`<span style="color:${SC.H1}">■</span> H1 + S5 칸 ${h}% (H1 종목당 10% · S5 종목당 ${a.s5_pct}% 최대 ${a.s5_max}) &nbsp; <span style="color:${SC.ON}">■</span> 밤사이 ${o}% (${a.on_name}) &nbsp; <span style="color:#94a3b8">■</span> 남김 ${rest}%${h+o>100?' · ⚠️ 합계 100% 넘음':''}`};
-  $('#aH1').oninput=$('#aON').oninput=upd;upd();
+  $('#aH1').value=a.h1_pct;$('#aON').value=a.night_pct;$('#aCO').value=a.core_pct||0;$('#aS5').checked=a.s5_on;$('#aNT').checked=a.night_on;$('#aCOon').checked=!!a.core_on;
+  const upd=()=>{const h=+$('#aH1').value,o=+$('#aON').value,co=+$('#aCO').value;$('#aH1v').textContent=h+'%';$('#aONv').textContent=o+'%';$('#aCOv').textContent=co+'%';const rest=Math.max(0,100-h-o-co);
+    $('#mStack').innerHTML=`<i style="width:${h}%;background:${SC.H1}"></i><i style="width:${o}%;background:${SC.ON}"></i><i style="width:${co}%;background:${SC.CORE}"></i><i style="width:${rest}%;background:#cbd5e1"></i>`;
+    $('#mStackL').innerHTML=`<span style="color:${SC.H1}">■</span> H1 + S5 칸 ${h}% (H1 종목당 10% · S5 종목당 ${a.s5_pct}% 최대 ${a.s5_max}) &nbsp; <span style="color:${SC.ON}">■</span> 밤사이 ${o}% (${a.on_name}) &nbsp; <span style="color:${SC.CORE}">■</span> 코어 ${co}% (${a.core_n}종목) &nbsp; <span style="color:#94a3b8">■</span> 남김 ${rest}%${h+o+co>100?' · ⚠️ 합계 100% 넘음':''}`};
+  $('#aH1').oninput=$('#aON').oninput=$('#aCO').oninput=upd;upd();
   $('#mCards').innerHTML=k.strats.map(s=>`<div class="sc ${s.on?'':'off'}" style="--c:${s.color}"><div class="sc-h"><span style="font-size:20px">${s.icon}</span><b>${s.name}</b><span class="tg">${s.on?'켜짐':'꺼짐'}</span></div>
     <p style="font-size:13.5px;line-height:1.65;margin:10px 0 6px"><b>규칙</b> · ${s.rule}</p><p style="font-size:13.5px;line-height:1.65;margin:0 0 6px"><b>금액</b> · ${s.size}</p>
     <p class="mini" style="line-height:1.6;margin:0"><b>근거</b> · ${s.evidence}</p></div>`).join('');
   $('#mCrit').innerHTML='<div class="crit">'+k.criteria.map(c=>`<span>${c.k}</span><b style="font-weight:600">${c.v}</b><span>${c.ok?'✅':'·'}</span>${c.prog!=null?`<div class="pb"><i style="width:${(c.prog*100).toFixed(0)}%"></i></div>`:''}`).join('')+'</div>'}
-$('#aSave').onclick=async()=>{const r=await post('/api/config',{kis_h1_pct:+$('#aH1').value,kis_night_pct:+$('#aON').value,kis_s5_on:$('#aS5').checked,kis_night_on:$('#aNT').checked});$('#aMsg').textContent=r.ok?'저장됨 · 다음 주문부터':r.error;toast(r.ok?'칸 설정 저장':r.error,r.ok);loadModel()};
+$('#aSave').onclick=async()=>{const r=await post('/api/config',{kis_h1_pct:+$('#aH1').value,kis_night_pct:+$('#aON').value,kis_core_pct:+$('#aCO').value,kis_s5_on:$('#aS5').checked,kis_night_on:$('#aNT').checked,kis_core_on:$('#aCOon').checked});$('#aMsg').textContent=r.ok?'저장됨 · 다음 주문부터':r.error;toast(r.ok?'칸 설정 저장':r.error,r.ok);loadModel()};
 async function loadUniv(){const m=$('#uMonth').value;const[d,dash]=await Promise.all([get('/api/universe'+(m?`?month=${m}`:'')),get('/api/dash')]);DASH=dash;
   if(!$('#uMonth').options.length)$('#uMonth').innerHTML=d.months.map(x=>`<option>${x}</option>`).join('');
   $('#uSub').textContent=`${d.month} · 지표 기준 ${md(d.date)}`+(d.fallback?` · ⚠️ KRX 갱신 실패로 ${d.fallback} 목록 사용`:'');
