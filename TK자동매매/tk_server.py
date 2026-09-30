@@ -160,10 +160,15 @@ def report(d):
 
 
 def scheduler():
-    time.sleep(15)
+    time.sleep(5)
+    import_run()                                                                 # 처음 켤 때 내장 자료(seed) · 가져오기 폴더
+    last_imp = time.time()
     while True:
         try:
             n = datetime.now()
+            if time.time() - last_imp > 600 and not col.STATE['running']:         # 10분마다 가져오기 폴더 확인 → 새 파일 자동 누적
+                last_imp = time.time()
+                import_run()
             d, hm = n.strftime('%Y%m%d'), n.strftime('%H:%M')
             if '07:40' <= hm <= '08:10' and db.gmeta_get('master_day') != d:
                 db.gmeta_set('master_day', d)
@@ -498,32 +503,30 @@ async def api_job_collect(req: Request):
     return {'ok': True, 'msg': '수집 시작'}
 
 
+def import_run():
+    """seed/ · 가져오기/ 에서 새 파일만 DB에 (지문으로 중복 방지)"""
+    if col.STATE['running']:
+        return 0
+    col.STATE.update(running=True, err='', pct=0, msg='내장 · 가져오기 자료 확인')
+    try:
+        n = col.auto_import(say=lambda m: col.STATE.update(msg=m))
+        col.STATE.update(msg=f'자료 확인 끝 · 새로 넣은 파일 {n}개 · 마지막 일봉 {db.last_bar_day() or "-"} · 수급 {db.last_flow_day() or "-"}', pct=100)
+        return n
+    except Exception as e:
+        col.STATE['err'] = CF.clean(e)
+        return 0
+    finally:
+        col.STATE['running'] = False
+
+
 @app.post('/api/job/import')
 async def api_job_import(req: Request):
-    """TK자동매매\\가져오기 폴더의 Scout 내보내기 zip(scout_allmarket_* · scout_allflow_*)을 모두 가져옴"""
+    """가져오기 폴더를 지금 확인 (평소엔 10분마다 자동)"""
     await req.json()
     if col.STATE['running']:
         return {'ok': False, 'error': '수집 중 — 끝난 뒤에'}
-
-    def run():
-        import glob
-        folder = os.path.join(BASE_DIR, '가져오기')
-        os.makedirs(folder, exist_ok=True)
-        files = sorted(glob.glob(os.path.join(folder, '*.zip')))
-        col.STATE.update(running=True, err='', pct=0, msg=f'가져오기 {len(files)}개')
-        try:
-            for i, f in enumerate(files):
-                col.STATE.update(msg=f'가져오기 {os.path.basename(f)} ({i + 1}/{len(files)})', pct=int(i / max(1, len(files)) * 100))
-                col.import_scout_zip(f)
-            col.STATE.update(msg=f'가져오기 끝 {len(files)}개 · 마지막 일봉 {db.last_bar_day() or "-"} · 수급 {db.last_flow_day() or "-"}', pct=100)
-            if not files:
-                col.STATE['err'] = f'{folder} 에 zip이 없습니다'
-        except Exception as e:
-            col.STATE['err'] = CF.clean(e)
-        finally:
-            col.STATE['running'] = False
-    threading.Thread(target=run, daemon=True).start()
-    return {'ok': True, 'msg': '가져오기 시작'}
+    threading.Thread(target=import_run, daemon=True).start()
+    return {'ok': True, 'msg': '가져오기 폴더 확인 시작'}
 
 
 @app.post('/api/job/signal')

@@ -247,9 +247,9 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 
 <section id="t-data" hidden>
   <div class="kpis" id="dataK"></div>
-  <div class="card"><h2>자료 수집 <small>KRX(pykrx · KRX 계정) 주 경로 · KIS 예비 · 매일 자동 (장 마감 15:50 · 수급 확정 18:15 · 종목 마스터 07:40)</small></h2>
+  <div class="card"><h2>자료 수집 <small>내장 자료(수급 2023-09~ · 월 재무 2019-01~) 자동 · 가져오기 폴더 10분마다 자동 · KRX 매일 자동(15:50 · 수급 18:15 · 마스터 07:40) · 중복 없이 누적</small></h2>
     <div class="row"><button class="btn p" id="cFull">📥 처음 전체 수집 (2022-06 ~ 오늘 · 약 1~2시간 · 이어받기)</button><button class="btn" id="cDay">오늘까지 수집</button>
-      <button class="btn" id="cImp" title="바탕화면의 scout_allmarket_*.zip · scout_allflow_*.zip을 TK자동매매\\가져오기 폴더에 넣고">📂 Scout 파일 가져오기</button><button class="btn" id="cMaster">KIS 종목 마스터</button><button class="btn" id="cSig">🎯 신호 지금 계산</button></div>
+      <button class="btn" id="cImp" title="바탕화면의 scout_allmarket_*.zip · scout_allflow_*.zip을 TK자동매매\\가져오기 폴더에 넣고">📂 가져오기 폴더 지금 확인</button><button class="btn" id="cMaster">KIS 종목 마스터</button><button class="btn" id="cSig">🎯 신호 지금 계산</button></div>
     <div style="margin-top:12px"><div class="bar"><i id="cBar" style="width:0%"></i></div><div class="mut" id="cMsg" style="margin-top:6px;font-size:13.5px"></div></div></div>
   <div class="card"><h2>한국투자증권 API 규칙 <small>공식 샘플(open-trading-api)에서 확인 · 이 앱이 지키는 것</small></h2><div class="kv" id="apiRules"></div></div>
 </section>
@@ -448,7 +448,7 @@ $('#bSaveKeys').onclick=async()=>{const b={accounts:{paper:{},real:{}}};['app_ke
   ['krx_id','krx_pw','telegram_token','telegram_chat'].forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});const r=await act('/api/config',b,'저장 (암호화)');if(r.ok)document.querySelectorAll('#t-set input[type=password]').forEach(i=>i.value='')};
 $('#bTg').onclick=()=>act('/api/tg_test',{},'보냄');$('#bSync').onclick=()=>act('/api/sync',{});
 $('#cFull').onclick=()=>{if(confirm('처음 전체 수집: 2022-06부터 전종목(상장폐지 포함) 일봉 · 수급 · 월 자료 (약 1~2시간 · 중간에 꺼도 이어받음)'))act('/api/job/collect',{full:true})};
-$('#cDay').onclick=()=>act('/api/job/collect',{full:false});$('#cMaster').onclick=()=>act('/api/job/collect',{kind:'master'});$('#cImp').onclick=()=>{if(confirm('TK자동매매\\가져오기 폴더의 Scout 내보내기 zip(scout_allmarket_연도 · scout_allflow_연도)을 가져옵니다'))act('/api/job/import',{})};$('#cSig').onclick=()=>act('/api/job/signal',{});
+$('#cDay').onclick=()=>act('/api/job/collect',{full:false});$('#cMaster').onclick=()=>act('/api/job/collect',{kind:'master'});$('#cImp').onclick=()=>{act('/api/job/import',{})};$('#cSig').onclick=()=>act('/api/job/signal',{});
 $('#btRun').onclick=()=>act('/api/job/backtest',{start:$('#btS').value,end:$('#btE').value});
 $('#toReal').onclick=()=>{if(confirm('실전 모드로 바꿉니다. 실제 돈으로 주문하게 됩니다 (자동주문은 꺼진 채로 전환).'))act('/api/mode',{mode:'real',phrase:$('#phrase').value})};
 $('#toPaper').onclick=()=>act('/api/mode',{mode:'paper'});

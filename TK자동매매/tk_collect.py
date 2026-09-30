@@ -428,61 +428,159 @@ def pool_tickers(min_value=3e9):
 
 
 # ════════════════════════════════════════════
-#  Scout 내보내기 zip 가져오기 (전종목_수집.bat이 바탕화면에 만든 파일) — KRX 수집 1~2시간을 건너뜀
+#  내장 자료 · 가져오기 (자동 누적)
+#  · seed/ : 앱에 내장된 자료 (수급 2023-09~ · 월별 구성 종목 · 업종 · 재무 2019-01~) → 처음 켤 때 자동으로 DB에
+#  · 가져오기/ : Scout 내보내기 zip(scout_allmarket_* · scout_allflow_*) · csv · csv.gz를 넣어 두면 10분 안에 자동으로 DB에
+#  · 파일마다 지문(sha1)을 기록 → 같은 파일은 두 번 넣지 않음 · 같은 날짜 · 종목은 새 값으로 덮어씀(중복 없음)
 # ════════════════════════════════════════════
-def import_scout_zip(path):
-    """scout_allmarket_연도_*.zip (px_연도.csv · tickers.csv) · scout_allflow_연도_*.zip (flow_연도.csv) → market.db
-       가격은 원주가 + 등락률(수정주가는 불러올 때 계산) · 거래대금 · 수급은 백만원 → 원"""
+IMPORT_DIRS = [os.path.join(db.HERE, 'seed'), os.path.join(db.HERE, '가져오기')]
+
+
+def _fingerprint(path):
+    import hashlib
+    h = hashlib.sha1()
+    with open(path, 'rb') as f:
+        for b in iter(lambda: f.read(1 << 20), b''):
+            h.update(b)
+    return h.hexdigest()
+
+
+def _stage():
     c = db.mconn()
-    out = {'bars': 0, 'flows': 0, 'tickers': 0, 'days': 0}
-    with zipfile.ZipFile(path) as z:
-        for name in z.namelist():
-            base = os.path.basename(name)
-            text = io.TextIOWrapper(z.open(name), encoding='utf-8-sig')
-            if base == 'tickers.csv':
-                rows = [(r['ticker'].zfill(6), r['name'], r['market'], int(r.get('listed') or 1), classify(r['ticker'], r['name'], r['market']), db.now_s())
-                        for r in csv.DictReader(text)]
-                c.executemany("""INSERT INTO stocks (ticker, name, market, listed, excluded, updated) VALUES (?,?,?,?,?,?)
-                                 ON CONFLICT(ticker) DO UPDATE SET name=excluded.name, market=excluded.market, listed=excluded.listed,
-                                 excluded=CASE WHEN stocks.excluded LIKE '마스터:%' THEN stocks.excluded ELSE excluded.excluded END""", rows)
-                out['tickers'] += len(rows)
-            elif base.startswith('px_') and base.endswith('.csv'):
-                rows, days = [], {}
-                for r in csv.DictReader(text):
-                    cl = _f(r['close'])
-                    if not cl or cl <= 0:
-                        continue
-                    val = _f(r.get('value_mil'))
-                    rows.append((r['date'], r['ticker'].zfill(6), _f(r['open']), _f(r['high']), _f(r['low']), cl, _f(r['volume']),
-                                 val * 1e6 if val is not None else None, _f(r.get('chg')), 'scout'))
-                    days[r['date']] = days.get(r['date'], 0) + 1
-                    if len(rows) >= 200000:
-                        c.executemany('INSERT OR REPLACE INTO bars VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
-                        out['bars'] += len(rows)
-                        rows = []
+    c.executescript("""CREATE TABLE IF NOT EXISTS sector_raw (date TEXT, ticker TEXT, market TEXT, name TEXT, sector TEXT, marcap REAL, PRIMARY KEY (date, ticker));
+                       CREATE TABLE IF NOT EXISTS fund_raw (date TEXT, ticker TEXT, eps REAL, div REAL, pbr REAL, PRIMARY KEY (date, ticker));""")
+    return c
+
+
+def _import_table(base, text, out):
+    """파일 하나(이름으로 종류 판단) → market.db"""
+    c = db.mconn()
+    base = base.lower().replace('.gz', '')
+    if base == 'tickers.csv':
+        rows = [(r['ticker'].zfill(6), r['name'], r['market'], int(r.get('listed') or 1), classify(r['ticker'], r['name'], r['market']), db.now_s())
+                for r in csv.DictReader(text)]
+        c.executemany("""INSERT INTO stocks (ticker, name, market, listed, excluded, updated) VALUES (?,?,?,?,?,?)
+                         ON CONFLICT(ticker) DO UPDATE SET name=excluded.name, market=excluded.market, listed=excluded.listed,
+                         excluded=CASE WHEN stocks.excluded LIKE '마스터:%' THEN stocks.excluded ELSE excluded.excluded END""", rows)
+        out['tickers'] += len(rows)
+    elif base.startswith('px_') and base.endswith('.csv'):
+        rows, days = [], {}
+        for r in csv.DictReader(text):
+            cl = _f(r['close'])
+            if not cl or cl <= 0:
+                continue
+            val = _f(r.get('value_mil'))
+            rows.append((r['date'], r['ticker'].zfill(6), _f(r['open']), _f(r['high']), _f(r['low']), cl, _f(r['volume']),
+                         val * 1e6 if val is not None else None, _f(r.get('chg')), 'scout'))
+            days[r['date']] = days.get(r['date'], 0) + 1
+            if len(rows) >= 200000:
                 c.executemany('INSERT OR REPLACE INTO bars VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
                 out['bars'] += len(rows)
-                c.executemany('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', [('bars', d, n, db.now_s()) for d, n in days.items()])
-                out['days'] += len(days)
-            elif base.startswith('flow_') and base.endswith('.csv'):
-                rd = csv.reader(text)
-                head = next(rd)
-                invs = [(i, h[:-4]) for i, h in enumerate(head) if h.endswith('_mil')]
-                rows, days = [], {}
-                for r in rd:
-                    d, tk = r[0], r[1].zfill(6)
-                    for i, inv in invs:
-                        v = _f(r[i])
-                        if v is not None:
-                            rows.append((d, tk, inv, v * 1e6))
-                            days[(inv, d)] = days.get((inv, d), 0) + 1
-                    if len(rows) >= 300000:
-                        c.executemany('INSERT OR REPLACE INTO flows VALUES (?,?,?,?)', rows)
-                        out['flows'] += len(rows)
-                        rows = []
+                rows = []
+        c.executemany('INSERT OR REPLACE INTO bars VALUES (?,?,?,?,?,?,?,?,?,?)', rows)
+        out['bars'] += len(rows)
+        for d in days:                                                   # 그날 전체 종목 수로 기록 (여러 파일이어도 정확)
+            n = c.execute('SELECT COUNT(*) FROM bars WHERE date=?', (d,)).fetchone()[0]
+            c.execute('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', ('bars', d, n, db.now_s()))
+    elif base.startswith('flow_') and base.endswith('.csv'):
+        rd = csv.reader(text)
+        head = next(rd)
+        invs = [(i, h[:-4]) for i, h in enumerate(head) if h.endswith('_mil')]
+        rows, days = [], {}
+        for r in rd:
+            d, tk = r[0], r[1].zfill(6)
+            for i, inv in invs:
+                v = _f(r[i])
+                if v is not None:
+                    rows.append((d, tk, inv, v * 1e6))
+                    days[(inv, d)] = days.get((inv, d), 0) + 1
+            if len(rows) >= 300000:
                 c.executemany('INSERT OR REPLACE INTO flows VALUES (?,?,?,?)', rows)
                 out['flows'] += len(rows)
-                c.executemany('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', [(f'flow_{inv}', d, n, db.now_s()) for (inv, d), n in days.items()])
+                rows = []
+        c.executemany('INSERT OR REPLACE INTO flows VALUES (?,?,?,?)', rows)
+        out['flows'] += len(rows)
+        c.executemany('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', [(f'flow_{inv}', d, n, db.now_s()) for (inv, d), n in days.items()])
+    elif base == 'const.csv':
+        rows = [(r['date'][:6], r['ticker'].zfill(6), r['index']) for r in csv.DictReader(text)]
+        c.executemany('INSERT OR REPLACE INTO members VALUES (?,?,?)', rows)
+        c.executemany('INSERT OR REPLACE INTO done VALUES (?,?,?,?)', [('month', m, 1, db.now_s()) for m in {r[0] for r in rows}])
+        out['members'] += len(rows)
+    elif base == 'sector.csv':
+        rows = [(r['date'], r['ticker'].zfill(6), r['market'], r['name'], SECTOR_MAP.get(r['sector'], r['sector']), _f(r['marcap'])) for r in csv.DictReader(text)]
+        _stage().executemany('INSERT OR REPLACE INTO sector_raw VALUES (?,?,?,?,?,?)', rows)
+        out['monthly'] += len(rows)
+    elif base == 'fund.csv':
+        rows = [(r['date'], r['ticker'].zfill(6), _f(r.get('EPS')), _f(r.get('DIV')), _f(r.get('PBR'))) for r in csv.DictReader(text)]
+        _stage().executemany('INSERT OR REPLACE INTO fund_raw VALUES (?,?,?,?,?)', rows)
+        out['monthly'] += len(rows)
+    else:
+        return False
     c.commit()
-    db.log(f'Scout 내보내기 가져옴 {os.path.basename(path)}: 일봉 {out["bars"]:,} · 수급 {out["flows"]:,} · 종목 {out["tickers"]:,}')
+    return True
+
+
+def _build_monthly():
+    c = _stage()
+    n = c.execute("""INSERT OR REPLACE INTO monthly (month, date, ticker, market, name, sector, marcap, eps, div, pbr)
+                     SELECT substr(s.date,1,6), s.date, s.ticker, s.market, s.name, s.sector, s.marcap, f.eps, f.div, f.pbr
+                     FROM sector_raw s LEFT JOIN fund_raw f ON f.date=s.date AND f.ticker=s.ticker""").rowcount
+    c.commit()
+    return n
+
+
+def import_file(path):
+    """zip · csv · csv.gz 하나 → market.db (종류는 안의 파일 이름으로: px_ · flow_ · tickers · const · sector · fund)"""
+    import gzip
+    out = {'bars': 0, 'flows': 0, 'tickers': 0, 'members': 0, 'monthly': 0, 'files': 0}
+    low = path.lower()
+    if low.endswith('.zip'):
+        with zipfile.ZipFile(path) as z:
+            for name in z.namelist():
+                with z.open(name) as fb:
+                    raw = gzip.GzipFile(fileobj=fb) if name.lower().endswith('.gz') else fb
+                    out['files'] += _import_table(os.path.basename(name), io.TextIOWrapper(raw, encoding='utf-8-sig'), out)
+    elif low.endswith('.csv.gz') or low.endswith('.csv'):
+        with (gzip.open(path, 'rb') if low.endswith('.gz') else open(path, 'rb')) as fb:
+            out['files'] += _import_table(os.path.basename(path), io.TextIOWrapper(fb, encoding='utf-8-sig'), out)
+    if out['monthly']:
+        _build_monthly()
     return out
+
+
+def import_scout_zip(path):
+    return import_file(path)
+
+
+def auto_import(dirs=None, say=None):
+    """seed/ · 가져오기/ 폴더에서 아직 안 넣은 파일만 넣음 (지문으로 판단) → 넣은 파일 수"""
+    say = say or (lambda m: None)
+    done = done_keys('file', 0)
+    todo = []
+    for d in (dirs or IMPORT_DIRS):
+        if not os.path.isdir(d):
+            continue
+        for f in sorted(os.listdir(d)):
+            p = os.path.join(d, f)
+            if os.path.isfile(p) and f.lower().endswith(('.zip', '.csv', '.csv.gz')):
+                todo.append(p)
+    n = 0
+    for p in todo:
+        try:
+            fp = _fingerprint(p)
+        except Exception:
+            continue
+        if fp in done:
+            continue
+        say(f'자료 넣는 중 {os.path.basename(p)}')
+        t0 = time.time()
+        try:
+            out = import_file(p)
+        except Exception as e:
+            db.log(f'가져오기 실패 {os.path.basename(p)}: {str(e)[:150]}', 'warn')
+            continue
+        _done('file', fp, out['files'])
+        n += 1
+        db.log(f"자료 넣음 {os.path.basename(p)} ({time.time() - t0:.0f}초): 일봉 {out['bars']:,} · 수급 {out['flows']:,} · 종목 {out['tickers']:,}"
+               f" · 구성 {out['members']:,} · 월 재무 {out['monthly']:,}")
+    return n
