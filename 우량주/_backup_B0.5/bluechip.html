@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>💎 우량주 반등 · TK Bluechip</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--ink:#1c2430;--mut:#6b7684;--line:#e3e8ee;--acc:#0f766e;--acc2:#115e59;--soft:#e6f4f1;
+--up:#d63b3b;--dn:#2563eb;--warn:#b45309;--A:#0f766e;--B:#7c3aed;--Z:#94a3b8;--H:#d97706}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1419;--card:#172028;--ink:#e6edf3;--mut:#93a1b0;--line:#26323d;--soft:#12302c;--acc:#2dd4bf;--acc2:#5eead4}}
+:root[data-theme="dark"]{--bg:#0f1419;--card:#172028;--ink:#e6edf3;--mut:#93a1b0;--line:#26323d;--soft:#12302c;--acc:#2dd4bf;--acc2:#5eead4}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+header{background:linear-gradient(120deg,#0f766e,#134e4a);color:#fff;padding:14px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header h1{margin:0;font-size:19px}header small{opacity:.8}.chips{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:rgba(255,255,255,.14);border-radius:999px;padding:3px 10px;font-size:12px}
+nav{display:flex;gap:2px;padding:0 16px;background:var(--card);border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{border:0;background:none;padding:12px 14px;font-size:14px;color:var(--mut);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.on{color:var(--acc);border-color:var(--acc);font-weight:600}
+main{max-width:1280px;margin:0 auto;padding:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 10px}.card h2 small{color:var(--mut);font-weight:400;margin-left:6px}
+.grid{display:grid;gap:12px}.g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.g4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.mc{border:1px solid var(--line);border-radius:12px;padding:12px 14px;border-top:4px solid var(--c)}
+.mc .k{display:inline-block;background:var(--c);color:#fff;border-radius:6px;padding:0 7px;font-weight:700;margin-right:6px}
+.big{font-size:22px;font-weight:700}.mut{color:var(--mut)}.up{color:var(--up)}.dn{color:var(--dn)}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:8px;font-size:13px}.kv b{float:right}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--mut);font-weight:600;background:var(--bg);position:sticky;top:0;cursor:pointer}td.r,th.r{text-align:right}
+.tw{overflow:auto;max-height:560px}.badge{display:inline-block;border-radius:6px;padding:0 6px;font-size:12px;font-weight:700;color:#fff}
+.bA{background:var(--A)}.bB{background:var(--B)}.bZ{background:var(--Z)}.bH{background:var(--H)}
+.g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}.btn.danger{border-color:#b91c1c;color:#b91c1c}.btn.sm{padding:3px 8px;font-size:12px}
+.kbar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:var(--card);border:1px solid var(--line);font-size:13px}
+.pill b{font-weight:700}.pill.on{border-color:#15803d;color:#15803d}.pill.off{border-color:#b91c1c;color:#b91c1c}.pill.w{border-color:#b45309;color:#b45309}
+.crit{display:grid;grid-template-columns:1fr auto 22px;gap:4px 10px;font-size:13px;align-items:center}.crit .pb{grid-column:1/4;height:4px;background:var(--line);border-radius:3px;margin:-2px 0 4px}.crit .pb i{display:block;height:100%;background:var(--acc);border-radius:3px}
+.sch{display:grid;grid-template-columns:92px 1fr auto;gap:6px 10px;font-size:13px}.st-완료{color:#15803d}.st-진행{color:#b45309;font-weight:700}.st-대기{color:var(--mut)}.st-휴장{color:var(--mut)}.st-지남{color:var(--mut)}.st-꺼짐{color:#b91c1c}
+.kcard{border:2px solid var(--H);background:linear-gradient(0deg,var(--card),var(--card))}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 9px;font-size:13px}
+label{font-size:12px;color:var(--mut);display:block;margin-bottom:3px}
+.alert{border-radius:10px;padding:10px 12px;margin-bottom:12px;background:var(--soft);font-size:13px}.alert.w{background:#fff4e5;color:#7c4a03}
+.gauge{height:12px;border-radius:6px;background:linear-gradient(90deg,#16a34a,#eab308,#dc2626);position:relative;margin:8px 0}
+.gauge i{position:absolute;top:-4px;width:4px;height:20px;background:var(--ink);border-radius:2px}
+pre{background:var(--bg);border-radius:8px;padding:10px;max-height:320px;overflow:auto;font-size:12px;white-space:pre-wrap}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.leg span{margin-right:12px;font-size:12px}.leg i{display:inline-block;width:12px;height:3px;margin-right:4px;vertical-align:middle}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#111;color:#fff;padding:9px 16px;border-radius:8px;display:none;z-index:9}
+@media (max-width:640px){main{padding:10px}header{padding:12px}.big{font-size:19px}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>💎 우량주 반등 <small>TK Bluechip</small></h1><small>우리만의 우량주 100 · 가상 모델 A 단순형 · B TK 반등지수 · H H1 히든 · Z 대조군 + H1 KIS 모의투자 (실전 주문 없음)</small></div>
+  <div class="chips" id="chips"></div>
+</header>
+<nav id="nav">
+  <button data-t="dash" class="on">📊 대시보드</button><button data-t="univ">💎 우량주 100</button><button data-t="trade">💰 가상 매매</button>
+  <button data-t="kis">🧾 H1 모의투자</button><button data-t="model">🧪 모델 · 규칙</button><button data-t="sys">⚙️ 설정 · 시스템</button>
+</nav>
+<main>
+<section id="t-dash">
+  <div id="dAlert"></div>
+  <div class="card kcard" id="dKis"></div>
+  <div class="grid g3" id="dModels"></div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card" style="grid-column:span 2;min-width:0"><h2>가상 계좌 평가액 <small>모델마다 1,000만 원에서 시작</small></h2><div id="dChart"></div><div class="leg" id="dLeg"></div></div>
+    <div class="card"><h2>시장 공포 온도 <small>코스피200 · 코스닥150 중 20일선 아래 비율</small></h2><div id="dFear"></div></div>
+  </div>
+  <div class="card"><h2>다음 거래일 시가 매수 예약 <small id="dSig"></small></h2><div class="tw" id="dOrders"></div></div>
+  <div class="card"><h2>보유 종목</h2><div class="tw" id="dPos"></div></div>
+</section>
+<section id="t-univ" hidden>
+  <div class="card"><h2>우리만의 우량주 100 <small id="uSub"></small></h2>
+    <div class="alert">매월 첫 거래일 코스피200 · 코스닥150 구성 종목에서 <b>편입 1년 이상 · 흑자 · 배당</b>을 통과한 종목 중 <b>60일 변동성이 낮은 100개</b>. 신호 A = 종가가 20일선보다 10% 이상 아래 · 신호 B = TK 점수가 점수선 이상 (후보 중).</div>
+    <div class="row" style="margin-bottom:10px"><select id="uMonth"></select><span class="mut" id="uSec"></span></div>
+    <div class="tw" id="uTable"></div></div>
+</section>
+<section id="t-trade" hidden>
+  <div class="card"><h2>가상 매매 내역</h2>
+    <div class="row" style="margin-bottom:10px"><select id="tModel"><option value="">모든 모델</option><option>A</option><option>B</option><option>H</option><option>Z</option></select>
+      <select id="tStatus"><option value="">전체</option><option>보유</option><option>청산</option></select></div>
+    <div class="tw" id="tTable"></div></div>
+  <div class="card"><h2>신호 났지만 안 산 것 <small>한도 · 업종 · 현금 · 1주 가격</small></h2><div class="tw" id="tSkip"></div></div>
+</section>
+<section id="t-kis" hidden>
+  <div id="kAlert"></div>
+  <div class="kbar" id="kBar"></div>
+  <div class="grid g3">
+    <div class="card"><h2>계좌 <small id="kAcctSub"></small></h2><div id="kSum"></div>
+      <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap"><button class="btn p" id="kOn"></button><button class="btn" id="kPause"></button>
+      <button class="btn" id="kLive">⟳ KIS 실시간 조회</button><button class="btn" id="kSync">🔄 체결 반영</button><button class="btn" id="kTest">🔌 연결 테스트</button>
+      <button class="btn danger" id="kEmg">⛔ 긴급 정지</button></div><div class="mut" id="kMsg" style="margin-top:8px"></div></div>
+    <div class="card"><h2>3개월 판정 기준 <small>사전 등록 · 전부 ✓면 실전 소액 검토</small></h2><div id="kCrit"></div></div>
+    <div class="card"><h2>오늘 자동 일정 <small id="kPhase"></small></h2><div id="kSch"></div></div>
+  </div>
+  <div class="card"><h2>다음 장전 주문 미리보기 <small id="kPrevSub"></small></h2><div class="tw" id="kPrev"></div><div class="tw" id="kPrevS" style="margin-top:8px"></div></div>
+  <div class="card"><h2>보유 종목 <small>목표가 · 손절가 · 추적 기준가는 자동 매도 기준 · 버튼은 즉시 시장가</small></h2><div class="tw" id="kPos"></div></div>
+  <div class="grid g2">
+    <div class="card"><h2>미체결 주문 <small>오늘</small></h2><div class="tw" id="kOpen"></div></div>
+    <div class="card"><h2>KIS 체결 내역 <small id="kFillSub">오늘 · 실시간 조회 시 표시</small></h2><div class="tw" id="kFills"></div></div>
+  </div>
+  <div class="grid g2">
+    <div class="card" style="min-width:0"><h2>수익 곡선 <small>시작일 대비 % · 모의(KIS) vs 가상 H vs 가상 A</small></h2><div id="kChart"></div><div class="leg" id="kLeg"></div></div>
+    <div class="card"><h2>가상 H ↔ 모의 체결 <small>같은 신호 · 같은 날</small></h2><div id="kCmpSum"></div><h2 style="margin-top:14px">청산 사유별</h2><div class="tw" id="kReason"></div><h2 style="margin-top:14px">월별</h2><div class="tw" id="kMonth"></div></div>
+  </div>
+  <div class="card"><h2>청산 내역 · 가상 H 비교</h2><div class="tw" id="kCmp"></div></div>
+  <div class="card"><h2>주문 기록 <small>최근 200건</small></h2><div class="tw" id="kOrd"></div></div>
+  <div class="grid g2">
+    <div class="card"><h2>설정 <small>키 · 계좌는 이 PC 설정 파일에만 저장 · 화면 · 로그 · zip에는 가림</small></h2>
+      <label>모의투자 앱키</label><input id="kis_app_key" type="password" style="width:100%">
+      <label style="margin-top:6px">모의투자 앱시크릿</label><input id="kis_app_secret" type="password" style="width:100%">
+      <label style="margin-top:6px">모의계좌번호 (8자리-2자리)</label><input id="kis_account" type="password" style="width:100%">
+      <label style="margin-top:6px">운용 한도 (원) — 종목당 = min(평가액, 한도) ÷ 10 · 1회 15% · 하루 40%</label><input id="kis_cap" placeholder="10000000" style="width:100%">
+      <div class="mut" id="kNow" style="margin:6px 0"></div><button class="btn p" id="kSave">저장</button></div>
+    <div class="card"><h2>규칙</h2><ul style="margin:0;padding-left:20px;line-height:1.9;font-size:13px">
+      <li>신호: 우량주 앱 모델 A와 같음 · 가상 모델 H가 같은 규칙으로 함께 계산 (체결 차이 비교용)</li>
+      <li>매수: 전 거래일 신호 → 08:35 장전 시장가(시가 체결) · 종목당 min(평가액, 한도) ÷ 10 · 최대 14종목 · 업종당 2</li>
+      <li>1차 매도: +5% 지정가로 보유의 30% (3주 이하는 전량) · 매일 아침 다시 주문</li>
+      <li>나머지: 종가가 최고 종가 −4% → 다음 날 장전 시장가 · 재난 손절 −15% (30초 감시 · 시장가) · 40거래일째 15:20 장마감</li>
+      <li>안전: 자동주문 기본 OFF · 주문 결과 불분명 → 정지 · 모르는 보유 종목 → 신규 매수 차단 · 같은 신호 두 번 주문 안 함 · 신규 매수만 일시 중지 가능 · 긴급 정지 = 미체결 취소 + OFF</li></ul></div>
+  </div>
+  <div class="card"><h2>모의투자 로그 <small><label style="display:inline"><input type="checkbox" id="kLogW"> 경고 · 오류만</label></small></h2><pre id="kLog"></pre></div>
+</section>
+<section id="t-model" hidden>
+  <div class="card" id="mCards"></div>
+  <div class="card"><h2>공통 매매 규칙</h2><div id="mRules"></div></div>
+  <div class="card"><h2>3개월 판정 기준 <small>사전 등록 — 결과를 본 뒤 바꾸지 않음</small></h2>
+    <ol style="margin:0;padding-left:20px;line-height:1.9">
+      <li>청산 30건 이상 (표본)</li><li>건당 평균 수익이 대조군 Z보다 +1%p 이상</li>
+      <li>가상 계좌 수익률이 대조군 Z보다 높음</li><li>최대 낙폭 −20% 이내</li>
+      <li>A와 B 중 네 가지를 통과한 쪽을 실전 후보로 · 둘 다 통과하면 계좌 수익이 높은 쪽</li></ol></div>
+  <div class="card"><h2>TK 반등지수 계산식</h2><div id="mTK"></div></div>
+  <div class="card"><h2>수급 (외국인 · 기관 · 연기금) <small>B0.2 · 기록 · 참고용</small></h2>
+    <ul style="margin:0;padding-left:20px;line-height:1.9">
+      <li>자료: 2023-09 ~ 2026-09 종목별 순매수(Scout 전종목 수급 내보내기)를 앱에 내장 + 매일 Scout가 18:10에 모으는 당일 확정치를 읽기 전용으로 가져옴</li>
+      <li>검증(2023-10 ~ 2026-09 · 후보 13,875건): 수급이 좋은 후보가 평균은 높아 보였지만(외+기 5일 순매수 &gt; 0 → 건당 +2.98% vs +2.18%), <b>같은 날 후보끼리 비교하면 차이 없음</b>(순위상관 −0.003, t −0.06) — 좋은 시기에 몰린 착시</li>
+      <li>TK 반등지수에 수급 재료를 넣어도 전진 검증 IC 0.124 → 0.114~0.122 로 나아지지 않음</li>
+      <li>그래서 <b>매수 판단에는 쓰지 않고</b>, 모든 신호 · 매매에 그날 수급을 남겨 실전 거래가 30건 이상 쌓이면 다시 검증</li>
+      <li>장 마감 계산(16:40)엔 전날까지 수급이 붙고, 18:30 뒤 당일 확정치로 다시 계산됨</li></ul></div>
+</section>
+<section id="t-sys" hidden>
+  <div class="grid g3">
+    <div class="card"><h2>KRX 계정 <small>매월 우량주 100 갱신용 (Scout에 넣은 것과 같음)</small></h2>
+      <label>아이디</label><input id="krx_id" type="password" style="width:100%"><label style="margin-top:8px">비밀번호</label><input id="krx_pw" type="password" style="width:100%">
+      <div class="mut" id="krxNow" style="margin:6px 0"></div></div>
+    <div class="card"><h2>텔레그램 <small>하루 요약 · 머리말 [우량주]</small></h2>
+      <label>봇 토큰</label><input id="telegram_token" type="password" style="width:100%"><label style="margin-top:8px">채팅 ID</label><input id="telegram_chat" type="password" style="width:100%">
+      <div class="mut" id="tgNow" style="margin:6px 0"></div><button class="btn" id="bTg">🔔 테스트 보내기</button></div>
+    <div class="card"><h2>실행 시각</h2><label>매일 계산 시작 (Scout 일봉 들어온 뒤)</label><input id="run_time" placeholder="16:40">
+      <div class="row" style="margin-top:12px"><button class="btn p" id="bSave">저장</button></div></div>
+  </div>
+  <div class="card"><h2>작업</h2><div class="row">
+    <button class="btn" id="bDaily">▶ 지금 계산 (밀린 날 처리)</button><button class="btn" id="bUniv">💎 이번 달 우량주 100 다시 뽑기 (KRX)</button>
+    <button class="btn" id="bZip">📦 검증 데이터 zip</button></div><div class="mut" id="jobMsg" style="margin-top:8px"></div></div>
+  <div class="card"><h2>데이터 상태</h2><div id="sData"></div></div>
+  <div class="card"><h2>서버 로그 <small>데이터 폴더의 bluechip_server.log</small></h2><pre id="sLog"></pre></div>
+</section>
+</main>
+<div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s), won=v=>v==null?'-':Math.round(v).toLocaleString('ko-KR'), man=v=>v==null?'-':(v/1e4).toLocaleString('ko-KR',{maximumFractionDigits:0})+'만';
+const pct=(v,d=2)=>v==null||isNaN(v)?'-':(v>0?'+':'')+Number(v).toFixed(d)+'%', cls=v=>v>0?'up':v<0?'dn':'', md=s=>s?`${s.slice(4,6)}/${s.slice(6,8)}`:'-';
+const COL={A:getComputedStyle(document.documentElement).getPropertyValue('--A'),B:'#7c3aed',H:'#d97706',Z:'#94a3b8',KIS:'#111'};
+const toast=(t,ok=true)=>{const e=$('#toast');e.textContent=t;e.style.background=ok?'#111':'#b91c1c';e.style.display='block';setTimeout(()=>e.style.display='none',2600)};
+const get=u=>fetch(u).then(r=>r.json()), post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})}).then(r=>r.json());
+let TAB='dash';try{TAB=localStorage.getItem('bc_tab')||'dash'}catch(e){}
+function show(t){TAB=t;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!=='t-'+t);try{localStorage.setItem('bc_tab',t)}catch(e){}load()}
+$('#nav').onclick=e=>{if(e.target.dataset.t)show(e.target.dataset.t)};
+function tbl(cols,rows,empty='없음'){if(!rows.length)return `<div class="mut" style="padding:8px">${empty}</div>`;
+  return `<table><tr>${cols.map(c=>`<th class="${c.r?'r':''}">${c.h}</th>`).join('')}</tr>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.r?'r':''}">${c.f(r)}</td>`).join('')}</tr>`).join('')}</table>`}
+const eok=v=>v==null?'-':`<span class="${cls(v)}">${(v>0?'+':'')+Math.round(v/100).toLocaleString('ko-KR')}억</span>`;
+const flw=r=>r.flow?`외 ${eok(r.flow.fo5)} · 기 ${eok(r.flow.ins5)}`:'<span class="mut">-</span>';
+const bdg=m=>`<span class="badge b${m}">${m}</span>`;
+function chart(models){const W=760,H=240,P=34;const all=models.flatMap(m=>m.curve.map(x=>x[1]));if(!all.length)return '<div class="mut">첫 거래일 계산 뒤 표시됩니다</div>';
+  const dates=[...new Set(models.flatMap(m=>m.curve.map(x=>x[0])))].sort();const lo=Math.min(...all,1e7)*0.995,hi=Math.max(...all,1e7)*1.005;
+  const X=d=>P+(dates.length<2?0:(dates.indexOf(d)/(dates.length-1))*(W-P-8)),Y=v=>H-22-(v-lo)/(hi-lo)*(H-34);
+  let g=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">`;
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;g+=`<line x1="${P}" x2="${W-8}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="2" y="${Y(v)+4}" font-size="10" fill="var(--mut)">${(v/1e4).toFixed(0)}만</text>`}
+  g+=`<line x1="${P}" x2="${W-8}" y1="${Y(1e7)}" y2="${Y(1e7)}" stroke="var(--mut)" stroke-dasharray="4 4"/>`;
+  models.forEach(m=>{if(!m.curve.length)return;const pts=m.curve.map(x=>`${X(x[0]).toFixed(1)},${Y(x[1]).toFixed(1)}`).join(' ');
+    g+=`<polyline fill="none" stroke="${COL[m.key]}" stroke-width="${m.key==='Z'?1.5:(m.key==='KIS'?3.2:2.4)}" ${m.key==='Z'?'stroke-dasharray="5 3"':''} points="${pts}"/>`});
+  if(dates.length){g+=`<text x="${P}" y="${H-4}" font-size="10" fill="var(--mut)">${md(dates[0])}</text><text x="${W-8}" y="${H-4}" font-size="10" fill="var(--mut)" text-anchor="end">${md(dates.at(-1))}</text>`}
+  return g+'</svg>'}
+async function loadDash(){const d=await get('/api/dash');
+  $('#chips').innerHTML=`<span class="chip">${d.version}</span><span class="chip">처리 ${md(d.last_day)||'-'}</span><span class="chip">Scout 일봉 ${md(d.scout_last)}</span><span class="chip">시작 ${md(d.start_date)}</span>`;
+  let al='';if(!d.scout_ok)al+=`<div class="alert w">Scout 데이터(scout.db)를 찾을 수 없습니다 — Scout가 이 PC에 설치돼 있어야 합니다.</div>`;
+  if(d.state.err)al+=`<div class="alert w">⚠️ ${d.state.err}</div>`;if(d.state.running)al+=`<div class="alert">⏳ ${d.state.msg}</div>`;
+  if(!d.last_day)al+=`<div class="alert">가상 검증 시작일 ${md(d.start_date)} — 그날 장 마감 뒤(16:40~, Scout 일봉이 들어오면) 첫 체결 · 평가가 계산됩니다. 아래 '매수 예약'은 전날 종가 신호입니다.</div>`;
+  $('#dAlert').innerHTML=al;
+  $('#dModels').innerHTML=d.models.map(m=>`<div class="mc" style="--c:${COL[m.key]}"><div><span class="k">${m.key}</span><b>${m.name}</b></div>
+    <div class="big ${cls(m.ret)}" style="margin-top:6px">${man(m.value)} <span style="font-size:15px">${pct(m.ret)}</span></div>
+    <div class="kv"><span>보유<b>${m.npos}종목</b></span><span>현금<b>${man(m.cash)}</b></span><span>매수<b>${m.buys}건</b></span><span>청산<b>${m.closed}건</b></span>
+    <span>승률<b>${m.win==null?'-':m.win.toFixed(0)+'%'}</b></span><span>건당<b class="${cls(m.avg)}">${pct(m.avg)}</b></span><span>최대 낙폭<b>${pct(m.mdd,1)}</b></span></div></div>`).join('');
+  $('#dKis').innerHTML=kisCard(d.kis);
+  const kc=d.kis&&d.kis.curve.length?[{key:'KIS',curve:d.kis.curve.map(x=>[x[0],x[1]/d.kis.curve[0][1]*1e7])}]:[];
+  $('#dChart').innerHTML=chart([...d.models,...kc]);$('#dLeg').innerHTML=d.models.map(m=>`<span><i style="background:${COL[m.key]}"></i>${m.key} ${m.name}</span>`).join('')+(kc.length?`<span><i style="background:#111"></i>H1 모의(KIS · 1000만 환산)</span>`:'');
+  const mk=d.market.at(-1);if(mk&&mk.breadth!=null){const b=mk.breadth*100;$('#dFear').innerHTML=`<div class="big">${b.toFixed(0)}%</div><div class="gauge"><i style="left:calc(${b}% - 2px)"></i></div>
+    <div class="mut" style="font-size:12px">${md(mk.date)} · 높을수록 시장 전체가 눌림 → 과거엔 반등이 컸음 (공포 높음 3분위 건당 +4.2% vs 낮음 +0.6%)</div>
+    <div class="kv"><span>지수 5일<b class="${cls(mk.mkt_r5)}">${pct(mk.mkt_r5*100,1)}</b></span><span>지수 변동성<b>${(mk.mkt_vol*100).toFixed(0)}%</b></span></div>`+
+    (d.mflow?`<div style="margin-top:10px;font-weight:600;font-size:13px">구성 종목 수급 5일 <span class="mut" style="font-weight:400">${md(d.mflow.flow_date)}까지</span></div>
+    <div class="kv"><span>외국인<b>${eok(d.mflow.fo5)}</b></span><span>기관<b>${eok(d.mflow.ins5)}</b></span><span>연기금<b>${eok(d.mflow.pen5)}</b></span></div>`:'<div class="mut" style="font-size:12px;margin-top:8px">수급 요약 계산 전</div>')}else $('#dFear').innerHTML='<div class="mut">계산 전</div>';
+  $('#dSig').textContent=d.signal_date?`${md(d.signal_date)} 종가 신호 → 다음 거래일 시가`:'';
+  const od=d.orders;$('#dOrders').innerHTML=tbl([{h:'모델',f:r=>bdg(r.model)},{h:'종목',f:r=>`<b>${r.name}</b> <span class="mut">${r.ticker}</span>`},{h:'업종',f:r=>r.sector||''},
+    {h:'20일선 대비',r:1,f:r=>pct(r.ma20gap*100,1)},{h:'TK 점수',r:1,f:r=>r.score==null?'-':r.score.toFixed(2)},{h:'수급 5일',r:1,f:flw},{h:'상태',f:r=>r.status+(r.note?` · <span class="mut">${r.note}</span>`:'')}],od,d.signal_date?`${md(d.signal_date)} 종가 기준 신호 없음 — 조건(20일선 −10% · TK 점수선)에 맞는 우량주가 없음`:'신호 계산 전');
+  $('#dPos').innerHTML=tbl([{h:'모델',f:r=>bdg(r.model)},{h:'종목',f:r=>`<b>${r.name}</b>`},{h:'업종',f:r=>r.sector||''},{h:'매수일',f:r=>md(r.entry_date)},{h:'매수가',r:1,f:r=>won(r.entry_px)},
+    {h:'수량',r:1,f:r=>r.qty},{h:'목표가(+5%)',r:1,f:r=>won(r.tp_px)},{h:'현재가',r:1,f:r=>won(r.last_px)},{h:'평가',r:1,f:r=>{const v=(r.last_px/r.entry_px-1)*100;return `<span class="${cls(v)}">${pct(v)}</span>`}},
+    {h:'보유일',r:1,f:r=>`${r.days}/40`},{h:'신호일 수급 5일',r:1,f:flw}],d.positions,'보유 종목 없음')}
+async function loadUniv(){const m=$('#uMonth').value;const d=await get('/api/universe'+(m?`?month=${m}`:''));
+  if(!$('#uMonth').options.length)$('#uMonth').innerHTML=d.months.map(x=>`<option>${x}</option>`).join('');
+  $('#uSub').textContent=`${d.month} · 지표 기준 ${md(d.date)}`+(d.fallback?` · ⚠️ KRX 갱신 실패로 ${d.fallback} 목록 사용`:'');
+  const sc={};d.rows.forEach(r=>sc[r.sector]=(sc[r.sector]||0)+1);$('#uSec').textContent='업종: '+Object.entries(sc).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${v}`).join(' · ');
+  $('#uTable').innerHTML=tbl([{h:'#',f:r=>r.rank},{h:'종목',f:r=>`<b>${r.name}</b> <span class="mut">${r.ticker}</span>`},{h:'시장',f:r=>r.market},{h:'업종',f:r=>r.sector},
+    {h:'시총(조)',r:1,f:r=>r.marcap?(r.marcap/1e12).toFixed(1):'-'},{h:'60일 변동성',r:1,f:r=>(r.vol60*100).toFixed(2)+'%'},{h:'종가',r:1,f:r=>won(r.close)},
+    {h:'20일선 대비',r:1,f:r=>`<span class="${cls(r.ma20gap)}">${pct(r.ma20gap*100,1)}</span>`},{h:'5일',r:1,f:r=>pct(r.r5*100,1)},{h:'RSI(2)',r:1,f:r=>r.rsi2==null?'-':r.rsi2.toFixed(0)},
+    {h:'TK 점수',r:1,f:r=>r.tk==null?'-':`<div class="bar" style="width:70px;display:inline-block;vertical-align:middle"><i style="width:${r.tk}%"></i></div> ${r.tk}`},
+    {h:'외국인 5일',r:1,f:r=>r.flow?eok(r.flow.fo5):'-'},{h:'기관 5일',r:1,f:r=>r.flow?eok(r.flow.ins5):'-'},{h:'연기금 5일',r:1,f:r=>r.flow?eok(r.flow.pen5):'-'},
+    {h:'신호',f:r=>(r.sigA?bdg('A')+' ':'')+(r.sigB?bdg('B'):'')}],d.rows)}
+async function loadTrade(){const q=new URLSearchParams({model:$('#tModel').value,status:$('#tStatus').value});const d=await get('/api/trades?'+q);
+  $('#tTable').innerHTML=tbl([{h:'모델',f:r=>bdg(r.model)},{h:'종목',f:r=>`<b>${r.name}</b>`},{h:'업종',f:r=>r.sector||''},{h:'신호일',f:r=>md(r.signal_date)},{h:'매수일',f:r=>md(r.entry_date)},
+    {h:'매수가',r:1,f:r=>won(r.entry_px)},{h:'수량',r:1,f:r=>r.qty},{h:'상태',f:r=>r.status},{h:'보유일',r:1,f:r=>r.days},{h:'매도일',f:r=>md(r.exit_date)},{h:'매도가',r:1,f:r=>won(r.exit_px)},
+    {h:'사유',f:r=>r.exit_reason||''},{h:'수익률',r:1,f:r=>r.ret==null?'-':`<span class="${cls(r.ret)}">${pct(r.ret)}</span>`},{h:'손익',r:1,f:r=>r.pnl==null?'-':`<span class="${cls(r.pnl)}">${won(r.pnl)}</span>`},{h:'신호일 수급 5일',r:1,f:flw}],d.rows,'거래 없음');
+  $('#tSkip').innerHTML=tbl([{h:'모델',f:r=>bdg(r.model)},{h:'신호일',f:r=>md(r.signal_date)},{h:'종목',f:r=>r.name},{h:'상태',f:r=>r.status},{h:'이유',f:r=>r.note||''}],d.orders.filter(o=>o.status!=='체결'),'없음')}
+$('#tModel').onchange=$('#tStatus').onchange=loadTrade;$('#uMonth').onchange=loadUniv;
+async function loadModel(){const s=await get('/api/status');const d=await get('/api/dash');
+  $('#mCards').innerHTML='<h2>모델</h2><div class="grid g3">'+Object.entries(s.models).map(([k,m])=>`<div class="mc" style="--c:${COL[k]}"><div><span class="k">${k}</span><b>${m.name}</b></div><p>${m.desc}</p><p class="mut" style="font-size:12px">${m.evidence}</p></div>`).join('')+'</div>';
+  const r=d.rules;$('#mRules').innerHTML=`<ul style="margin:0;padding-left:20px;line-height:1.9"><li>매수: 신호일 <b>다음 거래일 시가</b> (장 마감 뒤 확정 일봉으로 판단)</li><li>매도: <b>+${r.tp}%</b>에 닿으면 그 값 (시가가 이미 넘으면 시가) · 최대 <b>${r.hold}거래일</b>이면 그날 종가 · <b>손절 없음</b></li>
+    <li>계좌: 모델마다 1,000만 원 · 종목당 = 전날 평가액 ÷ ${r.slots} · 최대 ${r.maxpos}종목 · 업종당 ${r.seccap}종목 · 정수 주 · 1주 가격이 종목당 금액보다 비싸면 건너뜀</li><li>비용: 왕복 ${r.cost}% (수수료 · 세금 · 슬리피지)</li><li>같은 모델은 같은 종목을 동시에 두 번 사지 않음</li></ul>`;
+  const t=s.tk;$('#mTK').innerHTML=`<p>점수 = ${t.intercept} + Σ 가중치 × (재료 − 평균) ÷ 표준편차 (재료는 1~99% 구간으로 자름) · 점수선 <b>${t.threshold}</b> 이상이면 매수 후보 (후보 풀 상위 약 11%)</p>`+
+    tbl([{h:'재료',f:x=>({depth:'종목 눌림 (종가 ÷ 20일선 − 1)',r5:'종목 5일 수익',breadth:'시장 공포 온도',mkt_r5:'지수 5일 수익 (KODEX 200)',mkt_vol:'지수 변동성 (20일 · 연율)'})[x]},{h:'가중치',r:1,f:x=>t.coef[x]},{h:'평균',r:1,f:x=>t.mean[x]},{h:'표준편차',r:1,f:x=>t.std[x]},{h:'뜻',f:x=>t.coef[x]>0?'클수록 점수 ↑':'작을수록(더 빠질수록) 점수 ↑'}],t.cols)}
+async function loadSys(){const s=await get('/api/status');$('#krxNow').textContent=s.cfg.krx_id?`저장됨 ${s.cfg.krx_id}`:'미입력 — 없으면 매월 우량주 100 갱신이 안 되고 지난달 목록을 씀';
+  $('#tgNow').textContent=s.cfg.telegram_token?'저장됨':'선택';$('#run_time').value=s.cfg.run_time||'16:40';
+  $('#sData').innerHTML=`<div class="kv" style="grid-template-columns:1fr"><span>데이터 폴더<b>${s.data_dir}</b></span><span>Scout 일봉<b>${s.scout_db||'없음'} · 마지막 ${md(s.scout_last)}</b></span>
+    <span>구성 종목 월<b>${s.months.join(' · ')}</b></span><span>수급 자료<b>${md(s.flow_first)} ~ ${md(s.flow_last)} (${s.flow_first.slice(0,4)}~)</b></span><span>저장 건수<b>${Object.entries(s.counts).map(([k,v])=>`${k} ${v.toLocaleString()}`).join(' · ')}</b></span><span>상태<b>${s.state.msg||''} ${s.state.err?'· ⚠️ '+s.state.err:''}</b></span></div>`+
+    tbl([{h:'작업',f:r=>r.kind},{h:'시작',f:r=>r.started},{h:'상태',f:r=>r.status},{h:'내용',f:r=>r.msg||''}],s.runs,'');$('#sLog').textContent=s.log}
+$('#bSave').onclick=async()=>{const b={};['krx_id','krx_pw','telegram_token','telegram_chat','run_time'].forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});
+  const r=await post('/api/config',b);toast(r.ok?'저장 완료':r.error,r.ok);if(r.ok)['krx_id','krx_pw','telegram_token','telegram_chat'].forEach(k=>$('#'+k).value='');loadSys()};
+$('#bTg').onclick=async()=>{const r=await post('/api/tg_test');toast(r.ok?'텔레그램 전송 성공':'실패: '+r.error,r.ok)};
+$('#bDaily').onclick=async()=>{const r=await post('/api/job/daily');toast(r.ok?'계산 시작':r.error,r.ok);setTimeout(load,3000)};
+$('#bUniv').onclick=async()=>{const r=await post('/api/job/universe');toast(r.ok?'KRX에서 받는 중 (1분 안팎)':r.error,r.ok);setTimeout(load,8000)};
+$('#bZip').onclick=()=>{location.href='/api/verify/export'};
+const KIND={entry:'진입',tp:'1차 익절',trail:'추적',stop:'재난 손절',time:'40일',manual:'수동'};
+let LIVE=null,KT=null,KCONF=false;
+function pctChart(series){const W=720,H=230,P=40;const all=series.flatMap(s=>s.pts.map(x=>x[1]));if(!all.length)return '<div class="mut" style="padding:8px">첫 평가 기록(첫 거래일 15:45) 뒤 표시됩니다</div>';
+  const dates=[...new Set(series.flatMap(s=>s.pts.map(x=>x[0])))].sort();let lo=Math.min(...all,0),hi=Math.max(...all,0);if(hi-lo<1){hi+=0.5;lo-=0.5}
+  const X=d=>P+(dates.length<2?0:dates.indexOf(d)/(dates.length-1)*(W-P-8)),Y=v=>H-22-(v-lo)/(hi-lo)*(H-34);
+  let g=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">`;
+  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4;g+=`<line x1="${P}" x2="${W-8}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="2" y="${Y(v)+4}" font-size="10" fill="var(--mut)">${v.toFixed(1)}%</text>`}
+  g+=`<line x1="${P}" x2="${W-8}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--mut)" stroke-dasharray="4 4"/>`;
+  series.forEach(s=>{if(!s.pts.length)return;g+=`<polyline fill="none" stroke="${s.c}" stroke-width="${s.w||2}" ${s.dash?'stroke-dasharray="5 3"':''} points="${s.pts.map(x=>X(x[0]).toFixed(1)+','+Y(x[1]).toFixed(1)).join(' ')}"/>`});
+  return g+`<text x="${P}" y="${H-4}" font-size="10" fill="var(--mut)">${md(dates[0])}</text><text x="${W-8}" y="${H-4}" font-size="10" fill="var(--mut)" text-anchor="end">${md(dates.at(-1))}</text></svg>`}
+const norm=pts=>pts.length?pts.map(x=>[x[0],(x[1]/pts[0][1]-1)*100]):[];
+function kisCard(k){if(!k)return '';const st=k.halt?`<span class="pill off">⛔ 정지</span>`:(k.on?`<span class="pill on">● 자동주문 ON</span>`:`<span class="pill off">○ 자동주문 OFF</span>`);
+  return `<div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">🧾 H1 모의투자 <small>KIS 모의계좌 · 실제 주문 · 실전 전 단계</small></h2>
+    <div class="row" style="gap:6px;flex-wrap:wrap">${st}${k.pause?'<span class="pill w">신규 매수 중지</span>':''}<span class="pill">${k.phase}</span>${k.next?`<span class="pill">다음 ${k.next}</span>`:''}<button class="btn sm" onclick="show('kis')">열기 →</button></div></div>
+    ${!k.configured?'<div class="mut" style="margin-top:8px">H1 모의투자 탭에서 모의 앱키 · 계좌를 입력하면 시작됩니다</div>':''}
+    <div class="kv" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr));margin-top:10px"><span>평가액<b>${k.value?man(k.value):'-'}</b></span><span>수익률<b class="${cls(k.ret)}">${pct(k.ret)}</b></span>
+    <span>현금<b>${k.cash?man(k.cash):'-'}</b></span><span>보유<b>${k.npos}종목</b></span><span>평가 손익<b class="${cls(k.unreal)}">${won(k.unreal)}</b></span><span>오늘 주문 · 체결<b>${k.orders_today} · ${k.filled_today}</b></span>
+    <span>청산<b>${k.closed}건</b></span><span>승률<b>${k.win==null?'-':k.win.toFixed(0)+'%'}</b></span><span>건당<b class="${cls(k.avg)}">${pct(k.avg)}</b></span></div>
+    ${k.block_new?`<div class="alert w" style="margin-top:8px">모르는 보유 종목 → 신규 매수 차단: ${k.block_new}</div>`:''}${k.halt?`<div class="alert w" style="margin-top:8px">⛔ ${k.halt}</div>`:''}`}
+async function loadKis(liveToo){
+  if(liveToo){await loadKis(false);if(!KCONF)return;try{const r=await get('/api/kis/live');if(r.ok){LIVE=r;$('#kMsg').textContent=''}else $('#kMsg').textContent='실시간 조회 실패: '+r.error}catch(e){}}
+  const k=await get('/api/kis');KCONF=k.configured;
+  let al='';if(k.halt)al+=`<div class="alert w">⛔ 자동주문 정지: ${k.halt} — KIS 앱(모의투자)에서 체결 여부를 확인한 뒤 <button class="btn sm" id="kClr">정지 해제</button></div>`;
+  if(k.block_new)al+=`<div class="alert w">모르는 보유 종목 때문에 신규 매수 차단: ${k.block_new} — H1 전용 모의계좌인지 확인하세요</div>`;
+  if(!k.configured)al+=`<div class="alert">아래 설정에 모의투자 앱키 · 시크릿 · 계좌번호를 넣고 저장 → 🔌 연결 테스트 → ▶ 자동주문 켜기</div>`;
+  if(k.state.last_err)al+=`<div class="alert w">최근 오류: ${k.state.last_err}</div>`;
+  $('#kAlert').innerHTML=al;if($('#kClr'))$('#kClr').onclick=async()=>{await post('/api/kis/halt_clear');toast('정지 해제');loadKis()};
+  const nx=k.schedule.find(s=>s.state==='대기'||s.state==='진행 중');
+  $('#kBar').innerHTML=(k.halt?`<span class="pill off">⛔ 정지</span>`:k.on?`<span class="pill on">● 자동주문 ON</span>`:`<span class="pill off">○ 자동주문 OFF</span>`)+
+    (k.pause?`<span class="pill w">신규 매수 일시 중지</span>`:'')+`<span class="pill">장 상태 <b>${k.phase}</b></span>`+(nx?`<span class="pill">다음 <b>${nx.time}</b> ${nx.what}</span>`:'')+
+    `<span class="pill">손절 감시 <b>${k.state.last_monitor||'-'}</b></span><span class="pill">KIS 조회 <b>${LIVE?LIVE.at:'-'}</b></span>`;
+  const eq=k.equity.at(-1),e0=k.equity[0],s=k.stats,L=LIVE;const value=L?L.equity:(eq?eq.value:null),cash=L?L.cash:(eq?eq.cash:null);
+  $('#kAcctSub').textContent=`${k.account||'-'} · ${L?'실시간 '+L.at:'마지막 기록 '+(eq?md(eq.date):'-')}`;
+  const unreal=k.positions.reduce((a,p)=>a+(p.eval_won||0),0);
+  $('#kSum').innerHTML=`<div class="kv"><span>평가액<b>${value?man(value):'-'}</b></span><span>예수금<b>${cash?man(cash):'-'}</b></span>
+    <span>시작 대비<b class="${cls(e0&&value?value/e0.value-1:null)}">${e0&&value?pct((value/e0.value-1)*100):'-'}</b></span><span>운용 한도<b>${man(k.cap)}</b></span>
+    <span>보유<b>${k.positions.length}종목</b></span><span>평가 손익<b class="${cls(unreal)}">${won(unreal)}</b></span><span>실현 손익<b class="${cls(s.pnl)}">${won(s.pnl)}</b></span>
+    <span>최대 낙폭<b>${k.perf.mdd.toFixed(1)}%</b></span><span>청산<b>${s.n}건</b></span><span>승률<b>${s.win==null?'-':s.win.toFixed(0)+'%'}</b></span>
+    <span>건당<b class="${cls(s.avg)}">${pct(s.avg)}</b></span><span>최고 · 최악<b>${pct(s.best,1)} · ${pct(s.worst,1)}</b></span></div>`;
+  $('#kOn').textContent=k.on?'■ 자동주문 끄기':'▶ 자동주문 켜기';$('#kOn').onclick=async()=>{if(!k.on&&!confirm('H1 전용 모의계좌에서 자동주문을 켤까요?\n(KIS 모의투자 서버에만 주문 · 08:35부터 자동)'))return;const r=await post('/api/kis/on',{on:!k.on});toast(r.ok?'변경됨':r.error,r.ok);loadKis()};
+  $('#kPause').textContent=k.pause?'▶ 신규 매수 재개':'⏸ 신규 매수만 중지';$('#kPause').onclick=async()=>{const r=await post('/api/kis/pause',{pause:!k.pause});toast(r.ok?(k.pause?'신규 매수 재개':'신규 매수 중지 (매도 · 손절은 계속)'):r.error,r.ok);loadKis()};
+  $('#kCrit').innerHTML='<div class="crit">'+k.criteria.map(c=>`<span>${c.k}</span><b style="font-weight:600">${c.v}</b><span>${c.ok?'✅':'·'}</span>${c.prog!=null?`<div class="pb"><i style="width:${(c.prog*100).toFixed(0)}%"></i></div>`:''}`).join('')+'</div>';
+  $('#kPhase').textContent=k.trading_day?'거래일':'휴장';
+  $('#kSch').innerHTML='<div class="sch">'+k.schedule.map(x=>`<span>${x.time}</span><span>${x.what}</span><span class="st-${x.state.split(' ')[0]}">${x.state}</span>`).join('')+'</div>';
+  const pv=k.preview;$('#kPrevSub').textContent=pv.signal_date?`${md(pv.signal_date)} 종가 신호 → ${md(pv.for_date)} 08:35 · 기준 ${pv.basis} ${man(pv.equity)}`+(pv.used?' · 이미 주문함':'')+(pv.stale?' · ⚠️ 신호가 전 거래일 것이 아니면 매수 안 함':'')+(k.pause?' · 신규 매수 중지 중':''):'';
+  $('#kPrev').innerHTML=tbl([{h:'매수 예정',f:r=>`<b>${r.name}</b> <span class="mut">${r.ticker}</span>`},{h:'업종',f:r=>r.sector||''},{h:'20일선 대비',r:1,f:r=>pct(r.ma20gap*100,1)},{h:'기준가(신호 종가)',r:1,f:r=>won(r.ref)},
+    {h:'수량',r:1,f:r=>r.qty||'-'},{h:'예상 금액',r:1,f:r=>r.amt?won(r.amt):'-'},{h:'판단',f:r=>r.skip?`<span class="mut">건너뜀 · ${r.skip}</span>`:(k.on&&!k.halt&&!k.pause?'✅ 장전 시장가':'⏸ 자동주문 꺼짐')}],pv.buys,'매수 예정 없음 (신호 없음)');
+  $('#kPrevS').innerHTML=pv.sells.length?tbl([{h:'매도 예정',f:r=>`<b>${r.name}</b>`},{h:'수량',r:1,f:r=>r.qty},{h:'이유',f:r=>r.why}],pv.sells):'';
+  const lp={};(L?L.positions:[]).forEach(p=>lp[p.ticker]=p);
+  $('#kPos').innerHTML=tbl([{h:'종목',f:r=>`<b>${r.name}</b> <span class="mut">${r.ticker}</span>`},{h:'매수일',f:r=>md(r.entry_date)},{h:'매수가',r:1,f:r=>won(r.entry_px)},
+    {h:'현재가',r:1,f:r=>won((lp[r.ticker]||{}).price||r.last_px)},{h:'수량',r:1,f:r=>`${r.qty}/${r.qty_total}`},
+    {h:'평가 손익',r:1,f:r=>`<span class="${cls(r.eval)}">${won(r.eval_won)} (${pct(r.eval)})</span>`},{h:'목표 +5%',r:1,f:r=>r.part_done?`✓ ${won(r.part_px)}`:won(r.tp_px)},
+    {h:'손절 −15%',r:1,f:r=>won(r.stop_px)},{h:'추적 기준(최고−4%)',r:1,f:r=>r.trail_px?won(r.trail_px):'-'},{h:'보유일',r:1,f:r=>`${r.days}/40`},
+    {h:'미체결',f:r=>r.open_orders.map(o=>`${KIND[o.kind]||o.kind} ${o.qty}주`).join(', ')||'-'},{h:'상태',f:r=>r.status+(r.sell_next?' · 내일 추적 매도':'')},
+    {h:'',f:r=>`<button class="btn sm danger" onclick="kSell('${r.ticker}','${r.name}',${r.qty})">전량 매도</button>`}],k.positions,'보유 없음');
+  $('#kOpen').innerHTML=tbl([{h:'시각',f:r=>(r.ts||'').slice(11,19)},{h:'종목',f:r=>r.name},{h:'구분',f:r=>`${r.side==='buy'?'매수':'매도'} · ${KIND[r.kind]||r.kind}`},{h:'수량',r:1,f:r=>r.qty},
+    {h:'가격',f:r=>r.ord_dvsn==='01'?'시장가':won(r.price)},{h:'상태',f:r=>r.status+(r.filled?` (${r.filled}주 체결)`:'')},{h:'',f:r=>['접수','부분'].includes(r.status)?`<button class="btn sm" onclick="kCancel(${r.id},'${r.name}')">취소</button>`:''}],k.open_orders,'미체결 없음');
+  $('#kFills').innerHTML=L?tbl([{h:'시각',f:r=>r.time?r.time.slice(0,2)+':'+r.time.slice(2,4)+':'+r.time.slice(4,6):''},{h:'종목',f:r=>r.name},{h:'구분',f:r=>r.side==='buy'?'매수':'매도'},
+    {h:'주문',r:1,f:r=>r.qty},{h:'체결',r:1,f:r=>r.filled},{h:'평균가',r:1,f:r=>r.avg?won(r.avg):'-'},{h:'상태',f:r=>r.cancelled?'취소':(r.filled>=r.qty?'체결':(r.filled?'부분':'미체결'))}],L.fills,'오늘 체결 없음'):'<div class="mut" style="padding:8px">⟳ KIS 실시간 조회를 누르면 표시 (장중에는 30초마다 자동)</div>';
+  const p=k.perf;$('#kChart').innerHTML=pctChart([{pts:norm(p.curves.KIS),c:'#111',w:3},{pts:norm(p.curves.H),c:COL.H,dash:1},{pts:norm(p.curves.A),c:COL.A,dash:1}]);
+  $('#kLeg').innerHTML=`<span><i style="background:#111"></i>모의(KIS)</span><span><i style="background:${COL.H}"></i>가상 H</span><span><i style="background:${COL.A}"></i>가상 A</span>`;
+  const c=k.compare;$('#kCmpSum').innerHTML=`<div class="kv"><span>매수가 차이 평균<b>${pct(c.entry_diff_avg,2)}</b></span><span>비교 매수<b>${c.n_entry}건</b></span>
+    <span>수익률 차이(모의−가상)<b class="${cls(c.ret_diff_avg)}">${pct(c.ret_diff_avg,2)}</b></span><span>비교 청산<b>${c.n_ret}건</b></span></div>`;
+  $('#kReason').innerHTML=tbl([{h:'사유',f:r=>r.reason},{h:'건수',r:1,f:r=>r.n},{h:'평균',r:1,f:r=>`<span class="${cls(r.avg)}">${pct(r.avg)}</span>`},{h:'손익',r:1,f:r=>`<span class="${cls(r.pnl)}">${won(r.pnl)}</span>`}],p.by_reason,'청산 없음');
+  $('#kMonth').innerHTML=tbl([{h:'월',f:r=>r.month.slice(0,4)+'-'+r.month.slice(4)},{h:'청산',r:1,f:r=>r.n},{h:'승',r:1,f:r=>r.win},{h:'손익',r:1,f:r=>`<span class="${cls(r.pnl)}">${won(r.pnl)}</span>`}],p.by_month,'청산 없음');
+  $('#kCmp').innerHTML=tbl([{h:'종목',f:r=>r.name},{h:'매수일',f:r=>md(r.entry_date)},{h:'모의 매수가',r:1,f:r=>won(r.kis_entry)},{h:'가상 매수가',r:1,f:r=>won(r.v_entry)},{h:'차이',r:1,f:r=>pct(r.entry_diff,2)},
+    {h:'모의 수익',r:1,f:r=>`<span class="${cls(r.kis_ret)}">${pct(r.kis_ret)}</span>`},{h:'가상 수익',r:1,f:r=>`<span class="${cls(r.v_ret)}">${pct(r.v_ret)}</span>`},{h:'모의 매도일',f:r=>md(r.kis_exit)},{h:'가상 매도일',f:r=>md(r.v_exit)},{h:'모의 사유',f:r=>r.kis_reason||''},{h:'가상 사유',f:r=>r.v_reason||''}],c.rows,'비교할 거래 없음');
+  $('#kOrd').innerHTML=tbl([{h:'날짜',f:r=>md(r.date)+' '+(r.ts||'').slice(11,19)},{h:'종목',f:r=>r.name},{h:'구분',f:r=>`${r.side==='buy'?'매수':'매도'} · ${KIND[r.kind]||r.kind}`},
+    {h:'수량',r:1,f:r=>r.qty},{h:'방식',f:r=>r.ord_dvsn==='01'?'시장가':'지정가 '+won(r.price)},{h:'상태',f:r=>r.status},{h:'체결',r:1,f:r=>r.filled?`${r.filled}주 @ ${won(r.avg)}`:'-'},{h:'메시지',f:r=>`<span class="mut">${r.msg||''}</span>`}],k.orders,'주문 없음');
+  $('#kNow').textContent=k.configured?`저장됨 · 키 ${k.key} · 계좌 ${k.account}`:'미입력';$('#kis_cap').value=k.cap;
+  const w=$('#kLogW').checked;$('#kLog').textContent=k.log.filter(x=>!w||x.level!=='info').map(x=>`${x.ts.slice(5,19).replace('T',' ')} ${x.level==='info'?'':'['+x.level+'] '}${x.msg}`).join('\n');
+  clearTimeout(KT);if(TAB==='kis'&&['장전 동시호가','장중','장마감 동시호가'].includes(k.phase))KT=setTimeout(()=>{if(TAB==='kis')loadKis(true)},30000)}
+async function kSell(t,n,q){if(!confirm(`${n} ${q}주를 지금 시장가로 전량 매도할까요? (KIS 모의계좌 · 익절 주문은 취소)`))return;const r=await post('/api/kis/sell',{ticker:t});toast(r.ok?'매도 주문 보냄':r.error,r.ok);loadKis()}
+async function kCancel(id,n){if(!confirm(`${n} 주문을 취소할까요?`))return;const r=await post('/api/kis/cancel',{id});toast(r.ok?'취소 요청':r.error,r.ok);loadKis()}
+$('#kLogW').onchange=()=>loadKis();
+$('#kLive').onclick=async()=>{const r=await get('/api/kis/live?force=1');if(r.ok){LIVE=r;toast('KIS 조회 완료')}else toast(r.error,false);loadKis()};
+$('#kSave').onclick=async()=>{const b={};['kis_app_key','kis_app_secret','kis_account','kis_cap'].forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});
+  const r=await post('/api/config',b);toast(r.ok?'저장 완료':r.error,r.ok);if(r.ok)['kis_app_key','kis_app_secret','kis_account'].forEach(k=>$('#'+k).value='');loadKis()};
+$('#kTest').onclick=async()=>{$('#kMsg').textContent='연결 중...';const r=await post('/api/kis/test');$('#kMsg').textContent=r.ok?`✅ 연결 성공 · ${r.account} · 평가 ${man(r.equity)} · 현금 ${man(r.cash)} · 보유 ${r.holdings.length}종목 ${r.holdings.join(', ')}`:'❌ '+r.error};
+$('#kSync').onclick=async()=>{const r=await post('/api/kis/sync');toast(r.ok?'체결 반영':r.error,r.ok);loadKis()};
+$('#kEmg').onclick=async()=>{if(!confirm('긴급 정지: 오늘 미체결 주문을 모두 취소하고 자동주문을 끕니다. 보유 종목은 그대로 둡니다.'))return;const r=await post('/api/kis/emergency');toast(r.ok?`정지 · 취소 ${r.cancelled}건`:r.error,r.ok);loadKis()};
+function load(){({dash:loadDash,univ:loadUniv,trade:loadTrade,kis:()=>loadKis(true),model:loadModel,sys:loadSys})[TAB]().catch(e=>toast('불러오기 실패: '+e.message,false))}
+show(TAB);setInterval(()=>{if(TAB==='dash')load()},60000);
+</script>
+</body>
+</html>
