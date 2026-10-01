@@ -14,15 +14,15 @@ import numpy as np
 import pandas as pd
 
 POOL = {'min_value': 3e9, 'min_price': 1000, 'max_price': 500000, 'min_days': 120, 'max_up': 0.20}
-LVH = {'top': 3, 'hold': 20, 'heat_days': 25}
+LVH = {'top': 3, 'hold': 10, 'heat_days': 25}        # 회전형: 20일 → 10일 보유 (설계서 14장)
 REV = {'top': 3, 'hold': 10, 'ema': 9}
 DV = {'n': 15, 'buf': 30, 'sec': 4, 'tenure': 12}
 ON_TICKER, ON_NAME = '229200', 'KODEX 코스닥150'
 SW_TICKER, SW_NAME = '069500', 'KODEX 200'          # 남는 현금을 넣어 두는 ETF (설정 sweep_on)
-SW_MODES = {'ma60': '60일선 위에서만 보유 (추세)', 'vol': '변동성 15% 목표로 비중 조절', 'hold': '항상 보유'}
+SW_MODES = {'night': '밤사이만 (종가 매수 → 다음 날 시가 매도 · 매일 회전)', 'ma60': '60일선 위에서만 보유 (추세)', 'vol': '변동성 15% 목표로 비중 조절', 'hold': '항상 보유'}
 
 
-def sw_weight(close, mode='ma60'):
+def sw_weight(close, mode='night'):
     """KODEX 200 보유 비중 0~1 (날짜별) — close: KODEX 200 종가 (마지막 값이 오늘 15:20 가격이어도 됨) · 자료가 모자라면 1"""
     import pandas as _pd
     c = _pd.Series(close, dtype=float).dropna()

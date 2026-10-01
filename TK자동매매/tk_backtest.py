@@ -25,8 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tk_db as db
 import tk_signals as S
 
-SLOTS = {'LVH': 20, 'REV': 30, 'DV': 15}
-ALLOC = {'LVH': 0.40, 'REV': 0.25, 'DV': 0.20, 'ON': 0.15}
+SLOTS = {'LVH': 40, 'REV': 30, 'DV': 15}
+ALLOC = {'LVH': 0.40, 'REV': 0.25, 'DV': 0.0, 'ON': 0.35}            # 회전형 (설계서 14장)
 PERIODS = {'조정': ('20231024', '20250829'), '검증': ('20250901', '99999999')}
 
 
@@ -115,7 +115,7 @@ def on_proxy_series(P, mem):
     return pd.DataFrame(rows, columns=['date', 'open', 'high', 'low', 'close']).set_index('date')
 
 
-def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed_rank_cache=None, pick=None, slots=None, buy_gate=None, sweep=None, dv_fn=None, gap_skip=None, sweep_etf=None, sw_signal=None):
+def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed_rank_cache=None, pick=None, slots=None, buy_gate=None, sweep=None, dv_fn=None, gap_skip=None, sweep_etf=None, sw_signal=None, hold=None, sw_overnight=False):
     """pick: {'LVH': (건너뛸 순위, 하루 수)} · slots: 칸별 자리 수 (없으면 기본)
        연구용: buy_gate(d, 칸) → 새 매수 금액 배수(0~1) · sweep: 지수 가격(남는 현금을 넣어 둠) · dv_fn(월) → DV 순위"""
     SLOTS = {**globals()['SLOTS'], **(slots or {})}
@@ -164,7 +164,7 @@ def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed
         if sweep_etf is not None and sw_units > 0:
             op = sweep_etf[1].get(d)
             if op and op > 0:
-                need = sum(alloc.get(s, 0) / SLOTS[s] * eq_prev * len(pend[s]) for s in pend) * 1.02 - cash
+                need = float('inf') if sw_overnight else sum(alloc.get(s, 0) / SLOTS[s] * eq_prev * len(pend[s]) for s in pend) * 1.02 - cash   # 밤사이만이면 아침에 다 팖
                 if need > 0:
                     u = min(sw_units, need / (op * (1 - 0.00015)))
                     cash += u * op * (1 - 0.00015)
@@ -203,9 +203,9 @@ def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed
                 lt['days'] += 1
             if lt['flag']:
                 continue
-            if lt['s'] == 'LVH' and lt['days'] >= S.LVH['hold']:
+            if lt['s'] == 'LVH' and lt['days'] >= (hold or {}).get('LVH', S.LVH['hold']):
                 lt['flag'] = 'hold20'
-            elif lt['s'] == 'REV' and lt['days'] >= 1 and (S.rev_exit(F, d, lt['t']) or lt['days'] >= S.REV['hold']):
+            elif lt['s'] == 'REV' and lt['days'] >= 1 and (S.rev_exit(F, d, lt['t']) or lt['days'] >= (hold or {}).get('REV', S.REV['hold'])):
                 lt['flag'] = 'ema9' if S.rev_exit(F, d, lt['t']) else 'hold10'
         if i + 1 < len(dates):
             if alloc.get('LVH', 0) > 0:
@@ -321,7 +321,7 @@ def benchmarks(D, start, end):
 
 
 def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=print, slots=None, pick=None, sweep_on=True, gap_skip=S.GAP_SKIP,
-        sweep_mode='ma60'):
+        sweep_mode='night'):
     t0 = time.time()
     alloc = alloc or dict(ALLOC)
     progress('일봉 · 수급 읽는 중 …')
@@ -343,7 +343,7 @@ def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=p
     for name, (al, use_sw) in runs.items():
         progress(f'{name} 계산 중 …')
         res[name] = simulate(D, start, end, al, cap, seed_rank_cache=cache, slots=slots, pick=pick,
-                             sweep_etf=sw if use_sw else None, sw_signal=sws if use_sw else None, gap_skip=gap_skip / 100 if gap_skip else None)
+                             sweep_etf=sw if use_sw else None, sw_signal=sws if use_sw else None, sw_overnight=use_sw and sweep_mode == 'night', gap_skip=gap_skip / 100 if gap_skip else None)
     bm = benchmarks(D, start, end)
     daily = pd.DataFrame({k: v['curve'] for k, v in res.items()}).pct_change()
     corr = daily[[k for k in res if k != '★ TK자동매매 (합성)']].corr().round(2)

@@ -112,8 +112,8 @@ x = db.conn()
 live = {(r['sleeve'], r['ticker'], r['entry_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND entry_date IS NOT NULL")}
 live_x = {(r['sleeve'], r['ticker'], r['entry_date'], r['exit_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND status='청산'")}
 _sw = db.etf_bars('069500')
-res = B.simulate(D, days[-n - 1], run_days[-1], {'LVH': .40, 'REV': .25, 'DV': .20, 'ON': .15}, gap_skip=0.05, sweep_etf=(_sw['close'], _sw['open']),
-                 sw_signal=S.sw_weight(_sw['close'], 'ma60'))
+res = B.simulate(D, days[-n - 1], run_days[-1], {'LVH': .40, 'REV': .25, 'DV': .0, 'ON': .35}, gap_skip=0.05, sweep_etf=(_sw['close'], _sw['open']),
+                 sw_signal=S.sw_weight(_sw['close'], 'night'), sw_overnight=True)
 bt = {(t[0], t[1], t[2]) for t in res['trades'] if t[0] in ('LVH', 'REV')} | {(l['s'], l['t'], l['d']) for l in res['open_lots'] if l['s'] in ('LVH', 'REV')}
 bt_x = {(t[0], t[1], t[2], t[3]) for t in res['trades'] if t[0] in ('LVH', 'REV')}
 check('실전 ↔ 백테스트 매수 일치', live == bt and len(live) > 50, f'{len(live & bt)}/{len(live | bt)}')
@@ -122,16 +122,13 @@ sw_b = x.execute("SELECT COUNT(*) FROM orders WHERE kind='sw_buy' AND status='�
 sw_s = x.execute("SELECT COUNT(*) FROM orders WHERE kind='sw_sell' AND status='체결'").fetchone()[0]
 gp = x.execute("SELECT COUNT(*) FROM decisions WHERE reason LIKE '시가 갭%'").fetchone()[0]
 sw_days = x.execute("SELECT COUNT(DISTINCT date) FROM positions_daily WHERE ticker='069500'").fetchone()[0]
-_w = S.sw_weight(_sw['close'], 'ma60')
-_off = [d for d in run_days if _w.get(d) == 0]
-_held_off = x.execute(f"SELECT COUNT(*) FROM positions_daily WHERE ticker='069500' AND date IN ({','.join('?' * len(_off))})", _off).fetchone()[0] if _off else 0
-check('KODEX 200 사고팖: 60일선 아래인 날은 보유 0 · 위면 남는 현금만큼', sw_b > 0 and sw_s > 0 and _held_off == 0 and sw_days >= len(run_days) - len(_off) - 1,
-      f'60일선 아래 {len(_off)}일 (그날 보유 {_held_off}) · 보유 {sw_days}일 · 매수 {sw_b} · 매도 {sw_s} · 갭으로 안 산 후보 {gp}')
+check('KODEX 200 밤사이 회전: 날마다 종가 매수 → 다음 날 시가 매도', sw_b >= n - 1 and sw_s >= n - 2 and sw_days >= n - 1,
+      f'매수 {sw_b} · 매도 {sw_s} · 장 마감 보유 {sw_days}일 · 갭으로 안 산 후보 {gp}')
 check('(참고) 남는 현금 칸 기록', True,
       f'보유 {sw_days}일 · 매수 {sw_b} · 매도 {sw_s} · 갭으로 안 산 후보 {gp}')
-dv = x.execute("SELECT COUNT(*) FROM lots WHERE sleeve='DV' AND status='보유'").fetchone()[0]
+dv = 15  # 회전형 기본은 배당·가치 0% → 아래 검사는 밤사이만
 on = x.execute("SELECT COUNT(*), AVG(ret) FROM lots WHERE sleeve='ON' AND status='청산'").fetchone()
-check('배당·가치 15자리 · 밤사이 매일', dv >= 12 and on[0] >= n - 2, f'DV {dv} · ON {on[0]}건 평균 {on[1]:+.3f}%')
+check('밤사이 ETF 매일 (자산 35%)', on[0] >= n - 2, f'ON {on[0]}건 평균 {on[1]:+.3f}%')
 bad = db.mconn().execute("SELECT COUNT(*) FROM log WHERE msg LIKE '%불일치%'").fetchone()[0]
 check('잔고 불일치 0', bad == 0)
 check('장중 평가 기록 (최근 10일만 보관)', 5 <= x.execute('SELECT COUNT(*) FROM intraday').fetchone()[0] <= 12, f"{x.execute('SELECT COUNT(*) FROM intraday').fetchone()[0]}건")
@@ -141,8 +138,8 @@ check('판정: 40일이라 60일 기준 미달', not g['pass'] and not g['rows']
 import pandas as _pd
 _eb = db.etf_bars
 db.etf_bars = lambda t, f='0', to='99999999': _pd.DataFrame({'close': [100.0 + i for i in range(80)]}, index=[f'2026{i:04d}' for i in range(80)])
-w_up, _ = tr.sw_target(cfg, 200.0)
-w_dn, _ = tr.sw_target(cfg, 120.0)
+w_up, _ = tr.sw_target({**cfg, 'sweep_mode': 'ma60'}, 200.0)
+w_dn, _ = tr.sw_target({**cfg, 'sweep_mode': 'ma60'}, 120.0)
 _held0 = sum(q for _, q in tr.sw_avail())
 _o = tr.sw_target
 tr.sw_target = lambda c, px: (0.0, 'ma60')

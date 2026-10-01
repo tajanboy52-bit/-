@@ -27,7 +27,7 @@ import tk_db as db
 MODES = ('paper', 'real')
 MODE_KO = {'paper': '모의', 'real': '실전'}
 SLEEVE_KO = {'LVH': '저변동고점', 'REV': '반전·수급', 'DV': '배당·가치', 'ON': '밤사이', 'MAN': '수동'}
-EXIT_KO = {'hold20': '20일 보유 끝', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_sell': '밤사이 매도(시가)',
+EXIT_KO = {'hold20': '보유 기간 끝(LVH 10일)', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_sell': '밤사이 매도(시가)',
            'manual': '수동', 'delist': '거래 끊김 정리'}
 HORIZON = {'LVH': 20, 'REV': 5, 'DV': 20}                      # 후보 사후 수익 기간(거래일) — 각 칸의 보통 보유 기간
 FEATS = [('sig_rank', '순위'), ('sig_score', '점수'), ('rsi', 'RSI14'), ('atrp', 'ATR%'), ('fromhi', '250일 고점 거리'), ('heat', '과열'),

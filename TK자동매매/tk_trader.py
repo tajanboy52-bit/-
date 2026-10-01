@@ -32,10 +32,10 @@ from tk_kis import KIS, KISError
 HOLIDAYS = {'20261005', '20261009', '20261225', '20261231',
             '20270101', '20270208', '20270209', '20270301', '20270503', '20270505', '20270513', '20270719', '20270816',
             '20270914', '20270915', '20270916', '20271004', '20271011', '20271227', '20271231'}
-SLOTS = {'LVH': 20, 'REV': 30, 'DV': 15}
-DEFAULT_ALLOC = {'LVH': 40, 'REV': 25, 'DV': 20, 'ON': 15}
+SLOTS = {'LVH': 40, 'REV': 30, 'DV': 15}
+DEFAULT_ALLOC = {'LVH': 40, 'REV': 25, 'DV': 0, 'ON': 35}         # 회전형: 배당·가치(장기 보유) 0 · 밤사이 35% (설계서 14장)
 COSTS = {'LVH': 0.25, 'REV': 0.25, 'DV': 0.25, 'ON': 0.05}        # 손익 표시용 왕복 비용 추정 %
-KIND = {'entry': '매수', 'hold20': '20일 보유 끝', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_buy': '밤사이 매수(종가)',
+KIND = {'entry': '매수', 'hold20': '보유 기간 끝(LVH 10일)', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_buy': '밤사이 매수(종가)',
         'on_sell': '밤사이 매도(시가)', 'manual': '수동', 'delist': '거래 끊김 정리', 'sw_buy': '남는 현금 → KODEX 200', 'sw_sell': 'KODEX 200 → 현금'}
 STATE = {'running': False, 'last_sync': '', 'last_err': ''}
 _lock = threading.Lock()
@@ -185,8 +185,8 @@ def sweep_prep(cfg, kc, d):
 
 def sw_target(cfg, px):
     """KODEX 200 보유 비중 0~1 — 지난 종가들 + 지금 가격으로 (설정 sweep_mode: ma60 · vol · hold)"""
-    mode = cfg.get('sweep_mode') or 'ma60'
-    if mode == 'hold':
+    mode = cfg.get('sweep_mode') or 'night'
+    if mode in ('hold', 'night'):
         return 1.0, mode
     c = db.etf_bars(S.SW_TICKER, '0', today())['close']
     c = c[c.index < today()]
@@ -521,6 +521,10 @@ def preopen(cfg, kc, d):
         send(cfg, kc, 'sell', l['sell_reason'] or 'manual', l['id'], l['sleeve'], l['ticker'], l['name'], l['qty'], sig_ref=l['last_px'])
         if halted():
             return
+    if sweep_on(cfg) and (cfg.get('sweep_mode') or 'night') == 'night':              # 밤사이 지수: 아침 시가에 전부 팖
+        have = sum(q for _, q in sw_avail())
+        if have:
+            sweep_sell(cfg, kc, d, have * (kc.price(S.SW_TICKER)['price'] or 1) * 1.1, '밤사이 지수 → 시가 매도')
     why = ('모르는 보유 종목' if unknown else '매수 일시 중지' if buy_paused(cfg) else f'신호가 전 거래일 것이 아님 (마지막 {sd})' if sd != prev_trading_day(d)
            else f'{sd} 신호는 이미 주문함' if db.meta_get(f'plan_used_{sd}') == '1' else '')
     if why:
@@ -553,7 +557,7 @@ def preopen(cfg, kc, d):
                                          ensure_ascii=False))
     if pl['defer']:
         log(f"현금 부족으로 {len(pl['defer'])}건은 09:02에 (아침 매도 체결 뒤)")
-        if sweep_on(cfg):                                                           # 모자란 만큼 KODEX 200을 시가에 팔아 09:02 매수 자금으로
+        if sweep_on(cfg) and (cfg.get('sweep_mode') or 'night') != 'night':        # 모자란 만큼 KODEX 200을 시가에 팔아 09:02 매수 자금으로
             sells = sum((l['last_px'] or 0) * l['qty'] for l in pl['sells'])
             sweep_sell(cfg, kc, d, sum(o['amt'] for o in pl['defer']) * 1.03 - sells * 0.99, '09:02 미룬 매수 자금')
 

@@ -154,7 +154,7 @@ def report(d):
         L += [f" {'🟢' if (r['pnl'] or 0) > 0 else '🔻'} [{r['sleeve']}] {r['name']} {r['ret'] or 0:+.2f}%" for r in done[:20]]
     sells = [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sell_flag=1 AND sleeve!='ON'")]
     sig = [dict(r) for r in x.execute('SELECT * FROM signals WHERE date=? AND rank<100 ORDER BY sleeve, rank', (d,))]
-    L.append('\n🗓 다음 거래일 08:35')
+    L.append('\n🗓 다음 거래일 08:50')
     L.append(' 매도: ' + (', '.join(f"[{l['sleeve']}] {l['name']}" for l in sells) or '없음'))
     for s in ('LVH', 'REV', 'DV'):
         ss = [r['name'] for r in sig if r['sleeve'] == s]
@@ -500,7 +500,7 @@ async def api_sell_lot(req: Request):
             return '지금 시장가 매도 주문'
         x.execute("UPDATE lots SET sell_flag=1, sell_reason='manual' WHERE id=?", (lid,))
         x.commit()
-        return '다음 장전 08:35 매도 예약'
+        return '다음 장전 08:50 매도 예약'
     return await _ok(f)()
 
 
@@ -620,7 +620,7 @@ async def api_job_backtest(req: Request):
             import tk_backtest
             al = {k: v / 100 for k, v in tr.alloc(CFG).items()}
             tk_backtest.run(b.get('start') or '20231024', b.get('end') or '99999999', al, int(CFG.get('cap') or 10_000_000),
-                            slots=tr.slots(CFG), pick=tr.picks(CFG), sweep_on=tr.sweep_on(CFG), gap_skip=tr.gap_limit(CFG), sweep_mode=CFG.get('sweep_mode') or 'ma60',
+                            slots=tr.slots(CFG), pick=tr.picks(CFG), sweep_on=tr.sweep_on(CFG), gap_skip=tr.gap_limit(CFG), sweep_mode=CFG.get('sweep_mode') or 'night',
                             progress=lambda m: JOB.update(bt_msg=m))
         except Exception as e:
             JOB['bt_msg'] = f'오류: {CF.clean(e)}'
