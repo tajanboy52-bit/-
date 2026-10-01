@@ -353,6 +353,15 @@ _mb = _kp.minute_day('005930', '20260102')
 check('KIS 1분봉: FHKST03010230 · 120봉씩 4쪽 · 누적 거래대금 → 분당', len(_mb) == len(_src) == 382 and len(_seen) == 4 and _seen[0] == ('FHKST03010230', '153000')
       and abs(sum(b[6] for b in _mb) - _cum) < 2 and _mb[0][0] == 900 and _mb[-1][0] == 1530, f'{len(_mb)}봉 · 호출 {len(_seen)} · {_seen[:2]}')
 
+# ── 2-5. 👥 그림자 운용 ──
+import tk_shadow as SHD
+db.gmeta_set('shadow_start', run_days[-10])
+_sh = SHD.run(cfg)
+_names = [r_['name'] for r_ in _sh['rows']] if _sh else []
+check('👥 그림자 운용: 지금 설정 + 실험 7개 · 앞으로(시작일부터) · 최근 60일 · 기본 대비', _sh and len(_sh['rows']) == 8 and _names[0].startswith('기본')
+      and all(r_['forward']['days'] >= 8 and r_['recent']['days'] >= 50 for r_ in _sh['rows']) and _sh['rows'][1]['forward'].get('vs') is not None,
+      ' · '.join(f"{r_['name'][:8]} {r_['forward']['ret']:+.1f}%" for r_ in _sh['rows'][:4]) if _sh else str(SHD.STATE))
+
 # ── 3. 서버 보안 ──
 from fastapi.testclient import TestClient
 import tk_server as SV

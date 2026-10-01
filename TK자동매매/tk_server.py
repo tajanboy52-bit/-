@@ -37,6 +37,7 @@ import tk_db as db
 import tk_journal as J
 import tk_kis
 import tk_minute as mn
+import tk_shadow as SH
 import tk_signals as S
 import tk_trader as tr
 import tk_ws as rtws
@@ -128,6 +129,8 @@ def signal_run(d):
             open(os.path.join(db.DATA_DIR, 'analysis_result.md'), 'w', encoding='utf-8').write(AN.report_md(ANALYSIS['res']))
         except Exception as e:
             db.log(f'거래 분석 실패: {CF.clean(e)}', 'warn')
+        if CFG.get('shadow_on', True):                                          # 👥 그림자 운용 (설정 몇 개를 가상으로 나란히)
+            SH.run(CFG)
         return True
     except Exception as e:
         JOB['signal_err'] = CF.clean(e)
@@ -451,14 +454,15 @@ RESEARCH = [
     ('2026-10-01', '시가 갭 +5% 넘으면 안 삼 (한국 밤사이 과잉반응 연구)', '채택', '설계서 12장'),
     ('2026-10-01', '남는 현금 → KODEX 200', '채택 → 밤사이 회전으로', '설계서 12 · 13장'),
     ('2026-10-01', '회전형 전환: 밤사이 35% · LVH 10일 · DV 0%', '채택 (연 +37.9% · 낙폭 −12.3% · 샤프 1.74)', '설계서 14장'),
-    ('2026-10-01', '⏱ 1분봉 수집기 → 장중 규칙 검증 준비', '수집 중 (몇 달 뒤 검증)', '설계서 15장')]
+    ('2026-10-01', '⏱ 1분봉 수집기 → 장중 규칙 검증 준비', '수집 중 (몇 달 뒤 검증)', '설계서 15장'),
+    ('2026-10-01', '타사 API 비교: 예약주문 · 텔레그램 명령 · 그림자 운용 · 예상체결 웹소켓 · 주문 안전장치', '추가', '설계서 16장')]
 SCHEDULE = [('07:30', '작업 스케줄러가 PC 깨워 실행 (절전 해제)'), ('06:00~08:40', '어젯밤 놓친 자료 수집 · 신호 계산 따라잡기'), ('07:40', 'KIS 종목 마스터 (정지 · 관리 · 경고)'),
             ('08:05', '휴장일 확인'), ('08:20', '장전 점검 — 연결 · 잔고 · 모르는 종목 · 신호 날짜 (주문 없음)'),
             ('08:50', '장전: 밤사이 ETF · KODEX 200 · 보유 끝 종목 시가 매도 → 예상체결가로 갭 확인 → 새 매수 (시가)'),
             ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치 · 매시 텔레그램'),
             ('15:10', '밤사이 칸 매수 자금 확인'), ('15:20', '🌙 KODEX 코스닥150 + 💤 KODEX 200 종가 매수 (밤사이)'), ('15:45', '잔고 대조 · 매매일지 · 잔고 이력 · 계좌 안전장치'),
             ('15:50', '📥 KRX 자료 수집 (실패하면 30분마다 · 22시까지)'), ('16:20', '⏱ 오늘 1분봉'), ('16:40', '💾 장부 백업'), ('18:15', '수급 확정치'),
-            ('18:40', '🎯 신호 계산 → 거래 분석 갱신 → 텔레그램'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
+            ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 👥 그림자 운용 → 텔레그램'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
 
 
 def sysinfo():
@@ -1055,6 +1059,20 @@ async def api_minute_export(frm: str = '0', to: str = '99999999'):
     return Response(content=data, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="tk_minute_{datetime.now():%Y%m%d}.zip"'})
 
 
+@app.get('/api/shadow')
+async def api_shadow():
+    return {'ok': True, 'state': dict(SH.STATE), 'res': await asyncio.to_thread(SH.result), 'variants': [n for n, _ in SH.variants(CFG)]}
+
+
+@app.post('/api/job/shadow')
+async def api_job_shadow(req: Request):
+    await req.json()
+    if SH.STATE['running']:
+        return {'ok': False, 'error': '이미 계산 중'}
+    threading.Thread(target=SH.run, args=(CFG,), daemon=True).start()
+    return {'ok': True, 'msg': '그림자 운용 계산 시작 (1~3분)'}
+
+
 @app.post('/api/job/backfill')
 async def api_job_backfill(req: Request):
     """과거 신호 후보 채우기 (분석의 '후보 순위별 사후 수익'을 처음부터 볼 수 있게)"""
@@ -1086,7 +1104,7 @@ def keep_awake():
             n = datetime.now()
             hm = n.strftime('%H:%M')
             need = (tr.is_trading_day(n.strftime('%Y%m%d')) and '07:25' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf'] \
-                or mn.STATE['running']
+                or mn.STATE['running'] or SH.STATE['running']
             if need != on:
                 ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if need else 0))
                 db.log('PC 잠들지 않게 유지' if need else 'PC 절전 허용 (윈도우 절전 설정대로)')

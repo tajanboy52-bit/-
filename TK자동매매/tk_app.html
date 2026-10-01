@@ -348,6 +348,11 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
       <button class="btn p" id="anGo">분석 실행</button><button class="btn" id="anPkg">📦 분석 패키지 (Claude에게 보내기)</button><button class="btn" id="anBf">과거 신호 후보 채우기</button></div>
     <div class="alert" style="margin-top:12px">규칙은 <b>자동으로 바뀌지 않습니다</b> — 후보를 근거 수치와 함께 보여 줄 뿐입니다. 바꿀 때는 🧪 백테스트(두 기간) → 모의 20거래일 → 실전 순서로. 📦 패키지를 Claude에게 보내면 기록을 바탕으로 고도화를 점검합니다.</div>
     <div class="mut" id="anMsg" style="font-size:13px"></div></div>
+  <div class="card"><h2>👥 그림자 운용 <small>지금 설정 vs 미리 정한 실험 설정 — 같은 자료 · 같은 규칙 엔진으로 나란히 (주문 없음) · 날마다 신호 계산 뒤 갱신</small>
+      <button class="btn sm" id="shRun" style="margin-left:auto">지금 계산</button></h2>
+    <div class="mut" id="shMsg" style="font-size:13px"></div><div id="shChart"></div><div class="tw" id="shTbl" style="margin-top:10px"></div>
+    <div class="mut" style="font-size:12.5px;margin-top:8px">· <b>앞으로</b> = 처음 켠 날부터 새로 나온 자료로만 (진짜 표본 밖) — 설정을 바꿀 근거는 이 열 · <b>최근 60일</b>은 참고<br>
+      · 실험 설정이 '앞으로'에서 꾸준히(몇 주 이상) 나으면 ⚙️ 설정에 반영 → 모의 → 실전 · 자동으로 바꾸지 않음</div></div>
   <div class="card"><h2>💡 고도화 후보</h2><div id="anIdeas" class="mut">분석 실행을 누르세요</div></div>
   <div class="grid" id="anGrid" style="grid-template-columns:repeat(auto-fit,minmax(min(560px,100%),1fr))"></div>
 </section>
@@ -659,6 +664,16 @@ function an(){const r=AN;if(!r)return;$('#anMsg').textContent=`분석 ${r.made} 
   if(r.compare.length)g.push(atbl('모의 ↔ 실전',r.compare,[['칸','sleeve',v=>sb(v)],['모의 건수','paper_n',N],['실전 건수','real_n',N],['모의 평균','paper_avg',P],['실전 평균','real_avg',P],['모의 체결차','paper_slip',P],['실전 체결차','real_slip',P]]));
   g.push(atbl('KIS 호출',r.api,[['모드','mode'],['TR','tr'],['호출','n',N],['오류','err',N],['오류율','err_pct',v=>v+'%'],['평균 ms','ms',N]]));
   $('#anGrid').innerHTML=g.join('');const fs=$('#anFeat');if(fs){const d=()=>{const [sl,f]=fs.value.split('|');$('#anFeatT').innerHTML=tbl([{h:'구간',f:r=>r.range},{h:'건수',r:1,f:r=>won(r.n)},{h:'승률',r:1,f:r=>r.win+'%'},{h:'평균',r:1,f:r=>P(r.avg)},{h:'t',r:1,f:r=>T(r.t)}],r.buckets.filter(b=>b.sleeve===sl&&b.feat_ko===f))};fs.onchange=d;d()}}
+async function shadow(){const r=await get('/api/shadow');if(r.ok===false)return;const R=r.res,st=r.state;
+  $('#shMsg').textContent=st.running?'⏳ '+st.msg:(R?`계산 ${R.made.slice(5,16)} · 앞으로 ${md(R.start)}~${md(R.last)} · 최근 60일 ${md(R.recent_from)}~`+(R.proxy?' · 밤사이/지수 칸은 근사 가격':''):'아직 없음 — 신호 계산 뒤 자동 · 또는 지금 계산')+(st.err?' · ⚠️ '+st.err:'');
+  if(!R){$('#shTbl').innerHTML='';$('#shChart').innerHTML='';return}
+  const P2=v=>v==null?'-':`<span class="${cls(v)}">${pct(v)}</span>`,PV=v=>v==null?'-':`<span class="${cls(v)}">${(v>0?'+':'')+v.toFixed(2)}%p</span>`;
+  $('#shTbl').innerHTML=tbl([{h:'설정',f:x=>x.name.startsWith('기본')?`<b>${x.name}</b>`:x.name},{h:'앞으로 수익',r:1,f:x=>x.forward.days?P2(x.forward.ret):'<span class="mut">쌓이는 중</span>'},
+    {h:'앞으로 낙폭',r:1,f:x=>x.forward.days?P2(x.forward.mdd):'-'},{h:'기본 대비',r:1,f:x=>PV(x.forward.vs)},{h:'날',r:1,f:x=>x.forward.days||0},
+    {h:'최근 60일 수익',r:1,f:x=>P2(x.recent.ret)},{h:'낙폭',r:1,f:x=>P2(x.recent.mdd)},{h:'샤프',r:1,f:x=>x.recent.sharpe??'-'},{h:'기본 대비',r:1,f:x=>PV(x.recent.vs)}],R.rows);
+  const pal=['var(--accent)','#7c3aed','#b45309','#1d4ed8','#64748b','#0e7490','#a16207','#94a3b8'];
+  $('#shChart').innerHTML=line(R.rows.map((x,i)=>({name:x.name,color:pal[i]||'#cbd5e1',pts:x.recent.curve||[],w:i?1.3:2.6})),240,1100,v=>v.toFixed(0))}
+$('#shRun').onclick=()=>{act('/api/job/shadow',{});setTimeout(shadow,1500)};
 async function runAn(cached){const modes=[];if($('#anP').checked)modes.push('paper');if($('#anR').checked)modes.push('real');$('#anMsg').textContent='분석 중…';
   const r=await post('/api/analysis',{modes,frm:$('#anFrm').value,to:$('#anTo').value,cached});if(!r.ok){$('#anMsg').textContent='';toast(r.error,false);return}AN=r.res;an()}
 $('#anGo').onclick=()=>runAn(false);
@@ -672,7 +687,7 @@ function sett(s){$('#setMode').textContent=s.mode==='real'?'🔴 실전':'🟢 �
   $('#protMsg').textContent=s.cfg.protected?'🔒 윈도우 DPAPI 암호화 저장':'⚠️ 윈도우가 아니라 base64 저장'}
 function sys(s){$('#sysKv').innerHTML=`<span>모드<b>${s.mode==='real'?'🔴 실전':'🟢 모의'}</b></span><span>자동주문<b>${s.kis_on?'ON':'OFF'}${s.halt?' · ⛔ 정지':''}</b></span><span>지금<b>${s.now}</b></span><span>거래일<b>${s.trading_day?'예':'아니오'}</b></span><span>체결 반영<b>${s.trader.last_sync||'-'}</b></span><span>신호<b>${s.job.signal_msg||'-'}${s.job.signal_err?' ⚠️ '+s.job.signal_err:''}</b></span><span>일정 오류<b>${s.trader.last_err||'-'}</b></span><span>웹소켓<b>${s.ws.err||(s.ws.connected?'연결':'-')}</b></span><span>텔레그램<b>${s.cfg.telegram?'설정됨':'없음'}</b></span><span>KRX 수집<b>${s.data.collect.running?'⏳ '+s.data.collect.msg:(s.data.collect.err?'⚠️ '+s.data.collect.err:'마지막 일봉 '+md(s.data.last_bar))}</b></span><span>1분봉<b>${(s.data.minute||{}).running?'⏳ '+s.data.minute.msg:((s.data.minute||{}).days||0)+'일 · 오늘 '+md((s.data.minute||{}).today_done||'')}</b></span>`;
   const w=$('#logW').checked;$('#log').textContent=s.log.filter(x=>!w||x.level!=='info').map(x=>`${x.ts.slice(5,19).replace('T',' ')} ${x.mode==='real'?'[실전] ':''}${x.level==='info'?'':'['+x.level+'] '}${x.msg}`).join('\n')}
-async function load(){try{ST=await get('/api/state');if(ST.ok===false){toast(ST.error,false);return}header(ST);({info,dash,live:()=>{},sig,res,bt,data,real,set:sett,sys,jr:()=>{if(!JDATA)jr()},an:s=>{if(s.job.bf)$('#anMsg').textContent='⏳ '+s.job.bf_msg;if(!AN)runAn(true)}})[TAB](ST)}catch(e){toast('불러오기 실패: '+e.message,false)}}
+async function load(){try{ST=await get('/api/state');if(ST.ok===false){toast(ST.error,false);return}header(ST);({info,dash,live:()=>{},sig,res,bt,data,real,set:sett,sys,jr:()=>{if(!JDATA)jr()},an:s=>{if(s.job.bf)$('#anMsg').textContent='⏳ '+s.job.bf_msg;if(!AN)runAn(true);shadow()}})[TAB](ST)}catch(e){toast('불러오기 실패: '+e.message,false)}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!=='t-'+TAB);load();if(TAB==='live')live()});
 $('#fSl').innerHTML+=['LVH','REV','DV','ON','SW','MAN'].map(k=>`<option value="${k}">${SN[k]}</option>`).join('');$('#fSl').onchange=()=>res(ST);$('#logW').onchange=()=>sys(ST);
 $('#csvBtn').onclick=()=>{const f=$('#fSl').value,rows=ST.closed.filter(r=>!f||r.sleeve===f),h=['sleeve','ticker','name','entry_date','exit_date','entry_px','exit_px','qty0','pnl','ret','sell_reason'];
