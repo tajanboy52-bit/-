@@ -97,12 +97,13 @@ def collect_run(full=False):
             kc = tr.client(CFG)
     except Exception:
         kc = None
+    JOB['collect_msg'] = ''                                                       # 지난 시도의 결과 · 오류는 지움 (새로 받는 중에 옛 오류가 같이 보이지 않게)
     try:
         r = col.run(CFG, kc=kc, full=full)
         JOB['collect_msg'] = f"끝 {datetime.now():%H:%M} · {r}"
         return True
     except Exception as e:
-        JOB['collect_msg'] = f'오류: {CF.clean(e)}'
+        JOB['collect_msg'] = f'{datetime.now():%H:%M} 오류: {CF.clean(e)}'
         tr.alert(f'자료 수집 실패 — {CF.clean(e)}', 'collect')
         return False
 
