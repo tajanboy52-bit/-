@@ -353,6 +353,108 @@ _mb = _kp.minute_day('005930', '20260102')
 check('KIS 1분봉: FHKST03010230 · 120봉씩 4쪽 · 누적 거래대금 → 분당', len(_mb) == len(_src) == 382 and len(_seen) == 4 and _seen[0] == ('FHKST03010230', '153000')
       and abs(sum(b[6] for b in _mb) - _cum) < 2 and _mb[0][0] == 900 and _mb[-1][0] == 1530, f'{len(_mb)}봉 · 호출 {len(_seen)} · {_seen[:2]}')
 
+# ── 2-4b. ⏱ 장중 연구실 · 장중 칸 ──
+import tk_intraday as IL
+_H = [9 * 100 + m for m in range(60)] + [h_ * 100 + m for h_ in range(10, 15) for m in range(60)] + [1500 + m for m in range(21)]
+
+
+def _mkA(path, vol=None):
+    out = []
+    for i, (hm, p) in enumerate(zip(_H, path)):
+        pv = path[i - 1] if i else p
+        out.append((hm, pv, max(pv, p), min(pv, p), p, (vol[i] if vol else 1000), p * 1000))
+    return IL.arr(out)
+
+
+_n = len(_H)
+_g = IL.trade('GAPREV', _mkA([95, 94.5, 94, 94.2, 94.6] + list(np.linspace(94.8, 101, _n - 5))), {'pc': 100})
+_g0 = IL.trade('GAPREV', _mkA([99, 98.5, 98] + list(np.linspace(98, 101, _n - 3))), {'pc': 100})          # 갭 −1% → 해당 없음
+_o = IL.trade('ORB', _mkA([100 + (i % 10) * 0.3 for i in range(30)] + [102.5] * 10 + [103.5] + list(np.linspace(103.6, 107, _n - 41)),
+                          [1000] * 40 + [5000] + [1000] * (_n - 41)), {'pc': 100})
+_o0 = IL.trade('ORB', _mkA([100 + (i % 10) * 0.3 for i in range(30)] + [102.5] * 10 + [103.5] + list(np.linspace(103.6, 107, _n - 41))), {'pc': 100})  # 거래량 없음
+_v = IL.trade('VWAP', _mkA([100] * 5 + list(np.linspace(100, 96, 60)) + [96] * 20 + list(np.linspace(96.5, 100, _n - 85))), {'pc': 100})
+_pp = [100] + list(np.linspace(100, 97.5, 30)) + [97.5] * (_n - 31)
+_p1, _p0 = IL.trade('PULL', _mkA(_pp), {'pc': 100, 'cand': True}), IL.trade('PULL', _mkA(_pp), {'pc': 100, 'cand': False})
+_fee, _tax = IL._rates()
+check('⏱ 장중 규칙 4개: 시가 급락 되돌림 · 장 초반 돌파(거래량 2배) · VWAP 되찾기 · 후보 눌림 — 신호 · 다음 분 시가 매수 · 익절/15:15 정리 · 비용',
+      _g and _g['sig_hm'] == 918 and _g['hm'] == 919 and _g['kind'] == 'tp' and not _g0 and _o and _o['kind'] == 'tp' and abs(_o['ret'] - (1.03 / (1 + _fee) * (1 - _fee - _tax) - 1)) < 1e-9
+      and not _o0 and _v and _v['sig_hm'] >= 1000 and _v['kind'] == 'tp' and _p1 and _p1['kind'] == 'time' and _p1['xhm'] == 1515 and not _p0,
+      f"GAPREV {_g['sig_hm']}→{_g['ret'] * 100:+.2f}% · ORB {_o['ret'] * 100:+.2f}% · VWAP {_v['ret'] * 100:+.2f}% · PULL {_p1['ret'] * 100:+.2f}%")
+_A = _mkA([100] * _n)
+_A[6, 2], _A[6, 3] = 103, 97                                             # 한 분에 고가 103 · 저가 97
+check('장중 청산: 같은 분에 익절 · 손절 둘 다 닿으면 손절로(보수적) · 15:15 시가 정리', IL.exit_scan(_A, 5, 102, 98)[2] == 'sl' and IL.exit_scan(_A, 9, 120, 50)[1:] == (100 * (1 - IL.SLIP), 'time'))
+_rng = np.random.default_rng(3)
+_bad, _hits = [], 0
+for _k in range(40):                                                    # 무작위 분봉: 실시간처럼 한 분씩 늘려 가며 판단 = 연구실 판단 (앞날 정보 안 씀)
+    _w = 100 * np.exp(np.cumsum(_rng.normal(0, 0.004, _n)))
+    _w = _w / _w[0] * (100 * (0.96 if _k % 3 == 0 else 1.0))
+    _AA = _mkA(list(_w), list(_rng.integers(500, 6000, _n)))
+    for _r in IL.RULES:
+        _ctx = {'pc': 100, 'cand': True}
+        _full = IL.signal(_r, _AA, _ctx)
+        _live = next((k_ - 1 for k_ in range(6, _n + 1) if (s_ := IL.signal(_r, _AA[:k_], _ctx)) and s_['i'] == k_ - 1), None)
+        _hits += _full is not None
+        if (_full['i'] if _full else None) != _live:
+            _bad.append((_k, _r))
+check('장중 신호: 실시간(한 분씩) = 연구실(하루 전체) — 미래 분봉 안 씀', not _bad and _hits >= 10, f'신호 {_hits}건 · 불일치 {_bad[:3]}')
+_ir = IL.run(cfg)
+check('⏱ 장중 연구실: 1분봉 전체 · 규칙 4개 · 대조군 · 두 기간 · 미리 정한 기준 → 자료 모자라면 "자료 부족"', _ir and len(_ir['rules']) == 4 and _ir['days'] >= 1
+      and all(r_['verdict'] == '자료 부족' for r_ in _ir['rules']) and 'universe' in _ir['uni_src'] and _ir['cost'] > 0.3,
+      f"{_ir['days']}일 · 비용 {_ir['cost']}% · " + ' · '.join(f"{r_['key']} {r_['all']['n']}건" for r_ in _ir['rules']) if _ir else str(IL.STATE))
+_s = lambda n, a: {'n': n, 'avg': a, 't': 3.0}
+_vp = IL.verdict({'days': 60, 'all': _s(100, .2), 'half1': _s(50, .1), 'half2': _s(50, .3), 'ctl1': _s(50, .0), 'ctl2': _s(50, .1)})
+_vf = IL.verdict({'days': 60, 'all': _s(100, .2), 'half1': _s(50, .1), 'half2': _s(50, .3), 'ctl1': _s(50, .0), 'ctl2': _s(50, .4)})
+_vn = IL.verdict({'days': 60, 'all': _s(100, .2), 'half1': _s(50, -.1), 'half2': _s(50, .5), 'ctl1': _s(50, -.3), 'ctl2': _s(50, .1)})
+check('장중 판정: 두 기간 모두 + · 둘 다 대조군보다 나음 · t≥2 → 통과 / 하나라도 아니면 탈락', _vp[0] == '통과' and _vf[0] == '탈락' and _vn[0] == '탈락', f'{_vf[1]} · {_vn[1]}')
+# 장중 칸 (가짜 KIS · 모의) — 통과 규칙만 · 웹소켓 분봉 → 신호 → 매수 → 익절 · 15:15 정리
+_d = run_days[-1]
+clock['d'], kc.d = _d, _d
+_save = open(IL.RESULT, encoding='utf-8').read()
+_cfgi = {**cfg, 'intraday_on': True, 'intraday_rules': ['PULL'], 'intraday_pct': 50, 'intraday_slots': 5}
+clock['hm'] = '09:26'
+_none = IL.watch(_cfgi, _d)
+check('장중 칸: 연구실 통과 못 한 규칙은 켜도 안 씀 (볼 종목도 없음)', _none == [] and IL.rules_on(_cfgi) == ([], ['PULL']))
+_fake = json.loads(_save)
+for r_ in _fake['rules']:
+    r_['verdict'] = '통과' if r_['key'] == 'PULL' else '탈락'
+json.dump(_fake, open(IL.RESULT, 'w', encoding='utf-8'), ensure_ascii=False)
+_prev = tr.prev_trading_day(_d)
+_pcs = {r_[0]: r_[1] for r_ in db.mconn().execute('SELECT ticker, close FROM bars WHERE date=?', (_prev,))}
+_held = {l_['ticker'] for l_ in tr.open_lots()}
+_wl = IL.watch(_cfgi, _d)
+_cands = [r_[0] for r_ in db.mconn().execute("SELECT ticker FROM cands WHERE date=? AND sleeve IN ('LVH','REV') AND rank<=20 ORDER BY rank", (_prev,))]
+_tk = [t_ for t_ in _cands if t_ in _wl and t_ in _pcs and t_ not in _held and float(D['P']['close'].at[_d, t_] or 0) > 0][:2]
+for t_ in _tk:
+    pc_ = _pcs[t_]
+    IL.LIVE['seeded'].add((t_, _d))
+    IL.seed(t_, [(hm_, pc_ * .99, pc_ * .995, pc_ * .985, pc_ * (.975 if hm_ == 925 else .99), 1000, pc_ * 1000) for hm_ in range(900, 926)])
+kc.cash += 5_000_000
+x = db.conn()
+_n0 = x.execute("SELECT COUNT(*) FROM orders WHERE sleeve='IN'").fetchone()[0]
+tr.db.meta_set('auto_pause', '')
+IL.step(_cfgi, kc, _d, {})
+IL.step(_cfgi, kc, _d, {})                                                # 같은 분에 또 불러도 중복 매수 없음
+tr.sync(kc, _d)
+_ib = [dict(r_) for r_ in x.execute("SELECT o.*, l.entry_info, l.entry_px, l.status ls FROM orders o JOIN lots l ON l.id=o.lot_id WHERE o.sleeve='IN' AND o.kind='in_buy'")]
+check('장중 칸: 웹소켓 분봉 → 통과 규칙(후보 눌림) 신호가 방금 끝난 분에 → 시장가 매수 · 종목당 하루 1번 · 체결 → 보유',
+      len(_wl) > 0 and len(_tk) == 2 and len(_ib) == 2 and all(json.loads(o_['entry_info'])['rule'] == 'PULL' and o_['ls'] == '보유' for o_ in _ib) and _n0 == 0,
+      f"볼 종목 {len(_wl)} · 매수 {[(o_['name'], o_['qty']) for o_ in _ib]}")
+clock['hm'] = '10:00'
+_l1 = [l_ for l_ in tr.open_lots('IN')][0]
+IL.step(_cfgi, kc, _d, {_l1['ticker']: _l1['entry_px'] * 1.031})
+tr.sync(kc, _d)
+_x1 = x.execute('SELECT status, exit_kind FROM lots WHERE id=?', (_l1['id'],)).fetchone()
+clock['hm'] = '15:15'
+IL.step(_cfgi, kc, _d, {})
+tr.sync(kc, _d)
+_left = [l_ for l_ in tr.open_lots('IN')]
+_kinds = [r_[0] for r_ in x.execute("SELECT kind FROM orders WHERE sleeve='IN' ORDER BY id")]
+check('장중 칸: 익절(+3%) 실시간 체결가로 · 15:15 남은 것 모두 정리 · 장중 칸 보유 0', tuple(_x1) == ('청산', 'in_tp') and not _left and _kinds.count('in_close') == 1,
+      f'{_kinds}')
+check('장중 칸 끄면 아무것도 안 함', IL.step({**_cfgi, 'intraday_on': False}, kc, _d, {}) is None and IL.watch({**_cfgi, 'intraday_on': False}, _d) == [])
+kc.cash -= 5_000_000
+open(IL.RESULT, 'w', encoding='utf-8').write(_save)
+
 # ── 2-5. 👥 그림자 운용 ──
 import tk_shadow as SHD
 db.gmeta_set('shadow_start', run_days[-10])
@@ -389,6 +491,10 @@ _names = {r['name'] for r in _inv['rows']}
 check('📚 데이터 현황: 일봉 · 수급 · ETF · 월 자료 · 후보 · 1분봉 · 모의/실전 기록 기간', len(_inv['rows']) >= 20 and '1분봉' in _names
       and any(r['name'].startswith('일봉') and r['first'] and r['last'] and r['days'] > 1000 for r in _inv['rows'])
       and any(r['group'] == '모의 기록' and r['n'] for r in _inv['rows']), f"{len(_inv['rows'])}줄 · 파일 {list(_inv['files'])}")
+_iq = cli.get('/api/intraday', headers={'X-TK-Token': SV.TOKEN}).json()
+_st = cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN}).json()
+check('⏱ 장중 연구실 API · 상태에 장중 칸(기본 꺼짐)', _iq['ok'] and len(_iq['res']['rules']) == 4 and _st['cfg']['intraday_on'] is False
+      and any(s_['key'] == 'IN' for s_ in _st['sleeves']) and 'passed' in _st['intraday'])
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

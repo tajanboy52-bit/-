@@ -37,6 +37,7 @@ import tk_db as db
 import tk_journal as J
 import tk_kis
 import tk_minute as mn
+import tk_intraday as IL
 import tk_shadow as SH
 import tk_signals as S
 import tk_trader as tr
@@ -131,6 +132,8 @@ def signal_run(d):
             db.log(f'거래 분석 실패: {CF.clean(e)}', 'warn')
         if CFG.get('shadow_on', True):                                          # 👥 그림자 운용 (설정 몇 개를 가상으로 나란히)
             SH.run(CFG)
+        if CFG.get('intraday_lab', True) and mn.status()['days']:              # ⏱ 장중 연구실 (분봉이 쌓일수록 판정이 바뀜)
+            IL.run(CFG)
         return True
     except Exception as e:
         JOB['signal_err'] = CF.clean(e)
@@ -155,7 +158,7 @@ def report(d):
     al_ = tr.alloc(CFG)
     for s, m in S.SLEEVES.items():
         ls = [l for l in tr.open_lots(s) if l['status'] == '보유']
-        if not ls and al_.get(s, 1) == 0 and not x.execute("SELECT 1 FROM lots WHERE sleeve=? AND exit_date=?", (s, d)).fetchone():
+        if not ls and al_.get(s, 0 if s == 'IN' else 1) == 0 and not x.execute("SELECT 1 FROM lots WHERE sleeve=? AND exit_date=?", (s, d)).fetchone():
             continue                                                                # 꺼진 칸(비중 0)은 리포트에서 뺌
         val = sum(l['qty'] * (l['last_px'] or l['entry_px'] or 0) for l in ls)
         inv = sum(l['cost'] * (l['qty'] / l['qty0'] if l['qty0'] else 1) for l in ls)
@@ -299,6 +302,12 @@ def _state():
     for s, m in S.SLEEVES.items():
         ls = [l for l in lots if l['sleeve'] == s and l['status'] == '보유']
         cl = list(x.execute("SELECT pnl, ret FROM lots WHERE sleeve=? AND status='청산'", (s,)))
+        if s == 'IN':                                                               # 장중 칸: 낮에 노는 돈 · 그날 정리
+            sleeves.append({'key': s, **m, 'pct': None, 'limit': sum(l['qty'] * l['px'] for l in ls) or 1, 'value': sum(l['qty'] * l['px'] for l in ls), 'npos': len(ls),
+                            'slots': int(CFG.get('intraday_slots') or 5), 'on': bool(CFG.get('intraday_on')), 'mode': ', '.join(IL.rules_on(CFG)[0]) or '통과 규칙 없음',
+                            'eval': sum(l['eval'] for l in ls), 'realized': sum(r[0] or 0 for r in cl), 'closed': len(cl),
+                            'win': sum(1 for r in cl if (r[0] or 0) > 0) / len(cl) * 100 if cl else None, 'avg': sum(r[1] or 0 for r in cl) / len(cl) if cl else None})
+            continue
         if s == 'SW':                                                               # 남는 현금 칸: 비율이 아니라 남는 만큼
             v_ = sum(l['qty'] * l['px'] for l in ls)
             sleeves.append({'key': s, **m, 'pct': None, 'limit': v_ or 1, 'value': v_, 'npos': len(ls), 'slots': None, 'on': tr.sweep_on(CFG),
@@ -352,8 +361,11 @@ def _state():
                                                                                'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days',
                                                                                'real_ramp_on', 'caps', 'cap', 'cap_mode', 'fee_pct', 'tax_pct',
                                                                                'sweep_on', 'sweep_mode', 'sweep_reserve', 'gap_skip', 'preopen_time',
-                                                                               'tg_commands', 'resv_on', 'guard_per_min', 'guard_per_day')},
+                                                                               'tg_commands', 'resv_on', 'guard_per_min', 'guard_per_day',
+                                                                               'intraday_on', 'intraday_rules', 'intraday_pct', 'intraday_slots', 'intraday_watch')},
                     'sw_weight': db.meta_get('sw_weight')},
+            'intraday': {'passed': sorted(IL.passed()), 'rules': IL.RULES, 'watch': IL.LIVE['watch'], 'signals': IL.LIVE['signals'][:10], 'last': IL.LIVE['last'],
+                         'lab': dict(IL.STATE)},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
 
 
@@ -443,7 +455,8 @@ MODULES = [('tk_server.py', '서버 · 화면 API · 일정(수집 · 신호 · 
            ('tk_signals.py', '신호 엔진 — 저변동고점 · 반전·수급 · 배당·가치 · 밤사이 · 갭 · 지수 타이밍 (실전 · 백테스트 공용)'),
            ('tk_backtest.py', '백테스트 — 실전과 같은 규칙 · 비용 · 두 기간 판정'), ('tk_kis.py', '한국투자증권 REST — 주문 · 잔고 · 체결 · 시세 · 예상체결가 · 1분봉'),
            ('tk_ws.py', '웹소켓 — 실시간 체결가 · 체결 통보(AES 해독) · 재접속'), ('tk_collect.py', '자료 수집 — KRX 전종목 · 수급 · ETF · 월 재무 · 가져오기'),
-           ('tk_minute.py', '⏱ 1분봉 수집기 — 날짜별 대상 · 이어받기 · zip'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
+           ('tk_minute.py', '⏱ 1분봉 수집기 — 날짜별 대상 · 이어받기 · zip'), ('tk_intraday.py', '⏱ 장중 연구실(규칙 4개 · 대조군 · 판정) · 장중 칸(기본 꺼짐)'),
+           ('tk_shadow.py', '👥 그림자 운용 — 실험 설정을 가상으로 나란히'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
            ('tk_analyze.py', '거래내역 조회 · 분석 · 고도화 후보 · 분석 패키지'), ('tk_db.py', '저장소 — 시장 DB · 모드별 장부 · 수정주가 · 백업'),
            ('tk_config.py', '설정 · 비밀 값 DPAPI 암호화'), ('tk_app.html', '화면 (우량주 앱 테마 7가지)')]
 RESEARCH = [
@@ -455,14 +468,15 @@ RESEARCH = [
     ('2026-10-01', '남는 현금 → KODEX 200', '채택 → 밤사이 회전으로', '설계서 12 · 13장'),
     ('2026-10-01', '회전형 전환: 밤사이 35% · LVH 10일 · DV 0%', '채택 (연 +37.9% · 낙폭 −12.3% · 샤프 1.74)', '설계서 14장'),
     ('2026-10-01', '⏱ 1분봉 수집기 → 장중 규칙 검증 준비', '수집 중 (몇 달 뒤 검증)', '설계서 15장'),
-    ('2026-10-01', '타사 API 비교: 예약주문 · 텔레그램 명령 · 그림자 운용 · 예상체결 웹소켓 · 주문 안전장치', '추가', '설계서 16장')]
+    ('2026-10-01', '타사 API 비교: 예약주문 · 텔레그램 명령 · 그림자 운용 · 예상체결 웹소켓 · 주문 안전장치', '추가', '설계서 16장'),
+    ('2026-10-01', '⏱ 장중 연구실 · 장중 칸(낮에 노는 돈 · 기본 꺼짐) — 기존 규칙에 더하기', '분봉 쌓이는 대로 판정 (40일 · 60건부터)', '설계서 17장')]
 SCHEDULE = [('07:30', '작업 스케줄러가 PC 깨워 실행 (절전 해제)'), ('06:00~08:40', '어젯밤 놓친 자료 수집 · 신호 계산 따라잡기'), ('07:40', 'KIS 종목 마스터 (정지 · 관리 · 경고)'),
             ('08:05', '휴장일 확인'), ('08:20', '장전 점검 — 연결 · 잔고 · 모르는 종목 · 신호 날짜 (주문 없음)'),
             ('08:50', '장전: 밤사이 ETF · KODEX 200 · 보유 끝 종목 시가 매도 → 예상체결가로 갭 확인 → 새 매수 (시가)'),
-            ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치 · 매시 텔레그램'),
+            ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:05~15:15', '⏱ 장중 칸 (켰을 때만 · 통과한 규칙만 · 15:15 모두 정리)'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치 · 매시 텔레그램'),
             ('15:10', '밤사이 칸 매수 자금 확인'), ('15:20', '🌙 KODEX 코스닥150 + 💤 KODEX 200 종가 매수 (밤사이)'), ('15:45', '잔고 대조 · 매매일지 · 잔고 이력 · 계좌 안전장치'),
             ('15:50', '📥 KRX 자료 수집 (실패하면 30분마다 · 22시까지)'), ('16:20', '⏱ 오늘 1분봉'), ('16:40', '💾 장부 백업'), ('18:15', '수급 확정치'),
-            ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 👥 그림자 운용 → 텔레그램'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
+            ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 👥 그림자 운용 → ⏱ 장중 연구실 → 텔레그램'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
 
 
 def sysinfo():
@@ -588,9 +602,23 @@ async def api_config(req: Request):
             if not ('08:31' <= t <= '08:55' and len(t) == 5):
                 raise ValueError('장전 주문 시각 08:31~08:55')
             CFG['preopen_time'] = t
-        for k in ('ws_on', 'hourly_report', 'real_ramp_on', 'sweep_on', 'tg_commands', 'resv_on'):
+        for k in ('ws_on', 'hourly_report', 'real_ramp_on', 'sweep_on', 'tg_commands', 'resv_on', 'intraday_on'):
             if k in b:
                 CFG[k] = bool(b[k])
+        if 'intraday_rules' in b:                                                # 장중 칸 규칙 (연구실 '통과'한 것만 실제로 씀)
+            rs = [r for r in (b['intraday_rules'] or []) if r in IL.RULES]
+            CFG['intraday_rules'] = rs
+            bad = [r for r in rs if r not in IL.passed()]
+            if bad:
+                db.log(f"장중 칸: {', '.join(bad)} 은(는) 연구실 판정 '통과'가 아니라서 켜도 쓰지 않음", 'warn')
+        for k, lo, hi in (('intraday_pct', 10, 100), ('intraday_slots', 1, 10), ('intraday_watch', 5, 35)):
+            if b.get(k) not in (None, ''):
+                v = float(b[k])
+                if not lo <= v <= hi:
+                    raise ValueError(f'{k} {lo}~{hi}')
+                CFG[k] = v if k == 'intraday_pct' else int(v)
+        if b.get('intraday_on'):
+            db.log(f"⏱ 장중 칸 켬 · 규칙 {', '.join(IL.rules_on(CFG)[0]) or '없음(통과한 규칙 없음 → 매매 안 함)'} · 낮에 노는 돈의 {CFG.get('intraday_pct') or 50}%", 'warn')
         for m in ('paper', 'real'):                                              # 계좌별 운용 한도 (비우면 공통 한도)
             v = (b.get('caps') or {}).get(m) if 'caps' in b else None
             if v is not None:
@@ -1073,6 +1101,22 @@ async def api_job_shadow(req: Request):
     return {'ok': True, 'msg': '그림자 운용 계산 시작 (1~3분)'}
 
 
+@app.get('/api/intraday')
+async def api_intraday():
+    return {'ok': True, 'state': dict(IL.STATE), 'res': await asyncio.to_thread(IL.result), 'rules': IL.RULES, 'crit': IL.CRIT}
+
+
+@app.post('/api/job/intraday')
+async def api_job_intraday(req: Request):
+    await req.json()
+    if IL.STATE['running']:
+        return {'ok': False, 'error': '이미 계산 중'}
+    if not mn.status()['days']:
+        return {'ok': False, 'error': '1분봉이 아직 없음 (📥 데이터 → ⏱ 1분봉)'}
+    threading.Thread(target=IL.run, args=(CFG,), daemon=True).start()
+    return {'ok': True, 'msg': '장중 연구실 계산 시작 (분봉 양에 따라 몇 분)'}
+
+
 @app.post('/api/job/backfill')
 async def api_job_backfill(req: Request):
     """과거 신호 후보 채우기 (분석의 '후보 순위별 사후 수익'을 처음부터 볼 수 있게)"""
@@ -1092,6 +1136,13 @@ async def api_job_backfill(req: Request):
     return {'ok': True, 'msg': '과거 신호 후보 계산 시작'}
 
 
+def _in_watch():
+    try:
+        return IL.watch(CFG) if CFG.get('intraday_on') and '09:00' <= datetime.now().strftime('%H:%M') <= '15:20' else []
+    except Exception:
+        return []
+
+
 def keep_awake():
     """윈도우: 거래일 07:25~21:30 · 수집/신호/백테스트 중에는 PC가 잠들지 않게 · 그 밖에는 윈도우 절전 설정대로 (밤엔 잠들어도 됨 → 07:30 작업 스케줄러가 깨움)"""
     if sys.platform != 'win32':
@@ -1104,7 +1155,7 @@ def keep_awake():
             n = datetime.now()
             hm = n.strftime('%H:%M')
             need = (tr.is_trading_day(n.strftime('%Y%m%d')) and '07:25' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf'] \
-                or mn.STATE['running'] or SH.STATE['running']
+                or mn.STATE['running'] or SH.STATE['running'] or IL.STATE['running']
             if need != on:
                 ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if need else 0))
                 db.log('PC 잠들지 않게 유지' if need else 'PC 절전 허용 (윈도우 절전 설정대로)')
@@ -1139,8 +1190,10 @@ def main():
                 db.log(f'체결 통보 반영 오류: {CF.clean(e)}', 'warn')
             finally:
                 tr._lock.release()
+    if IL.on_tick not in rtws.TICK_HOOKS:                                       # 장중 칸: 체결가 → 1분봉
+        rtws.TICK_HOOKS.append(IL.on_tick)
     rtws.start(lambda: CFG.get('ws_on', True) and tr.configured(CFG), lambda: tr.client(CFG),
-               lambda: list(dict.fromkeys(l['ticker'] for l in tr.open_lots() if l['status'] == '보유')),
+               lambda: list(dict.fromkeys([l['ticker'] for l in tr.open_lots() if l['status'] == '보유'] + _in_watch())),
                lambda: tr.is_trading_day() and '08:30' <= datetime.now().strftime('%H:%M') <= '15:35', on_notice, wanted_exp)
     print(f"""
 ╔══════════════════════════════════════════════╗

@@ -21,6 +21,7 @@ NOTICE_COLS = ['CUST_ID', 'ACNT_NO', 'ODER_NO', 'OODER_NO', 'SELN_BYOV_CLS', 'RC
                'ORD_COND_PRC', 'ORD_EXG_GB', 'POPUP_YN', 'FILLER', 'CRDT_CLS', 'CRDT_LOAN_DATE', 'CNTG_ISNM40', 'ODER_PRC']
 PRICE = {}                                   # {ticker: (가격, time.time(), 등락률)}
 EXP = {}                                     # 장전 예상체결 {ticker: (예상가, time.time(), 전일 대비 %)} — H0STANC0 (08:30~09:00 갭 확인용)
+TICK_HOOKS = []                              # 체결마다 부를 함수 (장중 칸 1분봉 만들기)
 NOTICES = []                                 # 최근 체결 통보 (화면용)
 STATE = {'on': False, 'connected': False, 'subs': [], 'notice': False, 'decrypt': False, 'ticks': 0, 'err': '', 'reconnects': 0, 'since': ''}
 _keys = {}
@@ -61,7 +62,7 @@ def parse(raw):
                     except ValueError:
                         pass
             return 'exp', out
-        if trid == 'H0STCNT0':
+        if trid == 'H0STCNT0':                                                     # 0 종목 · 1 체결시각 · 2 체결가 · 5 전일 대비 % · 12 체결량
             f = body.split('^')
             try:
                 n = max(1, int(cnt))
@@ -73,7 +74,8 @@ def parse(raw):
                 r = f[i * step:(i + 1) * step]
                 if len(r) > 5:
                     try:
-                        out.append((r[0], float(r[2]), float(r[5] or 0)))
+                        vol = int(float(r[12] or 0)) if len(r) > 12 else 0
+                        out.append((r[0], float(r[2]), float(r[5] or 0), vol, r[1]))
                     except ValueError:
                         pass
             return 'price', out
@@ -168,9 +170,15 @@ def _session(ws_mod):
                 raw = raw.decode('utf-8', 'ignore')
             kind, data = parse(raw)
             if kind == 'price':
-                for t, px, chg in data:
+                for t, px, chg, vol, hms in data:
                     PRICE[t] = (px, time.time(), chg)
                     STATE['ticks'] += 1
+                    if TICK_HOOKS:
+                        for fn in TICK_HOOKS:
+                            try:
+                                fn(t, px, vol, hms)
+                            except Exception:
+                                pass
             elif kind == 'exp':
                 for t, px, chg in data:
                     EXP[t] = (px, time.time(), chg)

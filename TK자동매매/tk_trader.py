@@ -25,6 +25,7 @@ import pandas as pd
 
 import tk_config as CF
 import tk_db as db
+import tk_intraday as IL
 import tk_journal as J
 import tk_signals as S
 from tk_kis import KIS, KISError
@@ -36,7 +37,8 @@ SLOTS = {'LVH': 40, 'REV': 30, 'DV': 15}
 DEFAULT_ALLOC = {'LVH': 40, 'REV': 25, 'DV': 0, 'ON': 35}         # 회전형: 배당·가치(장기 보유) 0 · 밤사이 35% (설계서 14장)
 COSTS = {'LVH': 0.25, 'REV': 0.25, 'DV': 0.25, 'ON': 0.05}        # 손익 표시용 왕복 비용 추정 %
 KIND = {'entry': '매수', 'hold20': '보유 기간 끝(LVH 10일)', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_buy': '밤사이 매수(종가)',
-        'on_sell': '밤사이 매도(시가)', 'manual': '수동', 'delist': '거래 끊김 정리', 'sw_buy': '남는 현금 → KODEX 200', 'sw_sell': 'KODEX 200 → 현금'}
+        'on_sell': '밤사이 매도(시가)', 'manual': '수동', 'delist': '거래 끊김 정리', 'sw_buy': '남는 현금 → KODEX 200', 'sw_sell': 'KODEX 200 → 현금',
+        'in_buy': '장중 매수', 'in_tp': '장중 익절', 'in_sl': '장중 손절', 'in_close': '장중 15:15 정리'}
 STATE = {'running': False, 'last_sync': '', 'last_err': ''}
 _lock = threading.Lock()
 NOTIFY = None                     # tk_server가 텔레그램 함수를 넣어 줌
@@ -824,6 +826,11 @@ def eod(cfg, kc, d):
         if o['side'] == 'buy':
             _finish_buy(x, o, o['filled'] or 0)
     x.execute("UPDATE lots SET status='미체결' WHERE status='주문' AND id NOT IN (SELECT lot_id FROM orders WHERE date=? AND side='buy')", (d,))
+    for l in open_lots('IN'):                                                       # 장중 칸은 그날 정리가 원칙 → 못 판 것은 다음 날 장전 매도
+        if l['status'] == '보유' and not l['sell_flag']:
+            x.execute("UPDATE lots SET sell_flag=1, sell_reason='in_close' WHERE id=?", (l['id'],))
+            log(f"⏱ 장중 칸 {l['name']} {l['qty']}주가 장 마감까지 안 팔림 → 다음 날 장전 매도", 'warn')
+            alert(f"장중 칸 {l['name']} {l['qty']}주 정리 실패 → 다음 날 장전 매도", 'inleft')
     x.commit()
     bal, unknown, have = _balance_check(kc)
     kpos = {p['ticker']: p for p in bal['positions']}
@@ -890,7 +897,7 @@ def signal_job(cfg, d, progress=None):
     x = db.conn()
     C = F['close']
     # ① 보유 일수 (체결일부터 d까지 거래된 날 수) · 매도 표시
-    for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sleeve NOT IN ('ON','SW')")]:
+    for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sleeve NOT IN ('ON','SW','IN')")]:
         t = l['ticker']
         if t not in C.columns:
             continue
@@ -1121,6 +1128,11 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
                     if '09:02' <= hm <= '09:20' and not _done('defer', d) and can_order(cfg):
                         _mark('defer', d)
                         deferred(cfg, kc, d)
+                    if cfg.get('intraday_on') and '09:05' <= hm <= '15:19' and can_order(cfg):
+                        if time.time() - last_sync > 15:                                   # 장중 칸: 체결을 빨리 반영해야 익절 · 손절 기준가가 생김
+                            last_sync = time.time()
+                            sync(kc, d)
+                        IL.step(cfg, kc, d, get_prices())
                     if '09:01' <= hm <= '15:35' and time.time() - last_sync > 60:
                         last_sync = time.time()
                         sync(kc, d)
