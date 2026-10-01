@@ -213,7 +213,10 @@ check('모드: 실전 → 자동주문 · 설정 그대로 · 계좌 · 한도 �
       f'실전 장부 lots {db.conn().execute("SELECT COUNT(*) FROM lots").fetchone()[0]} · 한도 {tr.cap(cfg):,} · 계좌 {tr.client(cfg).masked_account}')
 tr.switch_mode(cfg, 'paper')
 check('모드: 모의로 돌아오면 모의 장부 · 모의 계좌 그대로', db.mode() == 'paper' and db.conn().execute('SELECT COUNT(*) FROM lots').fetchone()[0] == len(
-    x.execute('SELECT id FROM lots').fetchall()) and tr.client(cfg).cano == '12345678' and tr.cap(cfg) == 10_000_000)
+    x.execute('SELECT id FROM lots').fetchall()) and tr.client(cfg).cano == '12345678' and tr.cap(cfg) == int(tr.last_equity()))
+_eq = tr.last_equity()
+check('운용 자금: 기본은 계좌 전체(마지막 평가액 · 수익 따라) · 상한 고정이면 그 금액', abs(tr.cap(cfg) - _eq) < 1 and _eq != 10_000_000
+      and tr.cap({**cfg, 'cap_mode': 'fixed', 'cap': 10_000_000}) == 10_000_000, f'계좌 전체 {tr.cap(cfg):,} · 고정 10,000,000')
 
 check('실험 설정: 자리 · 건너뛸 순위가 실전 · 백테스트에 같이', tr.slots({'slots': {'LVH': 40}})['LVH'] == 40 and tr.slots({})['REV'] == 30
       and tr.picks({'pick_skip': {'REV': 3}})['REV'] == (3, 3) and tr.picks({})['LVH'] == (0, 3)

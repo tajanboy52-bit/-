@@ -234,10 +234,21 @@ def alloc(cfg):
     return a
 
 
-def cap(cfg):
-    """운용 한도 — 계좌(모드)별 한도가 있으면 그것 · 없으면 공통 한도 · 실전 단계 한도는 켰을 때만"""
+def last_equity():
+    """이 계좌의 마지막 평가액 (장 마감 기록 → 없으면 시작 평가액)"""
     try:
-        base = max(1_000_000, int(float((cfg.get('caps') or {}).get(db.mode()) or cfg.get('cap') or 10_000_000)))
+        r = db.conn().execute('SELECT value FROM equity ORDER BY date DESC LIMIT 1').fetchone()
+        return float(r[0]) if r and r[0] else float(db.meta_get('start_value') or 0)
+    except Exception:
+        return 0.0
+
+
+def cap(cfg):
+    """운용 자금 — 기본은 '계좌 전체'(마지막 평가액 · 벌면 늘고 잃으면 줄어 복리로 굴림 · 장전 주문은 그날 아침 KIS 평가액으로)
+       계좌별 상한(caps) 또는 '상한 고정'(cap_mode=fixed)일 때만 그 금액에서 멈춤 · 실전 단계 한도는 켰을 때만"""
+    try:
+        ceil = (cfg.get('caps') or {}).get(db.mode()) or (cfg.get('cap') if cfg.get('cap_mode') == 'fixed' else None)
+        base = max(1_000_000, float(ceil)) if ceil else (last_equity() or float(cfg.get('cap') or 10_000_000))
     except Exception:
         base = 10_000_000
     return int(base * ramp(cfg) / 100)

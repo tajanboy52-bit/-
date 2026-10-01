@@ -332,12 +332,12 @@ def _state():
                      'etf_last': mc.execute('SELECT MAX(date) FROM etf').fetchone()[0], 'master_at': db.gmeta_get('master_at'),
                      'collect': {**col.STATE, **_eta(col.STATE)}, 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250))},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
-            'schedule': SCHEDULE, 'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
+            'schedule': SCHEDULE, 'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'cap_mode': 'fixed' if (CFG.get('caps') or {}).get(db.mode()) or CFG.get('cap_mode') == 'fixed' else 'auto', 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
             'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')),
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
                                                                                'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days',
-                                                                               'real_ramp_on', 'caps', 'cap', 'fee_pct', 'tax_pct',
+                                                                               'real_ramp_on', 'caps', 'cap', 'cap_mode', 'fee_pct', 'tax_pct',
                                                                                'sweep_on', 'sweep_mode', 'sweep_reserve', 'gap_skip', 'preopen_time')},
                     'sw_weight': db.meta_get('sw_weight')},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
@@ -466,7 +466,8 @@ def sysinfo():
             'safety': [('계좌 낙폭', f"고점 대비 −{CFG.get('dd_limit', 15)}% → 새 매수 자동 중지 (매도는 계속)"),
                        ('하루 손실', f"−{CFG.get('day_loss_limit', 4)}% (장중 1분마다 확인) → 새 매수 자동 중지"),
                        ('갭 필터', f"예상 시가가 +{tr.gap_limit(CFG) or 0:g}% 넘게 높으면 LVH · REV 안 삼" if tr.gap_limit(CFG) else '꺼짐'),
-                       ('1회 · 하루 한도', '종목당 운용 한도의 15% · 하루 매수 60%'), ('운용 한도', f'{tr.cap(CFG):,}원 (계좌별 설정 가능)'),
+                       ('1회 · 하루 한도', '종목당 운용 한도의 15% · 하루 매수 60%'), ('운용 자금', (f'계좌 전체 — 지금 {tr.cap(CFG):,}원 (수익 따라 늘고 줄음)' if CFG.get('cap_mode') != 'fixed' and not (CFG.get('caps') or {}).get(db.mode())
+                                   else f'상한 {tr.cap(CFG):,}원 고정')),
                        ('주문 결과 불분명', '재주문하지 않고 자동주문 정지 → KIS 앱에서 확인 뒤 해제'), ('모르는 보유 종목', '계좌에 앱이 모르는 종목이 있으면 새 매수 차단'),
                        ('잔고 불일치', '장 마감에 KIS 잔고와 장부 대조 → 다르면 알림'), ('긴급 정지', '미체결 취소 · 자동주문 끔 (보유는 그대로)'),
                        ('늦게 켜짐', '장전 주문을 놓치면 팔 것만 팔고 그날 새 매수 쉼'), ('손절', '없음 — 전종목 검증에서 손절은 모든 모델의 수익을 깎음 (꼬리 위험은 종목당 비중으로)')],
@@ -542,6 +543,8 @@ async def api_config(req: Request):
                 raise ValueError('칸마다 0~80% · 합계 100% 이하')
             CFG['alloc'] = a
             db.log('칸 비율: ' + ' · '.join(f'{k} {v:g}%' for k, v in a.items()) + ' (다음 주문부터)')
+        if b.get('cap_mode') in ('auto', 'fixed'):
+            CFG['cap_mode'] = b['cap_mode']
         for k, lo, hi in (('cap', 1_000_000, 2_000_000_000), ('dd_limit', 5, 50), ('day_loss_limit', 1, 20), ('min_paper_days', 20, 250)):
             if b.get(k) not in (None, ''):
                 v = float(str(b[k]).replace(',', ''))
@@ -812,7 +815,7 @@ async def api_job_backtest(req: Request):
         try:
             import tk_backtest
             al = {k: v / 100 for k, v in tr.alloc(CFG).items()}
-            tk_backtest.run(b.get('start') or '20231024', b.get('end') or '99999999', al, int(CFG.get('cap') or 10_000_000),
+            tk_backtest.run(b.get('start') or '20231024', b.get('end') or '99999999', al, int(tr.cap(CFG) or 10_000_000),
                             slots=tr.slots(CFG), pick=tr.picks(CFG), sweep_on=tr.sweep_on(CFG), gap_skip=tr.gap_limit(CFG), sweep_mode=CFG.get('sweep_mode') or 'night',
                             progress=lambda m: JOB.update(bt_msg=m))
         except Exception as e:
