@@ -239,6 +239,87 @@ check('분석: 칸별 · 청산 이유 · 지표 구간 · 체결 품질 · 후�
 md = A.report_md(res)
 check('분석: 보고서 · 패키지(zip · 비밀 값 없음)', '# TK자동매매 거래 분석' in md and '12345678' not in json.dumps(res, ensure_ascii=False, default=str))
 
+# ── 2-4. ⏱ 1분봉 수집기 ──
+import tk_minute as MN
+from tk_kis import KIS as _KIS
+
+
+def _fake_minutes(o, h, l, c, v):
+    """일봉 하나 → 381개 1분봉 (09:00~15:20 + 15:30) — 시가에서 종가로 걸어가며 고가 · 저가를 한 번씩 찍음"""
+    hms = [9 * 100 + m for m in range(60)] + [h_ * 100 + m for h_ in range(10, 15) for m in range(60)] + [1500 + m for m in range(21)] + [1530]
+    n = len(hms)
+    out = []
+    for i, hm in enumerate(hms):
+        p = o + (c - o) * i / (n - 1)
+        hi, lo = (h if i == n // 3 else max(p, p * 1.001)), (l if i == 2 * n // 3 else min(p, p * 0.999))
+        out.append((hm, p, max(hi, p), min(lo, p), p, int(v / n), round(p * v / n)))
+    return out
+
+
+class _MK(FM.FakeKIS):
+    calls = 0
+    def minute_day(self, t, d):
+        _MK.calls += 1
+        P = D['P']
+        if t in ('229200', '069500') or t not in P['close'].columns or d not in P['close'].index or P['close'].at[d, t] != P['close'].at[d, t]:
+            return []
+        return _fake_minutes(*(float(P[k].at[d, t]) for k in ('open', 'high', 'low', 'close')), float(P['volume'].at[d, t] or 1000))
+    minute_today = minute_day
+
+
+mk = _MK(D['P'], D['on'])
+d_m = run_days[-1]
+uni = MN.universe(d_m, top=50)
+why = {}
+for t, nm, rk, w in uni:
+    why[w.split()[0]] = why.get(w.split()[0], 0) + 1
+_prev20 = [x for x in db.trading_days('0', d_m) if x < d_m][-20:]
+check('분봉 대상: 직전 20일 거래대금(그날 자료 안 씀) · 전날 후보 · 보유 · ETF · 급등락', why.get('거래대금') == 50 and why.get('후보', 0) > 0 and why.get('보유', 0) + why.get('거래', 0) > 0
+      and {'229200', '069500'} <= {u[0] for u in uni} and d_m not in _prev20, str(why))
+n1 = MN.collect_day(mk, d_m, top=50)
+c1 = _MK.calls
+n2 = MN.collect_day(mk, d_m, top=50)
+bars = MN.day_bars(uni[0][0], d_m)
+ok_ohlc = bars and abs(bars[0][1] - float(D['P']['open'].at[d_m, uni[0][0]])) < 1e-6 and abs(bars[-1][4] - float(D['P']['close'].at[d_m, uni[0][0]])) < 1e-6
+check('분봉 수집: 대상 받기 · 다시 돌리면 이미 받은 것 건너뜀 · 시가/종가 맞음', n1 > 50 and n2 == 0 and _MK.calls == c1 and len(bars) == 382 and ok_ohlc,
+      f'{n1}종목 · 두 번째 {n2} · 1종목 {len(bars)}봉')
+zb = MN.export_zip(d_m, d_m)
+_zz = zipfile.ZipFile(io.BytesIO(zb))
+_tot = MN.conn().execute('SELECT COUNT(*) FROM bars WHERE date=?', (d_m,)).fetchone()[0]
+MN.conn().execute('DELETE FROM bars')
+MN.conn().execute('DELETE FROM done')
+MN.conn().commit()
+_back = MN.import_csv(d_m, io.TextIOWrapper(_zz.open(f'bars/{d_m}.csv'), encoding='utf-8-sig'))
+check('분봉 zip 내보내기 → 다시 가져오기 (단타 앱과 같은 형식)', f'bars/{d_m}.csv' in _zz.namelist() and 'universe.csv' in _zz.namelist() and _back == _tot > 10000,
+      f'{_tot:,}봉 → {_back:,}봉')
+# 단타 앱 danta.db 형식 가져오기 (가져오기 폴더)
+import sqlite3 as _sq
+_dp = os.path.join(db.DATA_DIR, 'danta_test.db')
+_c = _sq.connect(_dp)
+_c.execute('CREATE TABLE bars (ticker TEXT, date TEXT, hm INTEGER, open REAL, high REAL, low REAL, close REAL, vol INTEGER, amt REAL, PRIMARY KEY (ticker, date, hm))')
+_c.executemany('INSERT INTO bars VALUES (?,?,?,?,?,?,?,?,?)', [('999999', '20250102', 900 + i, 100, 101, 99, 100, 10, 1000) for i in range(30)])
+_c.commit()
+_c.close()
+_r = col.import_file(_dp)
+check('단타 앱 danta.db → 1분봉으로 가져오기', _r.get('minute') == 30 and len(MN.day_bars('999999', '20250102')) == 30, str(_r.get('minute')))
+# KIS 분봉 조회: 15:30부터 거꾸로 120봉씩 · 누적 거래대금 → 분당
+_kp = _KIS('paper', 'APPKEYMINUTE00001', 'S', '12345678-01', db.DATA_DIR)
+_src = _fake_minutes(100, 110, 95, 105, 38100)
+_cum, _rows = 0, []
+for hm, o_, h_, l_, c_, v_, a_ in _src:
+    _cum += a_
+    _rows.append({'stck_bsop_date': '20260102', 'stck_cntg_hour': f'{hm:04d}00', 'stck_oprc': o_, 'stck_hgpr': h_, 'stck_lwpr': l_, 'stck_prpr': c_, 'cntg_vol': v_, 'acml_tr_pbmn': _cum})
+_seen = []
+def _get(path, tr_id, params, tr_cont='', retry=4):
+    _seen.append((tr_id, params['FID_INPUT_HOUR_1']))
+    hh = int(params['FID_INPUT_HOUR_1'][:4])
+    pg = [r for r in _rows if int(r['stck_cntg_hour'][:4]) <= hh][-120:][::-1]
+    return {'rt_cd': '0', 'output2': pg}, {}
+_kp.get = _get
+_mb = _kp.minute_day('005930', '20260102')
+check('KIS 1분봉: FHKST03010230 · 120봉씩 4쪽 · 누적 거래대금 → 분당', len(_mb) == len(_src) == 382 and len(_seen) == 4 and _seen[0] == ('FHKST03010230', '153000')
+      and abs(sum(b[6] for b in _mb) - _cum) < 2 and _mb[0][0] == 900 and _mb[-1][0] == 1530, f'{len(_mb)}봉 · 호출 {len(_seen)} · {_seen[:2]}')
+
 # ── 3. 서버 보안 ──
 from fastapi.testclient import TestClient
 import tk_server as SV

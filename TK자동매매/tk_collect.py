@@ -535,10 +535,24 @@ def import_file(path):
     out = {'bars': 0, 'flows': 0, 'tickers': 0, 'members': 0, 'monthly': 0, 'files': 0}
     low = path.lower()
     if low.endswith('.db'):
+        import sqlite3
+        src = sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+        cols = {r[1] for r in src.execute('PRAGMA table_info(bars)')}
+        src.close()
+        if 'hm' in cols:                                                             # 단타 앱 danta.db → 1분봉
+            import tk_minute
+            return {**out, 'minute': tk_minute.import_db(path), 'files': 1}
         return import_chart_db(path)
     if low.endswith('.zip'):
         with zipfile.ZipFile(path) as z:
             for name in z.namelist():
+                bn = os.path.basename(name)
+                if name.replace('\\', '/').split('/')[-2:-1] == ['bars'] and bn[:8].isdigit() and bn.lower().endswith('.csv'):   # 1분봉 bars/날짜.csv
+                    import tk_minute
+                    with z.open(name) as fb:
+                        out['minute'] = out.get('minute', 0) + tk_minute.import_csv(bn[:8], io.TextIOWrapper(fb, encoding='utf-8-sig'))
+                    out['files'] += 1
+                    continue
                 if name.lower().endswith('.db'):
                     if name.lower().endswith('swing_chart.db'):                       # 차트 DB 백업 zip → 임시로 풀어서
                         import tempfile
@@ -627,5 +641,5 @@ def auto_import(dirs=None, say=None):
         _done('file', fp, out['files'])
         n += 1
         db.log(f"자료 넣음 {os.path.basename(p)} ({time.time() - t0:.0f}초): 일봉 {out['bars']:,} · 수급 {out['flows']:,} · 종목 {out['tickers']:,}"
-               f" · 구성 {out['members']:,} · 월 재무 {out['monthly']:,}")
+               f" · 구성 {out['members']:,} · 월 재무 {out['monthly']:,}" + (f" · 1분봉 {out['minute']:,}" if out.get('minute') else ''))
     return n

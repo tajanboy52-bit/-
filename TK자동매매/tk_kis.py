@@ -354,6 +354,61 @@ class KIS:
             end = (_dt.datetime.strptime(first, '%Y%m%d') - _dt.timedelta(days=1)).strftime('%Y%m%d')
         return [out[d] for d in sorted(out)]
 
+    # ── 1분봉 (단타 앱에서 실제로 쓰던 방식 그대로 · 15:30부터 거꾸로 넘김) ──
+    @staticmethod
+    def _mparse(rows, d):
+        out = {}
+        for r in rows or []:
+            if str(r.get('stck_bsop_date', d)) != d:
+                continue
+            t = str(r.get('stck_cntg_hour', '')).zfill(6)
+            hm = int(t[:4]) if t.isdigit() else None
+            if hm is None or not (900 <= hm <= 1530):
+                continue
+            c = _num(r.get('stck_prpr'))
+            if c <= 0:
+                continue
+            out[hm] = (hm, _num(r.get('stck_oprc')) or c, _num(r.get('stck_hgpr')) or c, _num(r.get('stck_lwpr')) or c, c,
+                       int(_num(r.get('cntg_vol'))), _num(r.get('acml_tr_pbmn')))
+        return out
+
+    @staticmethod
+    def _mfinish(got):
+        bars, prev = [], 0.0
+        for hm in sorted(got):
+            _, o, h, l, c, v, cum = got[hm]
+            amt = max(0.0, cum - prev) if cum and cum >= prev else v * c                 # 누적 거래대금 → 분당
+            prev = cum or prev
+            bars.append((hm, o, h, l, c, v, round(amt)))
+        return bars
+
+    def _mpage(self, path, tr_id, params, d, pages):
+        import datetime as _dt
+        got, hour = {}, '153000'
+        for _ in range(pages):
+            j, _h = self.get(path, tr_id, {**params, 'FID_INPUT_HOUR_1': hour})
+            new = {k: v for k, v in self._mparse(j.get('output2'), d).items() if k not in got}
+            if not new:
+                break
+            got.update(new)
+            first = min(new)
+            if first <= 901:
+                break
+            hour = (_dt.datetime.strptime(f'{first:04d}', '%H%M') - _dt.timedelta(minutes=1)).strftime('%H%M') + '00'
+        return self._mfinish(got)
+
+    def minute_day(self, ticker, d):
+        """하루치 1분봉 — 주식일별분봉조회 FHKST03010230 (과거 날짜 · 120봉씩 · KIS 최대 1년 보관) → [(hm, o, h, l, c, vol, amt)]"""
+        return self._mpage('/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice', 'FHKST03010230',
+                           {'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': str(ticker).zfill(6), 'FID_INPUT_DATE_1': d,
+                            'FID_PW_DATA_INCU_YN': 'N', 'FID_FAKE_TICK_INCU_YN': ''}, d, 8)
+
+    def minute_today(self, ticker, d):
+        """오늘 1분봉 — 주식당일분봉조회 FHKST03010200 (30봉씩) · 장중 매매 판단에도 사용"""
+        return self._mpage('/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice', 'FHKST03010200',
+                           {'FID_ETC_CLS_CODE': '', 'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': str(ticker).zfill(6),
+                            'FID_PW_DATA_INCU_YN': 'N'}, d, 16)
+
     def investor(self, ticker):
         """최근 약 30일 외국인 · 기관 순매수 (거래대금 백만원) → [{date, foreign, inst}]"""
         j, _ = self.get('/uapi/domestic-stock/v1/quotations/inquire-investor', 'FHKST01010900',

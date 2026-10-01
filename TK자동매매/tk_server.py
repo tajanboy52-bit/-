@@ -36,6 +36,7 @@ import tk_analyze as AN
 import tk_db as db
 import tk_journal as J
 import tk_kis
+import tk_minute as mn
 import tk_signals as S
 import tk_trader as tr
 import tk_ws as rtws
@@ -168,6 +169,34 @@ def report(d):
     return '\n'.join(L)
 
 
+def minute_client():
+    """분봉 조회용 — 실전 키가 있으면 실전 도메인(초당 20건 · 시세 조회만), 없으면 지금 모드"""
+    a = CF.acct(CFG, 'real')
+    if a.get('app_key') and a.get('app_secret'):
+        return tk_kis.KIS('real', a['app_key'], a['app_secret'], a.get('account') or '', db.DATA_DIR)
+    return tr.client(CFG)
+
+
+def minute_window():
+    """과거 분봉 채우기는 장 시간을 피해서: 평일 18:30~07:00 · 주말 · 휴장일"""
+    n = datetime.now()
+    hm = n.strftime('%H:%M')
+    return not tr.is_trading_day(n.strftime('%Y%m%d')) or hm >= '18:30' or hm < '07:00'
+
+
+def minute_run(kind):
+    try:
+        kc = minute_client()
+        top = int(CFG.get('minute_top') or 200)
+        if kind == 'today':
+            mn.run_today(kc, datetime.now().strftime('%Y%m%d'), top)
+        else:
+            mn.run_backfill(kc, int(CFG.get('minute_days') or 250), top, allowed=lambda: minute_window() or kind == 'backfill_now')
+    except Exception as e:
+        mn.STATE['err'] = CF.clean(e)
+        db.log(f'[분봉] {CF.clean(e)}', 'warn')
+
+
 def scheduler():
     time.sleep(5)
     import_run()                                                                 # 처음 켤 때 내장 자료(seed) · 가져오기 폴더
@@ -197,6 +226,12 @@ def scheduler():
                     db.log(f"장부 백업 {', '.join(db.backup())}")
                 except Exception as e:
                     db.log(f'장부 백업 실패: {CF.clean(e)}', 'warn')
+            if CFG.get('minute_on', True) and not mn.STATE['running'] and not col.STATE['running']:      # ⏱ 1분봉 수집
+                if tr.is_trading_day(d) and hm >= '16:20' and mn.meta_get('today_done') != d and (db.last_bar_day() >= d or hm >= '17:30'):
+                    threading.Thread(target=minute_run, args=('today',), daemon=True).start()
+                elif minute_window() and time.time() - float(db.gmeta_get('minute_bf_try') or 0) > 1800 and mn.backfill_days(int(CFG.get('minute_days') or 250)):
+                    db.gmeta_set('minute_bf_try', time.time())
+                    threading.Thread(target=minute_run, args=('backfill',), daemon=True).start()
             pd_ = tr.prev_trading_day(d)                                             # 아침 따라잡기: 어젯밤 PC가 꺼져 있었으면
             if tr.is_trading_day(d) and '06:00' <= hm <= '08:40' and not col.STATE['running'] and not JOB['signal']:
                 if db.last_bar_day() < pd_ and time.time() - float(db.gmeta_get('collect_try') or 0) > 900:
@@ -282,7 +317,7 @@ def _state():
                      'months': mc.execute("SELECT COUNT(*) FROM done WHERE kind='month'").fetchone()[0],
                      'last_month': mc.execute("SELECT MAX(key) FROM done WHERE kind='month'").fetchone()[0],
                      'etf_last': mc.execute('SELECT MAX(date) FROM etf').fetchone()[0], 'master_at': db.gmeta_get('master_at'),
-                     'collect': dict(col.STATE), 'collect_msg': JOB['collect_msg']},
+                     'collect': dict(col.STATE), 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250))},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
             'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
@@ -715,6 +750,38 @@ async def api_analysis(req: Request):
     return await _ok(f)()
 
 
+@app.post('/api/job/minute')
+async def api_job_minute(req: Request):
+    """⏱ 1분봉: today(오늘 분봉) · backfill(과거 채우기 — 지금 바로 · 장중이면 권장 안 함) · stop · probe(조회 점검)"""
+    b = await req.json()
+    k = b.get('kind')
+    if k == 'stop':
+        mn.STATE['stop'] = True
+        return {'ok': True, 'msg': '멈추는 중 (이어받기 가능)'}
+    if k == 'probe':
+        def f():
+            kc = minute_client()
+            x = datetime.now()
+            d = tr.prev_trading_day(x.strftime('%Y%m%d'))
+            t0 = time.time()
+            bars = kc.minute_day('005930', d)
+            return {'msg': f"{'실전' if kc.env == 'real' else '모의'} 도메인 · 삼성전자 {d} 1분봉 {len(bars)}개 · {time.time() - t0:.1f}초"
+                           + (f" · {bars[0][0]:04d}~{bars[-1][0]:04d}" if bars else ' (없음 — 이 도메인에서 과거 분봉이 안 될 수 있음)')}
+        return await _ok(f)()
+    if mn.STATE['running']:
+        return {'ok': False, 'error': '이미 수집 중'}
+    if k not in ('today', 'backfill'):
+        return JSONResponse({'ok': False, 'error': 'kind: today · backfill · stop · probe'}, 400)
+    threading.Thread(target=minute_run, args=(k if k == 'today' else 'backfill_now',), daemon=True).start()
+    return {'ok': True, 'msg': '오늘 분봉 받기 시작' if k == 'today' else '과거 분봉 채우기 시작'}
+
+
+@app.get('/api/minute/export')
+async def api_minute_export(frm: str = '0', to: str = '99999999'):
+    data = await asyncio.to_thread(mn.export_zip, (frm or '0').replace('-', ''), (to or '99999999').replace('-', ''))
+    return Response(content=data, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="tk_minute_{datetime.now():%Y%m%d}.zip"'})
+
+
 @app.post('/api/job/backfill')
 async def api_job_backfill(req: Request):
     """과거 신호 후보 채우기 (분석의 '후보 순위별 사후 수익'을 처음부터 볼 수 있게)"""
@@ -745,7 +812,8 @@ def keep_awake():
         try:
             n = datetime.now()
             hm = n.strftime('%H:%M')
-            need = (tr.is_trading_day(n.strftime('%Y%m%d')) and '07:25' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf']
+            need = (tr.is_trading_day(n.strftime('%Y%m%d')) and '07:25' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf'] \
+                or mn.STATE['running']
             if need != on:
                 ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if need else 0))
                 db.log('PC 잠들지 않게 유지' if need else 'PC 절전 허용 (윈도우 절전 설정대로)')
