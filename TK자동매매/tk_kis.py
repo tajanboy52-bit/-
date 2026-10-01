@@ -323,6 +323,15 @@ class KIS:
                 'value': _num(o.get('acml_tr_pbmn')), 'halt': str(o.get('temp_stop_yn', 'N')) == 'Y', 'vi': str(o.get('vi_cls_code', 'N')) not in ('N', '', '0'),
                 'status': str(o.get('iscd_stat_cls_code', '')), 'raw': o}
 
+    def expected(self, ticker):
+        """장전 예상체결가 FHKST01010200 (실전 · 모의 같은 TR) → {'price': 예상체결가, 'base': 기준가(전날 종가), 'gap': 예상 갭 %}"""
+        j, _ = self.get('/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn', 'FHKST01010200',
+                        {'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': str(ticker).zfill(6)})
+        o = j.get('output2') or {}
+        o = o[0] if isinstance(o, list) and o else o
+        px, base = _num(o.get('antc_cnpr')), _num(o.get('stck_sdpr'))
+        return {'price': px, 'base': base, 'gap': (px / base - 1) * 100 if px and base else None, 'vol': _num(o.get('antc_vol'))}
+
     def daily(self, ticker, frm, to, adjusted=True):
         """일봉 (한 번에 최대 100개) · 기간이 길면 나눠서 → [{date, open, high, low, close, volume, value}] 오래된 것부터"""
         out, end = {}, to

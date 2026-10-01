@@ -153,6 +153,35 @@ def gmeta_set(k, v):
     c.commit()
 
 
+def backup(keep=30, market_every=7):
+    """장부 DB 날마다 백업 (backups/ · 30개 보관) · 시장 DB(신호 후보 포함)는 7일마다 (4개 보관) — 실행 중에도 안전한 SQLite 백업"""
+    import glob
+    bd = os.path.join(DATA_DIR, 'backups')
+    os.makedirs(bd, exist_ok=True)
+    day = datetime.now().strftime('%Y%m%d')
+    done = []
+    for name in ('trade_paper', 'trade_real') + (('market',) if datetime.now().toordinal() % market_every == 0 else ()):
+        src = os.path.join(DATA_DIR, f'{name}.db')
+        if not os.path.exists(src):
+            continue
+        dst = os.path.join(bd, f'{name}_{day}.db')
+        a = sqlite3.connect(src, timeout=60)
+        b = sqlite3.connect(dst)
+        try:
+            a.backup(b)
+        finally:
+            b.close()
+            a.close()
+        done.append(os.path.basename(dst))
+        olds = sorted(glob.glob(os.path.join(bd, f'{name}_*.db')))
+        for f in olds[:-(4 if name == 'market' else keep)]:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+    return done
+
+
 def now_s():
     return datetime.now().isoformat(timespec='seconds')
 

@@ -75,7 +75,7 @@ n = 40
 D = B.load('20180101', '99999999')
 days = list(D['P']['close'].index)
 run_days = days[-n:]
-kc = FM.FakeKIS(D['P'], D['on'])
+kc = FM.FakeKIS(D['P'], D['on'], swb=db.etf_bars('069500'))
 clock = {'d': days[-n - 1], 'hm': '19:00'}
 tr.today = lambda: clock['d']
 import datetime as _dt
@@ -98,8 +98,11 @@ for d in run_days:
     tr.sync(kc, d)
     clock['hm'] = '10:00'
     tr.intraday(cfg, kc, d, {})
+    clock['hm'] = '15:10'
+    tr.sweep_prep(cfg, kc, d)
     clock['hm'] = '15:20'
     tr.on_buy(cfg, kc, d)
+    tr.sweep_buy(cfg, kc, d)
     kc.settle('close')
     clock['hm'] = '15:45'
     tr.eod(cfg, kc, d)
@@ -108,11 +111,18 @@ for d in run_days:
 x = db.conn()
 live = {(r['sleeve'], r['ticker'], r['entry_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND entry_date IS NOT NULL")}
 live_x = {(r['sleeve'], r['ticker'], r['entry_date'], r['exit_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND status='청산'")}
-res = B.simulate(D, days[-n - 1], run_days[-1], {'LVH': .40, 'REV': .25, 'DV': .20, 'ON': .15})
+_sw = db.etf_bars('069500')
+res = B.simulate(D, days[-n - 1], run_days[-1], {'LVH': .40, 'REV': .25, 'DV': .20, 'ON': .15}, gap_skip=0.05, sweep_etf=(_sw['close'], _sw['open']))
 bt = {(t[0], t[1], t[2]) for t in res['trades'] if t[0] in ('LVH', 'REV')} | {(l['s'], l['t'], l['d']) for l in res['open_lots'] if l['s'] in ('LVH', 'REV')}
 bt_x = {(t[0], t[1], t[2], t[3]) for t in res['trades'] if t[0] in ('LVH', 'REV')}
 check('실전 ↔ 백테스트 매수 일치', live == bt and len(live) > 50, f'{len(live & bt)}/{len(live | bt)}')
 check('실전 ↔ 백테스트 청산 일치', live_x == bt_x and len(live_x) > 20, f'{len(live_x & bt_x)}/{len(live_x | bt_x)}')
+sw_b = x.execute("SELECT COUNT(*) FROM orders WHERE kind='sw_buy' AND status='체결'").fetchone()[0]
+sw_s = x.execute("SELECT COUNT(*) FROM orders WHERE kind='sw_sell' AND status='체결'").fetchone()[0]
+gp = x.execute("SELECT COUNT(*) FROM decisions WHERE reason LIKE '시가 갭%'").fetchone()[0]
+sw_days = x.execute("SELECT COUNT(DISTINCT date) FROM positions_daily WHERE ticker='069500'").fetchone()[0]
+check('남는 현금 → KODEX 200 (날마다 보유 · 필요할 때 팔고 남으면 삼)', sw_days >= n - 1 and sw_b > 0 and sw_s > 0,
+      f'보유 {sw_days}일 · 매수 {sw_b} · 매도 {sw_s} · 갭으로 안 산 후보 {gp}')
 dv = x.execute("SELECT COUNT(*) FROM lots WHERE sleeve='DV' AND status='보유'").fetchone()[0]
 on = x.execute("SELECT COUNT(*), AVG(ret) FROM lots WHERE sleeve='ON' AND status='청산'").fetchone()
 check('배당·가치 15자리 · 밤사이 매일', dv >= 12 and on[0] >= n - 2, f'DV {dv} · ON {on[0]}건 평균 {on[1]:+.3f}%')
@@ -175,6 +185,16 @@ check('모드: 모의로 돌아오면 모의 장부 · 모의 계좌 그대로',
 check('실험 설정: 자리 · 건너뛸 순위가 실전 · 백테스트에 같이', tr.slots({'slots': {'LVH': 40}})['LVH'] == 40 and tr.slots({})['REV'] == 30
       and tr.picks({'pick_skip': {'REV': 3}})['REV'] == (3, 3) and tr.picks({})['LVH'] == (0, 3)
       and S.top_n(__import__('pandas').Series({'a': 3, 'b': 2, 'c': 1, 'd': 0}), {'d'}, 2, 1) == ['b', 'c'])
+
+class _K:
+    def expected(self, t): return {'gap': {'A': 7.2, 'B': 2.0}.get(t)}
+    def price(self, t): return {'price': 10600, 'chg': 6.0, 'open': 10700}
+g1 = tr.gap_check({}, _K(), {'sleeve': 'LVH', 'ticker': 'A', 'name': 'A'}, 'pre')
+g2 = tr.gap_check({}, _K(), {'sleeve': 'LVH', 'ticker': 'B', 'name': 'B'}, 'pre')
+g3 = tr.gap_check({}, _K(), {'sleeve': 'DV', 'ticker': 'A', 'name': 'A'}, 'pre')
+g4 = tr.gap_check({'gap_skip': 0}, _K(), {'sleeve': 'REV', 'ticker': 'A', 'name': 'A'}, 'pre')
+g5 = tr.gap_check({}, _K(), {'sleeve': 'REV', 'ticker': 'A', 'name': 'A'}, 'open')
+check('갭 필터: +5% 넘으면 LVH·REV 안 삼 · DV는 상관없음 · 0이면 끔 · 장중은 오늘 시가로', g1 and not g2 and not g3 and not g4 and g5, f'{g1} / 장중 {g5}')
 
 # ── 2-3. 분석 ──
 import tk_analyze as A

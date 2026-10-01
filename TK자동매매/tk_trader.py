@@ -4,10 +4,12 @@ tk_trader.py — TK자동매매 매매 · 일정 (모의 → 실전 같은 코�
 하루 흐름 (거래일)
   08:05  휴장일 확인 (실전 키가 있으면 KIS 공식 휴장일 조회 CTCA0903R 하루 1번 · 없으면 내장 목록 + 거절 메시지로 감지)
   08:20  장전 점검 — KIS 연결 · 잔고 · 앱이 모르는 보유 종목 · 신호 날짜 · 데이터 품질 (주문 없음 · 문제면 텔레그램)
-  08:35  장전 시장가: ① 매도 표시 묶음(LVH 20일 · REV 9EMA/10일 · DV 교체 · 어제 산 ON ETF) ② 새 매수(현금 안에서) → 시가 체결
+  08:50  장전 시장가(설정 preopen_time): ① 매도 표시 묶음(LVH 20일 · REV 9EMA/10일 · DV 교체 · 어제 산 ON ETF) ② 예상체결가로 갭 확인 → +5% 넘게 갭상승한
+         LVH · REV 후보는 안 삼 ③ 새 매수(현금 안에서) → 시가 체결 · 현금이 모자란 매수만큼 KODEX 200(남는 현금)을 팜
   09:02  현금이 모자라 미뤄 둔 매수 (아침에 판 돈으로 · 매수가능금액 조회) · 장전 시간 때문에 거절된 주문 한 번 더
   장중   체결 반영(60초 · 웹소켓 체결 통보 즉시) · 계좌 실시간 평가 · 하루 손실 안전장치 · 매시 텔레그램 (선택)
-  15:20  🌙 ON: KODEX 코스닥150 장마감 동시호가 시장가 (종가 체결)
+  15:10  밤사이 칸 매수 자금이 모자라면 KODEX 200 일부 매도 (연속 매매 · 바로 체결)
+  15:20  🌙 ON: KODEX 코스닥150 장마감 동시호가 시장가 (종가 체결) → 💤 남는 현금(평가액 5% 남김)으로 KODEX 200 매수 (설정 sweep_on)
   15:45  체결 마감 · 잔고 대조 · 평가 기록 · 계좌 안전장치
   장 마감 뒤: 자료 수집(tk_collect) → 신호 계산(signal_job) → 텔레그램 (tk_server 일정)
 손절 없음 (전종목 검증: 손절은 모든 모델의 평균 수익을 깎음) — 꼬리 위험은 종목당 비중으로
@@ -34,7 +36,7 @@ SLOTS = {'LVH': 20, 'REV': 30, 'DV': 15}
 DEFAULT_ALLOC = {'LVH': 40, 'REV': 25, 'DV': 20, 'ON': 15}
 COSTS = {'LVH': 0.25, 'REV': 0.25, 'DV': 0.25, 'ON': 0.05}        # 손익 표시용 왕복 비용 추정 %
 KIND = {'entry': '매수', 'hold20': '20일 보유 끝', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_buy': '밤사이 매수(종가)',
-        'on_sell': '밤사이 매도(시가)', 'manual': '수동', 'delist': '거래 끊김 정리'}
+        'on_sell': '밤사이 매도(시가)', 'manual': '수동', 'delist': '거래 끊김 정리', 'sw_buy': '남는 현금 → KODEX 200', 'sw_sell': 'KODEX 200 → 현금'}
 STATE = {'running': False, 'last_sync': '', 'last_err': ''}
 _lock = threading.Lock()
 NOTIFY = None                     # tk_server가 텔레그램 함수를 넣어 줌
@@ -89,6 +91,117 @@ def picks(cfg):
     """LVH · REV 하루 매수 후보: (건너뛸 순위, 하루 수) — 기본 (0, 3) = 상위 1~3"""
     sk = cfg.get('pick_skip') or {}
     return {'LVH': (int(sk.get('LVH') or 0), S.LVH['top']), 'REV': (int(sk.get('REV') or 0), S.REV['top'])}
+
+
+def gap_limit(cfg):
+    v = cfg.get('gap_skip', S.GAP_SKIP)
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def gap_check(cfg, kc, o, when='pre'):
+    """LVH · REV 매수 전 시가 갭 확인 → 넘으면 이유 문자열 (장전: 예상체결가 · 장중: 오늘 시가) · 조회 실패면 그냥 삼"""
+    lim = gap_limit(cfg)
+    if not lim or o.get('sleeve') not in ('LVH', 'REV'):
+        return None
+    try:
+        if when == 'pre':
+            if not hasattr(kc, 'expected'):
+                return None
+            g = kc.expected(o['ticker'])['gap']
+        else:
+            p = kc.price(o['ticker'])
+            base = p['price'] / (1 + p['chg'] / 100) if p['price'] else 0
+            g = (p['open'] / base - 1) * 100 if p['open'] and base else None
+    except Exception as e:
+        log(f"갭 확인 실패 {o.get('name')} (그대로 삼): {CF.clean(e)[:80]}", 'warn')
+        return None
+    if g is not None and g > lim:
+        return f'시가 갭 {g:+.1f}% > +{lim:g}% (밤사이 과잉반응 → 안 삼)'
+    return None
+
+
+def sweep_on(cfg):
+    return bool(cfg.get('sweep_on', True))
+
+
+def sw_avail():
+    """남는 현금 ETF 묶음별 팔 수 있는 수량 (오늘 나간 매도 주문 중 아직 반영 안 된 수량은 뺌)"""
+    x = db.conn()
+    out = []
+    for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE sleeve='SW' AND status='보유' AND qty>0 ORDER BY id")]:
+        pend = x.execute("SELECT COALESCE(SUM(qty - COALESCE(applied,0)),0) FROM orders WHERE lot_id=? AND side='sell' AND status IN ('보냄','접수','부분')",
+                         (l['id'],)).fetchone()[0]
+        q = (l['qty'] or 0) - pend
+        if q > 0:
+            out.append((l, q))
+    return out
+
+
+def sweep_sell(cfg, kc, d, amount, why):
+    """남는 현금 ETF를 amount원어치 시장가 매도 (오래된 묶음부터)"""
+    have = sw_avail()
+    if amount <= 0 or not have:
+        return 0
+    try:
+        px = kc.price(S.SW_TICKER)['price']
+    except Exception:
+        px = have[0][0]['last_px'] or have[0][0]['entry_px']
+    if not px:
+        return 0
+    need = int(-(-amount // px))
+    sent = 0
+    for l, q in have:
+        if need <= 0:
+            break
+        k = min(q, need)
+        if send(cfg, kc, 'sell', 'sw_sell', l['id'], 'SW', S.SW_TICKER, S.SW_NAME, k, sig_ref=px):
+            sent += k
+            need -= k
+        if halted():
+            break
+    if sent:
+        J.decision(db.conn(), d, d, {'sleeve': 'SW', 'ticker': S.SW_TICKER, 'name': S.SW_NAME, 'ref': px, 'qty': sent, 'amt': sent * px}, 'sell', why)
+        db.conn().commit()
+        log(f'💤 KODEX 200 {sent}주 매도 ({why})')
+    return sent
+
+
+def sweep_prep(cfg, kc, d):
+    """15:10 — 밤사이 칸 매수 자금이 모자라면 KODEX 200을 지금(연속 매매) 팔아 둠"""
+    al = alloc(cfg)
+    if not sweep_on(cfg) or al.get('ON', 0) <= 0 or buy_paused(cfg) or db.meta_get('block_new'):
+        return
+    sync(kc, d)
+    bal = kc.balance()
+    need = min(bal['equity'] or cap(cfg), cap(cfg)) * al['ON'] / 100 * 1.01
+    cash = kc.buyable()['nrcvb']
+    if cash < need:
+        sweep_sell(cfg, kc, d, need - cash, '밤사이 칸 매수 자금')
+
+
+def sweep_buy(cfg, kc, d):
+    """15:20 — 밤사이 칸 주문 뒤 남는 현금(평가액의 reserve% 남김 · 운용 한도 안)으로 KODEX 200 종가 매수"""
+    if not sweep_on(cfg) or buy_paused(cfg) or db.meta_get('block_new'):
+        return
+    sync(kc, d)
+    bal = kc.balance()
+    base = min(bal['equity'] or cap(cfg), cap(cfg))
+    keep = base * float(cfg.get('sweep_reserve') or 5) / 100
+    cash = kc.buyable()['nrcvb']                                                   # 미체결 매수(밤사이 칸) 금액은 이미 빠진 값
+    room = cap(cfg) - (bal['equity'] - cash) - keep                                 # 운용 한도를 넘지 않게
+    idle = min(cash - keep, room)
+    px = kc.price(S.SW_TICKER)['price']
+    q = int(idle // (px * 1.003)) if px and idle > 0 else 0
+    if q <= 0:
+        return
+    lid = new_lot('SW', S.SW_TICKER, S.SW_NAME, 'ETF', d, {'ref': px})
+    J.decision(db.conn(), d, d, {'sleeve': 'SW', 'ticker': S.SW_TICKER, 'name': S.SW_NAME, 'ref': px, 'qty': q, 'amt': q * px}, 'buy', '15:20 남는 현금 → KODEX 200')
+    db.conn().commit()
+    send(cfg, kc, 'buy', 'sw_buy', lid, 'SW', S.SW_TICKER, S.SW_NAME, q, sig_ref=px)
 
 
 def alloc(cfg):
@@ -394,6 +507,13 @@ def preopen(cfg, kc, d):
             x.commit()
         return
     db.meta_set(f'plan_used_{sd}', '1')
+    for o in pl['buys'] + pl['defer']:                                              # 예상체결가로 갭 확인
+        if not o['skip']:
+            g = gap_check(cfg, kc, o, 'pre')
+            if g:
+                o['skip'], o['gapped'] = g, True
+    pl['buys'] += [o for o in pl['defer'] if o.get('gapped')]
+    pl['defer'] = [o for o in pl['defer'] if not o.get('gapped')]
     for o in pl['buys'] + pl['defer']:
         J.decision(x, d, sd, o, 'skip' if o['skip'] and o not in pl['defer'] else ('defer' if o in pl['defer'] else 'buy'), o['skip'])
     x.commit()
@@ -409,6 +529,9 @@ def preopen(cfg, kc, d):
                                          ensure_ascii=False))
     if pl['defer']:
         log(f"현금 부족으로 {len(pl['defer'])}건은 09:02에 (아침 매도 체결 뒤)")
+        if sweep_on(cfg):                                                           # 모자란 만큼 KODEX 200을 시가에 팔아 09:02 매수 자금으로
+            sells = sum((l['last_px'] or 0) * l['qty'] for l in pl['sells'])
+            sweep_sell(cfg, kc, d, sum(o['amt'] for o in pl['defer']) * 1.03 - sells * 0.99, '09:02 미룬 매수 자금')
 
 
 def deferred(cfg, kc, d):
@@ -439,6 +562,11 @@ def deferred(cfg, kc, d):
         todo.append({'sleeve': o['sleeve'], 'ticker': o['ticker'], 'name': o['name'], 'qty': o['qty'], 'ref': (lot['sig_ref'] if lot else None) or o['price'] or 0,
                      'rank': lot['sig_rank'] if lot else None, 'score': lot['sig_score'] if lot else None, 'info': lot['entry_info'] if lot else None})
     for o in todo:
+        g = gap_check(cfg, kc, o, 'open')
+        if g:
+            J.decision(x, d, db.meta_get('last_signal_date'), o, 'skip', g)
+            x.commit()
+            continue
         try:
             px = kc.price(o['ticker'])['price'] or o['ref']
         except Exception:
@@ -562,7 +690,7 @@ def signal_job(cfg, d, progress=None):
     x = db.conn()
     C = F['close']
     # ① 보유 일수 (체결일부터 d까지 거래된 날 수) · 매도 표시
-    for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sleeve!='ON'")]:
+    for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sleeve NOT IN ('ON','SW')")]:
         t = l['ticker']
         if t not in C.columns:
             continue
@@ -731,7 +859,7 @@ def gate(cfg):
         mdd = min(mdd, v / peak - 1) if peak else mdd
     ret = (eq[-1] / sv - 1) * 100 if eq and sv else None
     amb = x.execute("SELECT COUNT(*) FROM orders WHERE status='불분명'").fetchone()[0]
-    closed = x.execute("SELECT COUNT(*) FROM lots WHERE status='청산' AND sleeve!='ON'").fetchone()[0]
+    closed = x.execute("SELECT COUNT(*) FROM lots WHERE status='청산' AND sleeve NOT IN ('ON','SW')").fetchone()[0]
     mism = db.mconn().execute("SELECT COUNT(*) FROM log WHERE mode='paper' AND msg LIKE '%잔고 불일치%'").fetchone()[0]
     need = int(cfg.get('min_paper_days') or 60)
     rows = [{'k': f'모의 운용 {need}거래일+', 'v': f'{len(eq)}일', 'ok': len(eq) >= need, 'prog': min(1, len(eq) / need)},
@@ -784,7 +912,7 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
                     if '08:20' <= hm < '08:30' and cfg.get('kis_on') and not _done('check', d):
                         _mark('check', d)
                         precheck(cfg, kc, d)
-                    if '08:35' <= hm <= '08:58' and not _done('pre', d) and can_order(cfg):
+                    if cfg.get('preopen_time', '08:50') <= hm <= '08:58' and not _done('pre', d) and can_order(cfg):
                         _mark('pre', d)
                         preopen(cfg, kc, d)
                     if '09:02' <= hm <= '09:20' and not _done('defer', d) and can_order(cfg):
@@ -800,9 +928,14 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
                         if cfg.get('hourly_report') and notify_hourly and hm[3:] < '05' and '10' <= hh <= '15' and not _done(f'hour{hh}', d):
                             _mark(f'hour{hh}', d)
                             notify_hourly(hourly_text(cfg, bal, d))
+                    if '15:10' <= hm <= '15:17' and not _done('swprep', d) and can_order(cfg):
+                        _mark('swprep', d)
+                        sweep_prep(cfg, kc, d)
                     if '15:20' <= hm <= '15:27' and not _done('on', d) and can_order(cfg):
                         _mark('on', d)
                         on_buy(cfg, kc, d)
+                        if not halted():
+                            sweep_buy(cfg, kc, d)
                     if '15:45' <= hm <= '16:30' and not _done('eod', d):
                         _mark('eod', d)
                         eod(cfg, kc, d)

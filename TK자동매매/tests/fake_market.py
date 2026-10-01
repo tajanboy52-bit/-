@@ -106,21 +106,27 @@ class FakeKRX:
 
 class FakeKIS:
     """tk_kis.KIS와 같은 메서드 — 장전 시장가 = 그날 시가 · 15:20 = 그날 종가 · 잔고 평가 = 그날 종가"""
-    def __init__(self, P, onb, cash=10_000_000, env='paper'):
+    def __init__(self, P, onb, cash=10_000_000, env='paper', swb=None):
         self.P, self.onb, self.cash, self.pos, self.orders, self.d = P, onb, float(cash), {}, [], None
+        self.swb = swb
         self.env, self.masked_account, self.hts_id, self.notice_tr = env, 'FAKE', '', 'H0STCNI9'
         self.now = lambda: '08:35'
 
     def _px(self, t, k):
         if t == '229200':
             return float(self.onb.at[self.d, k]) if self.d in self.onb.index else 0
+        if t == '069500':
+            return float(self.swb.at[self.d, k]) if self.swb is not None and self.d in self.swb.index else 0
         v = self.P[k].at[self.d, t] if t in self.P[k].columns else float('nan')
         return float(v) if v == v else 0
 
     def order(self, side, t, q, dv='01', p=0):
         no = str(len(self.orders) + 1)
+        hm = self.now()
         self.orders.append({'order_no': no, 'd': self.d, 't': t, 'side': side, 'qty': int(q), 'filled': 0, 'avg': 0.0,
-                            'when': 'close' if self.now() >= '15:00' else 'open'})
+                            'when': 'close' if hm >= '15:20' else ('now' if hm >= '09:00' else 'open')})
+        if hm >= '09:00' and hm < '15:20':                                  # 장중 연속 매매 → 바로 체결 (가격은 그날 종가로 근사)
+            self.settle('now')
         return {'order_no': no, 'org_no': '1', 'msg': 'ok'}
 
     def cancel(self, *a):
@@ -130,7 +136,7 @@ class FakeKIS:
         for o in self.orders:
             if o['d'] != self.d or o['filled'] or o['when'] != when:
                 continue
-            px = self._px(o['t'], 'open' if when == 'open' else 'close')
+            px = self._px(o['t'], 'open' if when == 'open' or (when == 'now' and self.now() < '09:10') else 'close')
             if px <= 0:
                 continue
             if o['side'] == 'buy':
@@ -156,8 +162,18 @@ class FakeKIS:
         return {'positions': ps, 'cash': self.cash, 'cash_d2': self.cash, 'equity': self.cash + sum(p['value'] for p in ps)}
 
     def buyable(self, ticker='005930', price=0):
-        return {'cash': self.cash, 'nrcvb': self.cash, 'qty': 0}
+        pend = sum((o['qty'] - o['filled']) * self._px(o['t'], 'close') for o in self.orders if o['d'] == self.d and o['side'] == 'buy' and not o['filled'])
+        return {'cash': self.cash - pend, 'nrcvb': self.cash - pend, 'qty': 0}
+
+    def expected(self, t):
+        ix = self.P['close'].index
+        i = ix.get_loc(self.d)
+        pc = self.P['close'].iloc[i - 1].get(t) if i > 0 else None
+        op = self._px(t, 'open')
+        return {'price': op, 'base': pc, 'gap': (op / pc - 1) * 100 if op and pc and pc == pc else None, 'vol': 0}
 
     def price(self, t):
         px = self._px(t, 'close')
-        return {'price': px, 'open': px, 'high': px, 'low': px, 'chg': 0, 'vol': 0, 'value': 0, 'halt': False, 'vi': False, 'raw': {'hts_kor_isnm': t}}
+        e = self.expected(t) if t in self.P['close'].columns else {'base': None}
+        chg = (px / e['base'] - 1) * 100 if px and e.get('base') and e['base'] == e['base'] else 0
+        return {'price': px, 'open': self._px(t, 'open') or px, 'chg': chg, 'high': px, 'low': px, 'vol': 0, 'value': 0, 'halt': False, 'vi': False, 'raw': {'hts_kor_isnm': t}}

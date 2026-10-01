@@ -191,6 +191,12 @@ def scheduler():
                     and time.time() - float(db.gmeta_get('collect_try') or 0) > 1800:                   # 실패하면 30분마다 다시 (22시까지)
                 db.gmeta_set('collect_try', time.time())
                 threading.Thread(target=collect_run, daemon=True).start()
+            if hm >= '16:40' and db.gmeta_get('backup_day') != d:                  # 장부 백업 (날마다 · 기록이 핵심이므로)
+                db.gmeta_set('backup_day', d)
+                try:
+                    db.log(f"장부 백업 {', '.join(db.backup())}")
+                except Exception as e:
+                    db.log(f'장부 백업 실패: {CF.clean(e)}', 'warn')
             if tr.is_trading_day(d) and '18:15' <= hm <= '21:00' and db.gmeta_get('flow_day') != d and not col.STATE['running']:
                 db.gmeta_set('flow_day', d)                                          # 수급 확정치 다시 (최근 3거래일)
                 threading.Thread(target=collect_run, daemon=True).start()
@@ -274,7 +280,8 @@ def _state():
             'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')),
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
                                                                                'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days',
-                                                                               'real_ramp_on', 'caps', 'cap', 'fee_pct', 'tax_pct')}},
+                                                                               'real_ramp_on', 'caps', 'cap', 'fee_pct', 'tax_pct',
+                                                                               'sweep_on', 'sweep_reserve', 'gap_skip', 'preopen_time')}},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
 
 
@@ -354,7 +361,18 @@ async def api_config(req: Request):
                 if not (lo <= t <= '23:00' and len(t) == 5):
                     raise ValueError(f'{k}: {lo}~23:00')
                 CFG[k] = t
-        for k in ('ws_on', 'hourly_report', 'real_ramp_on'):
+        for k, lo, hi in (('sweep_reserve', 1, 50), ('gap_skip', 0, 30)):
+            if b.get(k) not in (None, ''):
+                v = float(b[k])
+                if not lo <= v <= hi:
+                    raise ValueError(f'{k} {lo}~{hi}')
+                CFG[k] = v
+        if b.get('preopen_time'):
+            t = str(b['preopen_time'])
+            if not ('08:31' <= t <= '08:55' and len(t) == 5):
+                raise ValueError('장전 주문 시각 08:31~08:55')
+            CFG['preopen_time'] = t
+        for k in ('ws_on', 'hourly_report', 'real_ramp_on', 'sweep_on'):
             if k in b:
                 CFG[k] = bool(b[k])
         for m in ('paper', 'real'):                                              # 계좌별 운용 한도 (비우면 공통 한도)
@@ -597,7 +615,7 @@ async def api_job_backtest(req: Request):
             import tk_backtest
             al = {k: v / 100 for k, v in tr.alloc(CFG).items()}
             tk_backtest.run(b.get('start') or '20231024', b.get('end') or '99999999', al, int(CFG.get('cap') or 10_000_000),
-                            slots=tr.slots(CFG), pick=tr.picks(CFG),
+                            slots=tr.slots(CFG), pick=tr.picks(CFG), sweep_on=tr.sweep_on(CFG), gap_skip=tr.gap_limit(CFG),
                             progress=lambda m: JOB.update(bt_msg=m))
         except Exception as e:
             JOB['bt_msg'] = f'오류: {CF.clean(e)}'

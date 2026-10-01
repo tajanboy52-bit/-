@@ -18,11 +18,14 @@ LVH = {'top': 3, 'hold': 20, 'heat_days': 25}
 REV = {'top': 3, 'hold': 10, 'ema': 9}
 DV = {'n': 15, 'buf': 30, 'sec': 4, 'tenure': 12}
 ON_TICKER, ON_NAME = '229200', 'KODEX 코스닥150'
+SW_TICKER, SW_NAME = '069500', 'KODEX 200'          # 남는 현금을 넣어 두는 ETF (설정 sweep_on)
+GAP_SKIP = 5.0                                       # % — 예상 시가가 전날 종가보다 이만큼 넘게 높으면 LVH · REV 매수 안 함 (한국 시장 밤사이 과잉반응 → 장중 되돌림)
 SLEEVES = {
     'LVH': {'name': '저변동고점', 'icon': '🏔', 'color': '#0f766e'},
     'REV': {'name': '반전·수급', 'icon': '🔄', 'color': '#7c3aed'},
     'DV': {'name': '배당·가치', 'icon': '🏛', 'color': '#b45309'},
     'ON': {'name': '밤사이 ETF', 'icon': '🌙', 'color': '#1d4ed8'},
+    'SW': {'name': '남는 현금 → KODEX 200', 'icon': '💤', 'color': '#64748b'},
 }
 
 
