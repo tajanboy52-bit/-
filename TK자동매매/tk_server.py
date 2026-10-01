@@ -348,7 +348,8 @@ def _state():
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
                                                                                'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days',
                                                                                'real_ramp_on', 'caps', 'cap', 'cap_mode', 'fee_pct', 'tax_pct',
-                                                                               'sweep_on', 'sweep_mode', 'sweep_reserve', 'gap_skip', 'preopen_time')},
+                                                                               'sweep_on', 'sweep_mode', 'sweep_reserve', 'gap_skip', 'preopen_time',
+                                                                               'tg_commands', 'resv_on', 'guard_per_min', 'guard_per_day')},
                     'sw_weight': db.meta_get('sw_weight')},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
 
@@ -583,7 +584,7 @@ async def api_config(req: Request):
             if not ('08:31' <= t <= '08:55' and len(t) == 5):
                 raise ValueError('장전 주문 시각 08:31~08:55')
             CFG['preopen_time'] = t
-        for k in ('ws_on', 'hourly_report', 'real_ramp_on', 'sweep_on'):
+        for k in ('ws_on', 'hourly_report', 'real_ramp_on', 'sweep_on', 'tg_commands', 'resv_on'):
             if k in b:
                 CFG[k] = bool(b[k])
         for m in ('paper', 'real'):                                              # 계좌별 운용 한도 (비우면 공통 한도)
@@ -668,32 +669,134 @@ async def api_halt_clear(req: Request):
     return {'ok': True}
 
 
+def emergency(who='사용자'):
+    """긴급 정지 — 자동주문 끔 · 정지 · 오늘 미체결 취소 · 예약주문 취소 시도 (보유 종목은 그대로)"""
+    CFG['kis_on'] = False
+    CF.save(CFG)
+    tr.halt(f'긴급 정지 ({who}) — 미체결 주문 취소')
+    n = 0
+    if not tr.configured(CFG):
+        return 0
+    kc = tr.client(CFG)
+    for o in db.conn().execute("SELECT * FROM orders WHERE date=? AND status IN ('접수','부분')", (tr.today(),)).fetchall():
+        try:
+            kc.cancel(o['order_no'], o['org_no'])
+            n += 1
+        except Exception as ex:
+            db.log(f"취소 실패 {o['name']}: {CF.clean(ex)}", 'warn')
+    for o in db.conn().execute("SELECT * FROM orders WHERE status='예약' AND resv_seq IS NOT NULL").fetchall():      # 예약주문도 취소 시도
+        try:
+            kc.resv_cancel(o['resv_seq'], (o['ts'] or '')[:10].replace('-', ''))
+            db.conn().execute("UPDATE orders SET status='취소', msg='긴급 정지로 예약 취소' WHERE id=?", (o['id'],))
+            n += 1
+        except Exception as ex:
+            db.log(f"예약 취소 실패 {o['name']} — KIS 앱에서 예약주문 취소: {CF.clean(ex)}", 'error')
+    db.conn().commit()
+    return n
+
+
 @app.post('/api/emergency')
 async def api_emergency(req: Request):
     await req.json()
+    return await _ok(lambda: {'cancelled': emergency()})()
 
-    def f():
-        CFG['kis_on'] = False
+
+# ════════════════════════════════════════════
+#  📱 텔레그램 명령 (설정한 채팅방에서만)
+# ════════════════════════════════════════════
+TG_HELP = """📱 TK자동매매 명령
+/상태 — 계좌 · 자동주문 · 정지 · 오늘 손익
+/보유 — 보유 묶음과 평가
+/오늘 — 오늘 체결 · 청산
+/매수중지 — 새 매수만 멈춤 (매도는 계속)
+/재개 — 새 매수 다시 (계좌 안전장치 해제 포함)
+/정지 — ⛔ 긴급 정지: 자동주문 끔 · 미체결 · 예약 취소 (보유는 그대로)
+/정지해제 — 정지 표시만 풂 (자동주문 켜기는 앱에서)
+/도움 — 이 목록"""
+
+
+def tg_command(text):
+    """텔레그램 명령 하나 → 답장 (화면 버튼과 같은 동작)"""
+    c = (text or '').strip().split()[0].lower() if (text or '').strip() else ''
+    c = c.split('@')[0]
+    alias = {'/status': '/상태', '/hold': '/보유', '/today': '/오늘', '/pause': '/매수중지', '/resume': '/재개', '/stop': '/정지', '/unhalt': '/정지해제',
+             '/help': '/도움', '/start': '/도움'}
+    c = alias.get(c, c)
+    x = db.conn()
+    if c == '/상태':
+        eq = [dict(r) for r in x.execute('SELECT * FROM equity ORDER BY date DESC LIMIT 2')]
+        e, p = (eq[0] if eq else None), (eq[1] if len(eq) > 1 else None)
+        lots = [l for l in _lots_view() if l['status'] == '보유']
+        ev = sum(l['eval'] or 0 for l in lots)
+        L = [f"{'🔴 실전' if db.mode() == 'real' else '🟢 모의'} · 자동주문 {'ON' if CFG.get('kis_on') else 'OFF'}",
+             f"계좌 {e['value']:,.0f}원" + (f" · 전일 대비 {e['value'] - p['value']:+,.0f}원" if e and p else '') if e else '계좌 기록 없음',
+             f"보유 {len(lots)}묶음 · 평가 손익 {ev:+,.0f}원 · 운용 자금 {tr.cap(CFG):,}원",
+             f"신호 {db.meta_get('last_signal_date') or '-'} · 일봉 {db.last_bar_day() or '-'} · 실시간 {'연결' if rtws.STATE.get('connected') else '대기'}"]
+        for k, v in (('⛔ 정지', tr.halted()), ('⏸ 매수 중지', db.meta_get('auto_pause') or ('사용자' if CFG.get('pause_buy') else '')), ('⚠️ 매수 차단', db.meta_get('block_new'))):
+            if v:
+                L.append(f'{k}: {v}')
+        return '\n'.join(L)
+    if c == '/보유':
+        lots = sorted([l for l in _lots_view() if l['status'] == '보유'], key=lambda l: -(l['eval'] or 0))
+        if not lots:
+            return '보유 없음'
+        return f'보유 {len(lots)}묶음\n' + '\n'.join(f"[{l['sleeve']}] {l['name']} {l['qty']}주 {l['eval_pct'] or 0:+.2f}% ({l['eval'] or 0:+,.0f})" for l in lots[:25])
+    if c == '/오늘':
+        return report(tr.today())
+    if c == '/매수중지':
+        CFG['pause_buy'] = True
         CF.save(CFG)
-        tr.halt('긴급 정지 (사용자) — 미체결 주문 취소')
-        n = 0
-        kc = tr.client(CFG)
-        for o in db.conn().execute("SELECT * FROM orders WHERE date=? AND status IN ('접수','부분')", (tr.today(),)).fetchall():
-            try:
-                kc.cancel(o['order_no'], o['org_no'])
-                n += 1
-            except Exception as ex:
-                db.log(f"취소 실패 {o['name']}: {CF.clean(ex)}", 'warn')
-        for o in db.conn().execute("SELECT * FROM orders WHERE status='예약' AND resv_seq IS NOT NULL").fetchall():      # 예약주문도 취소 시도
-            try:
-                kc.resv_cancel(o['resv_seq'], (o['ts'] or '')[:10].replace('-', ''))
-                db.conn().execute("UPDATE orders SET status='취소', msg='긴급 정지로 예약 취소' WHERE id=?", (o['id'],))
-                n += 1
-            except Exception as ex:
-                db.log(f"예약 취소 실패 {o['name']} — KIS 앱에서 예약주문 취소: {CF.clean(ex)}", 'error')
-        db.conn().commit()
-        return {'cancelled': n}
-    return await _ok(f)()
+        db.log('새 매수 일시 중지 (텔레그램)', 'warn')
+        return '⏸ 새 매수 일시 중지 — 매도는 계속합니다. /재개 로 다시'
+    if c == '/재개':
+        CFG['pause_buy'] = False
+        db.meta_set('auto_pause', '')
+        CF.save(CFG)
+        db.log('새 매수 재개 (텔레그램)', 'warn')
+        return '▶ 새 매수 재개 (계좌 안전장치 표시도 해제)'
+    if c == '/정지':
+        n = emergency('텔레그램')
+        return f'⛔ 긴급 정지 — 자동주문 꺼짐 · 주문 {n}건 취소 요청. 보유 종목은 그대로입니다. 다시 켜기는 앱에서.'
+    if c == '/정지해제':
+        db.meta_set('halt', '')
+        db.log('정지 해제 (텔레그램)', 'warn')
+        return '정지 표시 해제 — 자동주문은 지금 ' + ('ON' if CFG.get('kis_on') else 'OFF (앱에서 켜기)')
+    return TG_HELP
+
+
+def tg_poll():
+    """텔레그램 명령 받기 (25초 긴 대기) — 설정한 채팅방 · 2분 안 메시지만 · 처음 켤 때 밀린 명령은 실행 안 함"""
+    while True:
+        t, ch = CFG.get('telegram_token'), str(CFG.get('telegram_chat') or '')
+        if not (t and ch) or not CFG.get('tg_commands', True):
+            time.sleep(30)
+            continue
+        try:
+            off = db.gmeta_get('tg_offset')
+            q = {'timeout': 0 if not off else 25, **({'offset': off} if off else {})}
+            with urllib.request.urlopen(f'https://api.telegram.org/bot{t}/getUpdates?' + urllib.parse.urlencode(q), timeout=40) as r:
+                ups = json.loads(r.read().decode()).get('result') or []
+            for u in ups:
+                db.gmeta_set('tg_offset', u['update_id'] + 1)
+                m = u.get('message') or u.get('edited_message') or {}
+                if not off:
+                    continue                                                       # 처음: 밀린 것 건너뜀
+                if str((m.get('chat') or {}).get('id')) != ch:
+                    db.log(f"텔레그램: 등록 안 된 채팅방의 명령 무시 ({(m.get('chat') or {}).get('id')})", 'warn')
+                    continue
+                if time.time() - float(m.get('date') or 0) > 120 or not str(m.get('text') or '').startswith('/'):
+                    continue
+                db.log(f"텔레그램 명령: {m.get('text')[:30]}")
+                try:
+                    reply = tg_command(m['text'])
+                except Exception as e:
+                    reply = f'오류: {CF.clean(e)[:150]}'
+                telegram(reply)
+            if not off and not ups:
+                db.gmeta_set('tg_offset', '1')
+        except Exception as e:
+            db.log(f'텔레그램 명령 받기 실패: {CF.clean(e)[:120]}', 'warn')
+            time.sleep(60)
 
 
 @app.post('/api/sell_lot')
@@ -996,6 +1099,7 @@ def keep_awake():
 def main():
     import uvicorn
     threading.Thread(target=keep_awake, daemon=True).start()
+    threading.Thread(target=tg_poll, daemon=True, name='tg_poll').start()
     tr.NOTIFY = lambda m: telegram(m)
     tk_kis.HOOK[0] = J.api_hit
     threading.Thread(target=scheduler, daemon=True).start()

@@ -364,6 +364,14 @@ check('보안: 다른 Host 403 (DNS 재바인딩)', evil.get('/api/state', heade
 rr = cli.post('/api/pause', content='{"pause":true}', headers={'X-TK-Token': SV.TOKEN, 'content-type': 'text/plain'})
 check('보안: JSON 아닌 POST 415 (CSRF 단순 요청 차단)', rr.status_code == 415)
 check('보안: 화면에 토큰 주입', SV.TOKEN in cli.get('/').text)
+_t1 = SV.tg_command('/상태')
+_t2 = SV.tg_command('/매수중지'); _p1 = SV.CFG.get('pause_buy')
+_t3 = SV.tg_command('/재개'); _p2 = SV.CFG.get('pause_buy')
+_t4 = SV.tg_command('/정지'); _h = bool(SV.tr.halted()) and not SV.CFG.get('kis_on')
+_t5 = SV.tg_command('/정지해제'); _h2 = not SV.tr.halted()
+_t6 = SV.tg_command('/아무거나')
+check('📱 텔레그램 명령: /상태 · /매수중지 · /재개 · /정지(자동주문 끔) · /정지해제 · 모르는 명령은 도움말', ('계좌' in _t1 or '기록' in _t1) and _p1 is True and _p2 is False
+      and _h and _h2 and '/정지' in _t6, _t1.split(chr(10))[0])
 _si = cli.get('/api/sysinfo', headers={'X-TK-Token': SV.TOKEN}).json()
 check('📋 시스템 정보: 모듈 · 줄 수 · API · 하루 흐름 · 안전장치 · 연구 이력', len(_si['modules']) >= 12 and _si['lines'] > 4000 and _si['endpoints'] >= 25
       and len(_si['schedule']) >= 15 and len(_si['safety']) >= 8 and _si['research'], f"{_si['lines']:,}줄 · API {_si['endpoints']} · 일정 {len(_si['schedule'])}")

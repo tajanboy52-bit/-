@@ -22,7 +22,7 @@ DEFAULT = {'mode': 'paper', 'kis_on': False, 'cap': 10_000_000, 'cap_mode': 'aut
            'hourly_report': True, 'collect_time': '15:50', 'signal_time': '18:40', 'real_ramp': [30, 60, 100], 'real_ramp_days': 20,
            'real_ramp_on': False, 'caps': {'paper': None, 'real': None}, 'fee_pct': 0.0140527, 'tax_pct': 0.20, 'min_paper_days': 60,
            'sweep_on': True, 'sweep_mode': 'night', 'sweep_reserve': 5, 'gap_skip': 5, 'preopen_time': '08:50',
-           'minute_on': True, 'minute_top': 200, 'minute_days': 250, 'resv_on': True, 'guard_per_min': 60, 'guard_per_day': 400}
+           'minute_on': True, 'minute_top': 200, 'minute_days': 250, 'resv_on': True, 'guard_per_min': 60, 'guard_per_day': 400, 'tg_commands': True}
 
 
 # ── DPAPI ──
