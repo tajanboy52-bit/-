@@ -21,7 +21,7 @@ DEFAULT = {'mode': 'paper', 'kis_on': False, 'cap': 10_000_000, 'alloc': {'LVH':
            'accounts': {'paper': {}, 'real': {}}, 'ws_on': True, 'dd_limit': 15, 'day_loss_limit': 4, 'pause_buy': False,
            'hourly_report': True, 'collect_time': '15:50', 'signal_time': '18:40', 'real_ramp': [30, 60, 100], 'real_ramp_days': 20,
            'real_ramp_on': False, 'caps': {'paper': None, 'real': None}, 'fee_pct': 0.0140527, 'tax_pct': 0.20, 'min_paper_days': 60,
-           'sweep_on': True, 'sweep_reserve': 5, 'gap_skip': 5, 'preopen_time': '08:50'}
+           'sweep_on': True, 'sweep_mode': 'ma60', 'sweep_reserve': 5, 'gap_skip': 5, 'preopen_time': '08:50'}
 
 
 # ── DPAPI ──

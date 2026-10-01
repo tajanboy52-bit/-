@@ -281,7 +281,8 @@ def _state():
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
                                                                                'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days',
                                                                                'real_ramp_on', 'caps', 'cap', 'fee_pct', 'tax_pct',
-                                                                               'sweep_on', 'sweep_reserve', 'gap_skip', 'preopen_time')}},
+                                                                               'sweep_on', 'sweep_mode', 'sweep_reserve', 'gap_skip', 'preopen_time')},
+                    'sw_weight': db.meta_get('sw_weight')},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
 
 
@@ -367,6 +368,10 @@ async def api_config(req: Request):
                 if not lo <= v <= hi:
                     raise ValueError(f'{k} {lo}~{hi}')
                 CFG[k] = v
+        if b.get('sweep_mode'):
+            if b['sweep_mode'] not in S.SW_MODES:
+                raise ValueError('sweep_mode: ' + ' · '.join(S.SW_MODES))
+            CFG['sweep_mode'] = b['sweep_mode']
         if b.get('preopen_time'):
             t = str(b['preopen_time'])
             if not ('08:31' <= t <= '08:55' and len(t) == 5):
@@ -615,7 +620,7 @@ async def api_job_backtest(req: Request):
             import tk_backtest
             al = {k: v / 100 for k, v in tr.alloc(CFG).items()}
             tk_backtest.run(b.get('start') or '20231024', b.get('end') or '99999999', al, int(CFG.get('cap') or 10_000_000),
-                            slots=tr.slots(CFG), pick=tr.picks(CFG), sweep_on=tr.sweep_on(CFG), gap_skip=tr.gap_limit(CFG),
+                            slots=tr.slots(CFG), pick=tr.picks(CFG), sweep_on=tr.sweep_on(CFG), gap_skip=tr.gap_limit(CFG), sweep_mode=CFG.get('sweep_mode') or 'ma60',
                             progress=lambda m: JOB.update(bt_msg=m))
         except Exception as e:
             JOB['bt_msg'] = f'오류: {CF.clean(e)}'

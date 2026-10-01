@@ -183,8 +183,23 @@ def sweep_prep(cfg, kc, d):
         sweep_sell(cfg, kc, d, need - cash, '밤사이 칸 매수 자금')
 
 
+def sw_target(cfg, px):
+    """KODEX 200 보유 비중 0~1 — 지난 종가들 + 지금 가격으로 (설정 sweep_mode: ma60 · vol · hold)"""
+    mode = cfg.get('sweep_mode') or 'ma60'
+    if mode == 'hold':
+        return 1.0, mode
+    c = db.etf_bars(S.SW_TICKER, '0', today())['close']
+    c = c[c.index < today()]
+    if len(c) < 61:
+        log(f'KODEX 200 일봉이 {len(c)}일뿐 → 지수 타이밍 없이 보유 (📥 데이터 수집 확인)', 'warn')
+        return 1.0, mode
+    s = __import__('pandas').concat([c, __import__('pandas').Series({today(): px})])
+    return float(S.sw_weight(s, mode).iloc[-1]), mode
+
+
 def sweep_buy(cfg, kc, d):
-    """15:20 — 밤사이 칸 주문 뒤 남는 현금(평가액의 reserve% 남김 · 운용 한도 안)으로 KODEX 200 종가 매수"""
+    """15:20 — 남는 현금 칸 조정: 목표 = (현금 + KODEX 200 평가 − 평가액 reserve%) × 지수 타이밍 비중 · 운용 한도 안
+       목표보다 많으면 종가 동시호가에 팔고, 모자라면 삼 (지수도 오르내리므로 사고팖)"""
     if not sweep_on(cfg) or buy_paused(cfg) or db.meta_get('block_new'):
         return
     sync(kc, d)
@@ -193,9 +208,18 @@ def sweep_buy(cfg, kc, d):
     keep = base * float(cfg.get('sweep_reserve') or 5) / 100
     cash = kc.buyable()['nrcvb']                                                   # 미체결 매수(밤사이 칸) 금액은 이미 빠진 값
     room = cap(cfg) - (bal['equity'] - cash) - keep                                 # 운용 한도를 넘지 않게
-    idle = min(cash - keep, room)
     px = kc.price(S.SW_TICKER)['price']
-    q = int(idle // (px * 1.003)) if px and idle > 0 else 0
+    if not px:
+        return
+    held = sum(q for _, q in sw_avail())
+    w, mode = sw_target(cfg, px)
+    target = max(0.0, min(cash + held * px - keep, room + held * px)) * w
+    db.meta_set('sw_weight', f'{d} {w:.2f} {mode}')
+    diff = target - held * px
+    if diff < -px:                                                                  # 줄이기 (지수 하락 추세 · 변동성 높음)
+        sweep_sell(cfg, kc, d, -diff, f'지수 타이밍 비중 {w:.0%} ({S.SW_MODES.get(mode, mode)})')
+        return
+    q = int(min(diff, cash - keep) // (px * 1.003)) if diff > 0 else 0
     if q <= 0:
         return
     lid = new_lot('SW', S.SW_TICKER, S.SW_NAME, 'ETF', d, {'ref': px})

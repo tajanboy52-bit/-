@@ -115,7 +115,7 @@ def on_proxy_series(P, mem):
     return pd.DataFrame(rows, columns=['date', 'open', 'high', 'low', 'close']).set_index('date')
 
 
-def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed_rank_cache=None, pick=None, slots=None, buy_gate=None, sweep=None, dv_fn=None, gap_skip=None, sweep_etf=None):
+def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed_rank_cache=None, pick=None, slots=None, buy_gate=None, sweep=None, dv_fn=None, gap_skip=None, sweep_etf=None, sw_signal=None):
     """pick: {'LVH': (건너뛸 순위, 하루 수)} · slots: 칸별 자리 수 (없으면 기본)
        연구용: buy_gate(d, 칸) → 새 매수 금액 배수(0~1) · sweep: 지수 가격(남는 현금을 넣어 둠) · dv_fn(월) → DV 순위"""
     SLOTS = {**globals()['SLOTS'], **(slots or {})}
@@ -254,7 +254,7 @@ def simulate(D, start, end, alloc, cap=10_000_000, cost=0.25, on_cost=0.05, seed
         if sweep_etf is not None:
             cp = sweep_etf[0].get(d)
             if cp and cp > 0:
-                idle = max(0.0, cash - 0.05 * eq_prev)
+                idle = max(0.0, cash - 0.05 * eq_prev) * (float(sw_signal.get(d, 1.0)) if sw_signal is not None else 1.0)   # 지수 타이밍: 0~1
                 sw_units = idle / cp
                 cash -= idle + abs(sw_units - sw_old) * cp * 0.00015          # 바뀐 수량만큼만 비용
                 sw_val = sw_units * cp
@@ -320,7 +320,8 @@ def benchmarks(D, start, end):
     return out
 
 
-def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=print, slots=None, pick=None, sweep_on=True, gap_skip=S.GAP_SKIP):
+def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=print, slots=None, pick=None, sweep_on=True, gap_skip=S.GAP_SKIP,
+        sweep_mode='ma60'):
     t0 = time.time()
     alloc = alloc or dict(ALLOC)
     progress('일봉 · 수급 읽는 중 …')
@@ -329,6 +330,7 @@ def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=p
     progress(f"일봉 {D['P']['close'].shape[0]}일 × {D['P']['close'].shape[1]}종목 · 수급 {D['flow_src'] or '없음'} · ON ETF {len(D['on'])}일 · {time.time() - t0:.0f}초")
     cache = {}
     sw = sweep_series(D, start, end) if sweep_on else None
+    sws = S.sw_weight(sw[0], sweep_mode) if sw is not None else None
     runs = {'★ TK자동매매 (합성)': (alloc, True)}                       # (칸 비율, 남는 현금 → 지수 적용 여부)
     if alloc.get('ON', 0) > 0:
         rest = 1 - alloc['ON']
@@ -341,11 +343,11 @@ def run(start='20231024', end='99999999', alloc=None, cap=10_000_000, progress=p
     for name, (al, use_sw) in runs.items():
         progress(f'{name} 계산 중 …')
         res[name] = simulate(D, start, end, al, cap, seed_rank_cache=cache, slots=slots, pick=pick,
-                             sweep_etf=sw if use_sw else None, gap_skip=gap_skip / 100 if gap_skip else None)
+                             sweep_etf=sw if use_sw else None, sw_signal=sws if use_sw else None, gap_skip=gap_skip / 100 if gap_skip else None)
     bm = benchmarks(D, start, end)
     daily = pd.DataFrame({k: v['curve'] for k, v in res.items()}).pct_change()
     corr = daily[[k for k in res if k != '★ TK자동매매 (합성)']].corr().round(2)
-    out = {'start': start, 'end': end, 'alloc': alloc, 'made': time.strftime('%Y-%m-%d %H:%M'), 'flow_src': D['flow_src'], 'on_proxy': D.get('on_proxy', False), 'k200_proxy': D.get('k200_proxy', False), 'slots': {**SLOTS, **(slots or {})}, 'pick': pick or {}, 'sweep_on': sweep_on, 'gap_skip': gap_skip, 'sw_proxy': D.get('sw_proxy', False),
+    out = {'start': start, 'end': end, 'alloc': alloc, 'made': time.strftime('%Y-%m-%d %H:%M'), 'flow_src': D['flow_src'], 'on_proxy': D.get('on_proxy', False), 'k200_proxy': D.get('k200_proxy', False), 'slots': {**SLOTS, **(slots or {})}, 'pick': pick or {}, 'sweep_on': sweep_on, 'sweep_mode': sweep_mode, 'gap_skip': gap_skip, 'sw_proxy': D.get('sw_proxy', False),
            'models': {k: {**stats(v['curve']), 'trades': trade_stats(v['trades']), 'expo': v['expo'], 'pnl': v['sleeve_pnl'],
                           'curve': [[d, round(x)] for d, x in v['curve'].items()]} for k, v in res.items()},
            'bench': {k: {**stats(v), 'curve': [[d, round(float(x) / float(v.iloc[0]) * cap)] for d, x in v.items()]} for k, v in bm.items()},
@@ -363,7 +365,7 @@ def report_md(o):
          f"칸 비율: {', '.join(f'{k} {v * 100:.0f}%' for k, v in o['alloc'].items())} · 수급: {o['flow_src'] or '없음(중립 0.5)'}"
          + (' · ⚠️ 밤사이 ETF 가격이 없어 코스닥150 구성 종목 동일가중으로 근사' if o.get('on_proxy') else '')
          + (' · ⚠️ KODEX 200 가격이 없어 코스피200 시총가중으로 근사' if o.get('k200_proxy') else '')
-         + (f" · 남는 현금 → KODEX 200{' (근사)' if o.get('sw_proxy') else ''}" if o.get('sweep_on') else '')
+         + (f" · 남는 현금 → KODEX 200 {S.SW_MODES.get(o.get('sweep_mode'), '')}{' (근사)' if o.get('sw_proxy') else ''}" if o.get('sweep_on') else '')
          + (f" · 갭 +{o.get('gap_skip')}% 넘으면 안 삼" if o.get('gap_skip') else '')
          + (f" · 자리 {o.get('slots')}" if o.get('slots') else '') + (f" · 순위 건너뜀 {o.get('pick')}" if any(v[0] for v in (o.get('pick') or {}).values()) else ''), '',
          '| 모델 | 누적 | 연수익 | 최대낙폭 | 샤프 | 조정 기간 | 검증 기간 | 검증 낙폭 |', '|---|---|---|---|---|---|---|---|']

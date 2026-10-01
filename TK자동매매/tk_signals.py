@@ -19,6 +19,22 @@ REV = {'top': 3, 'hold': 10, 'ema': 9}
 DV = {'n': 15, 'buf': 30, 'sec': 4, 'tenure': 12}
 ON_TICKER, ON_NAME = '229200', 'KODEX 코스닥150'
 SW_TICKER, SW_NAME = '069500', 'KODEX 200'          # 남는 현금을 넣어 두는 ETF (설정 sweep_on)
+SW_MODES = {'ma60': '60일선 위에서만 보유 (추세)', 'vol': '변동성 15% 목표로 비중 조절', 'hold': '항상 보유'}
+
+
+def sw_weight(close, mode='ma60'):
+    """KODEX 200 보유 비중 0~1 (날짜별) — close: KODEX 200 종가 (마지막 값이 오늘 15:20 가격이어도 됨) · 자료가 모자라면 1"""
+    import pandas as _pd
+    c = _pd.Series(close, dtype=float).dropna()
+    if mode == 'ma60':
+        ma = c.rolling(60).mean()
+        return (c > ma).astype(float).where(ma.notna(), 1.0)
+    if mode == 'vol':
+        v = c.pct_change().rolling(20).std() * (250 ** 0.5)
+        return (0.15 / v).clip(upper=1.0).fillna(1.0)
+    return _pd.Series(1.0, index=c.index)
+
+
 GAP_SKIP = 5.0                                       # % — 예상 시가가 전날 종가보다 이만큼 넘게 높으면 LVH · REV 매수 안 함 (한국 시장 밤사이 과잉반응 → 장중 되돌림)
 SLEEVES = {
     'LVH': {'name': '저변동고점', 'icon': '🏔', 'color': '#0f766e'},
