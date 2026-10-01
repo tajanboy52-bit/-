@@ -79,10 +79,42 @@ def telegram(msg):
         head = '[TK' + ('·실전' if db.mode() == 'real' else '·모의') + '] '
         body = urllib.parse.urlencode({'chat_id': ch, 'text': head + msg[:3900]}).encode()
         with urllib.request.urlopen(f'https://api.telegram.org/bot{t}/sendMessage', data=body, timeout=10) as r:
-            return bool(json.loads(r.read().decode()).get('ok')), ''
+            ok = bool(json.loads(r.read().decode()).get('ok'))
+        db.gmeta_set('tg_check', f"{datetime.now():%m-%d %H:%M} {'ok' if ok else 'fail 응답 ok=false'}")
+        return ok, ''
     except Exception as e:
         db.log(f'텔레그램 실패: {CF.clean(e)}', 'warn')
+        db.gmeta_set('tg_check', f'{datetime.now():%m-%d %H:%M} fail {CF.clean(e)[:120]}')
         return False, CF.clean(e)
+
+
+def secret_status():
+    """화면용: KRX · 텔레그램이 저장됐는지(가린 값) · 마지막 확인 결과 — 비밀 값 자체는 내보내지 않음"""
+    def chk(k):
+        v = db.gmeta_get(k) or ''
+        p = v.split(' ', 3)
+        return {'at': ' '.join(p[:2]), 'ok': len(p) > 2 and p[2] == 'ok', 'msg': p[3] if len(p) > 3 else ''} if v else None
+    return {'krx': {'id': CF.mask(CFG.get('krx_id'), 2), 'pw': bool(CFG.get('krx_pw')), 'check': chk('krx_check')},
+            'tg': {'token': CF.mask(CFG.get('telegram_token')), 'chat': CF.mask(CFG.get('telegram_chat'), 3), 'check': chk('tg_check')}}
+
+
+def krx_test():
+    """KRX 로그인 → 마지막 거래일 전종목 일봉 한 번 조회 (자료 수집과 같은 경로)"""
+    if not (CFG.get('krx_id') and CFG.get('krx_pw')):
+        raise ValueError('KRX 아이디 · 비밀번호가 저장되어 있지 않음')
+    try:
+        stock = col.krx(CFG)
+        d = db.last_bar_day() or tr.prev_trading_day(datetime.now().strftime('%Y%m%d'))
+        df = stock.get_market_ohlcv_by_ticker(d, 'ALL')
+        n = 0 if df is None else len(df)
+        if not n:
+            raise RuntimeError(f'{d} 자료 0건 — 아이디 · 비밀번호 또는 KRX 사이트 확인')
+        db.gmeta_set('krx_check', f'{datetime.now():%m-%d %H:%M} ok {d} {n}종목')
+        return {'day': d, 'n': n}
+    except Exception as e:
+        db.gmeta_set('krx_check', f'{datetime.now():%m-%d %H:%M} fail {CF.clean(e)[:120]}')
+        col.STOCK[0] = None
+        raise
 
 
 # ════════════════════════════════════════════
@@ -101,6 +133,8 @@ def collect_run(full=False):
     try:
         r = col.run(CFG, kc=kc, full=full)
         JOB['collect_msg'] = f"끝 {datetime.now():%H:%M} · {r}"
+        if r.get('src') != 'kis':
+            db.gmeta_set('krx_check', f"{datetime.now():%m-%d %H:%M} ok 자료 수집 성공 (마지막 {r.get('last', '')})")
         return True
     except Exception as e:
         JOB['collect_msg'] = f'{datetime.now():%H:%M} 오류: {CF.clean(e)}'
@@ -357,7 +391,7 @@ def _state():
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
             'schedule': SCHEDULE, 'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'cap_mode': 'fixed' if (CFG.get('caps') or {}).get(db.mode()) or CFG.get('cap_mode') == 'fixed' else 'auto', 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
-            'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')),
+            'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')), 'secrets': secret_status(),
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
                                                                                'ws_on', 'min_paper_days', 'real_ramp', 'real_ramp_days',
                                                                                'real_ramp_on', 'caps', 'cap', 'cap_mode', 'fee_pct', 'tax_pct',
@@ -567,6 +601,11 @@ async def api_config(req: Request):
         for k in CF.GLOBAL_SECRETS:
             if str(b.get(k) or '').strip():
                 CFG[k] = str(b[k]).strip()
+                if k.startswith('krx'):                                          # 새 KRX 계정 → 다음 수집 때 새로 로그인 · 확인 기록 지움
+                    col.STOCK[0] = None
+                    db.gmeta_set('krx_check', '')
+                else:
+                    db.gmeta_set('tg_check', '')
         if 'alloc' in b:
             a = {k: float(b['alloc'][k]) for k in tr.DEFAULT_ALLOC}
             if any(v < 0 or v > 80 for v in a.values()) or sum(a.values()) > 100:
@@ -990,6 +1029,12 @@ async def api_mode(req: Request):
         CF.save(CFG)
         return f"{'🔴 실전' if CFG['mode'] == 'real' else '🟢 모의'} 계좌로 전환 · 자동주문 {'ON' if CFG.get('kis_on') else 'OFF'} 그대로"
     return await _ok(f)()
+
+
+@app.post('/api/krx/test')
+async def api_krx_test(req: Request):
+    await req.json()
+    return await _ok(krx_test)()
 
 
 @app.post('/api/tg_test')

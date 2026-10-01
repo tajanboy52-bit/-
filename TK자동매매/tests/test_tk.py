@@ -495,6 +495,12 @@ _iq = cli.get('/api/intraday', headers={'X-TK-Token': SV.TOKEN}).json()
 _st = cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN}).json()
 check('⏱ 장중 연구실 API · 상태에 장중 칸(기본 꺼짐)', _iq['ok'] and len(_iq['res']['rules']) == 4 and _st['cfg']['intraday_on'] is False
       and any(s_['key'] == 'IN' for s_ in _st['sleeves']) and 'passed' in _st['intraday'])
+SV.CFG.update(krx_id='krxuser01', krx_pw='pw')
+_kt = SV.krx_test()
+_sc = cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN}).json()['cfg']['secrets']
+_js = json.dumps(_sc, ensure_ascii=False)
+check('⚙️ 저장 확인: KRX · 텔레그램 저장 여부(가린 값) · KRX 연결 테스트 결과 · 비밀 값은 화면에 안 나감', _kt['n'] > 0 and _sc['krx']['pw'] and _sc['krx']['id'].endswith('01')
+      and _sc['krx']['check']['ok'] and 'krxuser' not in _js and '"pw"' in _js and _sc['tg']['check'] is None, f"{_sc['krx']['id']} · {_sc['krx']['check']}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──
