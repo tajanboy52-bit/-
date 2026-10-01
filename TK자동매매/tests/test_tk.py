@@ -336,6 +336,11 @@ check('보안: 다른 Host 403 (DNS 재바인딩)', evil.get('/api/state', heade
 rr = cli.post('/api/pause', content='{"pause":true}', headers={'X-TK-Token': SV.TOKEN, 'content-type': 'text/plain'})
 check('보안: JSON 아닌 POST 415 (CSRF 단순 요청 차단)', rr.status_code == 415)
 check('보안: 화면에 토큰 주입', SV.TOKEN in cli.get('/').text)
+_inv = cli.get('/api/inventory?force=1', headers={'X-TK-Token': SV.TOKEN}).json()
+_names = {r['name'] for r in _inv['rows']}
+check('📚 데이터 현황: 일봉 · 수급 · ETF · 월 자료 · 후보 · 1분봉 · 모의/실전 기록 기간', len(_inv['rows']) >= 20 and '1분봉' in _names
+      and any(r['name'].startswith('일봉') and r['first'] and r['last'] and r['days'] > 1000 for r in _inv['rows'])
+      and any(r['group'] == '모의 기록' and r['n'] for r in _inv['rows']), f"{len(_inv['rows'])}줄 · 파일 {list(_inv['files'])}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

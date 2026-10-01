@@ -338,6 +338,80 @@ def _eta(st):
     return t
 
 
+_INV = {'at': 0.0, 'v': None}
+
+
+def data_inventory(force=False):
+    """📚 데이터 현황 — 데이터별 기간 · 날 수 · 종목 · 줄 수 · 최신 여부 (5분 캐시)"""
+    if not force and _INV['v'] and time.time() - _INV['at'] < 300:
+        return _INV['v']
+    m = db.mconn()
+    today = datetime.now().strftime('%Y%m%d')
+    def _prev(d):
+        try:
+            return tr.prev_trading_day(d)
+        except Exception:
+            return max([x for x in db.trading_days('0', d) if x < d], default='')
+    last_td = today if tr.is_trading_day(today) and datetime.now().strftime('%H:%M') >= '16:30' else _prev(today)
+    rows = []
+
+    def add(group, name, first, last, days=None, tickers=None, n=None, unit='줄', fresh_need=None, note=''):
+        st = '없음' if not last else ('최신' if not fresh_need or last >= fresh_need else '늦음')
+        rows.append({'group': group, 'name': name, 'first': first or '', 'last': last or '', 'days': days, 'tickers': tickers, 'n': n, 'unit': unit,
+                     'status': st, 'note': note})
+    b = m.execute("SELECT MIN(key), MAX(key), COUNT(*) FROM done WHERE kind='bars' AND n>0").fetchone()
+    bt = m.execute('SELECT COUNT(*), COUNT(DISTINCT ticker) FROM bars').fetchone()
+    add('시장', '일봉 (전종목 · 상장폐지 포함)', b[0], b[1], b[2], bt[1], bt[0], fresh_need=last_td)
+    for inv in ('외국인', '기관합계', '연기금'):
+        f = m.execute("SELECT MIN(key), MAX(key), COUNT(*) FROM done WHERE kind=? AND n>0", (f'flow_{inv}',)).fetchone()
+        nn = m.execute('SELECT COUNT(*) FROM flows WHERE investor=?', (inv,)).fetchone()[0]
+        add('시장', f'수급 · {inv}', f[0], f[1], f[2], None, nn, fresh_need=last_td)
+    for t, nm in (('229200', 'KODEX 코스닥150'), ('069500', 'KODEX 200')):
+        e = m.execute('SELECT MIN(date), MAX(date), COUNT(*) FROM etf WHERE ticker=?', (t,)).fetchone()
+        add('시장', f'ETF 일봉 · {nm}', e[0], e[1], e[2], 1 if e[2] else None, e[2], fresh_need=last_td, note='없으면 백테스트는 근사 가격' if not e[2] else '')
+    mo = m.execute('SELECT MIN(month), MAX(month), COUNT(DISTINCT month), COUNT(*) FROM members').fetchone()
+    add('월 자료', '지수 구성 (코스피200 · 코스닥150)', mo[0] and mo[0] + '01', mo[1] and mo[1] + '28', mo[2], None, mo[3], '줄', fresh_need=last_td[:6] + '01', note='달 단위')
+    mf = m.execute('SELECT MIN(month), MAX(month), COUNT(DISTINCT month), COUNT(DISTINCT ticker), COUNT(*) FROM monthly').fetchone()
+    add('월 자료', '재무 · 업종 (EPS · 배당 · PBR · 시총)', mf[0] and mf[0] + '01', mf[1] and mf[1] + '28', mf[2], mf[3], mf[4], fresh_need=last_td[:6] + '01', note='달 단위')
+    sk = m.execute('SELECT COUNT(*), SUM(listed=0), MAX(updated) FROM stocks').fetchone()
+    add('월 자료', '종목 목록 · KIS 마스터', None, (db.gmeta_get('master_at') or sk[2] or '')[:10].replace('-', ''), None, sk[0], sk[0], '종목',
+        note=f'상장폐지 {sk[1] or 0}')
+    c = m.execute('SELECT MIN(date), MAX(date), COUNT(DISTINCT date), COUNT(*) FROM cands').fetchone()
+    srcs = dict(m.execute('SELECT src, COUNT(DISTINCT date) FROM cands GROUP BY src').fetchall())
+    add('분석', '신호 후보 (날마다 상위 50)', c[0], c[1], c[2], None, c[3], fresh_need=_prev(last_td) if last_td else None,
+        note=' · '.join(f"{'실제' if k == 'live' else '과거 채움'} {v}일" for k, v in srcs.items()))
+    ms = mn.status(int(CFG.get('minute_days') or 250))
+    mb = mn.conn().execute('SELECT COUNT(*) FROM bars').fetchone()[0]
+    add('분석', '1분봉', ms['first'], ms['last'], ms['days'], ms['tickers'], mb, '봉', fresh_need=last_td, note=f"{ms['mb']}MB · 과거 남은 날 {ms['left']}")
+    for mode in ('paper', 'real'):
+        x = db.conn(mode)
+        ko = '모의' if mode == 'paper' else '실전'
+        o = x.execute('SELECT MIN(date), MAX(date), COUNT(DISTINCT date), COUNT(*) FROM orders').fetchone()
+        f = x.execute('SELECT COUNT(*) FROM fills').fetchone()[0]
+        add(f'{ko} 기록', '주문 · 체결', o[0], o[1], o[2], None, o[3], '주문', note=f'체결 조각 {f:,}')
+        lt = x.execute("SELECT MIN(entry_date), MAX(COALESCE(exit_date, entry_date)), COUNT(*), SUM(status='청산'), SUM(status='보유'), COUNT(DISTINCT ticker) FROM lots WHERE entry_date IS NOT NULL").fetchone()
+        add(f'{ko} 기록', '보유 · 거래 (매수 → 매도)', lt[0], lt[1], None, lt[5], lt[2], '거래', note=f'청산 {lt[3] or 0} · 지금 보유 {lt[4] or 0}')
+        p = x.execute('SELECT MIN(date), MAX(date), COUNT(DISTINCT date), COUNT(DISTINCT ticker), COUNT(*) FROM positions_daily').fetchone()
+        add(f'{ko} 기록', '잔고 이력 (날마다 보유 종목)', p[0], p[1], p[2], p[3], p[4])
+        a = x.execute('SELECT MIN(date), MAX(date), COUNT(*) FROM account_daily').fetchone()
+        add(f'{ko} 기록', '매매일지 · 계좌 평가', a[0], a[1], a[2], None, a[2], '일')
+        dd = x.execute('SELECT MIN(date), MAX(date), COUNT(DISTINCT date), COUNT(*) FROM decisions').fetchone()
+        add(f'{ko} 기록', '판단 기록 (산 것 · 못 산 것)', dd[0], dd[1], dd[2], None, dd[3])
+    bd = os.path.join(db.DATA_DIR, 'backups')
+    bks = sorted(os.listdir(bd)) if os.path.isdir(bd) else []
+    files = {f: os.path.getsize(os.path.join(db.DATA_DIR, f)) for f in os.listdir(db.DATA_DIR) if f.endswith('.db')}
+    v = {'rows': rows, 'made': db.now_s(), 'last_td': last_td, 'backups': {'n': len(bks), 'last': bks[-1] if bks else '',
+                                                                          'mb': round(sum(os.path.getsize(os.path.join(bd, f)) for f in bks) / 1e6, 1)},
+         'files': {k: round(v_ / 1e6, 1) for k, v_ in sorted(files.items())}}
+    _INV.update(at=time.time(), v=v)
+    return v
+
+
+@app.get('/api/inventory')
+async def api_inventory(force: int = 0):
+    return await asyncio.to_thread(data_inventory, bool(force))
+
+
 def _journal_counts():
     out = {}
     for m in ('paper', 'real'):

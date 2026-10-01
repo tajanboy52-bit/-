@@ -193,6 +193,8 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 #jrTbl td{font-variant-numeric:tabular-nums}#jrTbl td.num{text-align:right}
 .idea{border:1px solid var(--bd);border-radius:10px;padding:10px 13px;margin-bottom:8px;background:rgba(255,255,255,.9)}
 .idea b{font-weight:var(--w8)}.idea .w{color:var(--t2);font-size:13.5px;margin-top:3px}.idea .a{font-size:13.5px;margin-top:3px}
+.inv-tip{position:fixed;z-index:200;pointer-events:none;background:#111827;color:#fff;border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.5;display:none;max-width:320px}
+.inv-st{display:inline-flex;align-items:center;gap:4px;font-weight:var(--w7)}.inv-st.ok{color:#15803d}.inv-st.late{color:#b45309}.inv-st.none{color:var(--t3)}
 .an-t table{font-size:13px}.an-t th,.an-t td{padding:6px 8px}
 </style>
 </head>
@@ -261,6 +263,9 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 
 <section id="t-data" hidden>
   <div class="kpis" id="dataK"></div>
+  <div class="card"><h2>📚 데이터 현황 <small id="invSub">데이터별 기간 · 날 수 · 종목 · 줄 수 · 최신 여부 · 모의/실전 보유 · 거래 기록</small><button class="btn sm" id="invRe" style="margin-left:auto">새로 고침</button></h2>
+    <div id="invTl"></div><div class="tw" id="invT" style="margin-top:12px;max-height:none"></div><div class="kbar" id="invF" style="margin-top:12px"></div></div>
+  <div class="inv-tip" id="invTip"></div>
   <div class="card"><h2>자료 수집 <small>내장 자료(수급 2023-09~ · 월 재무 2019-01~) 자동 · 가져오기 폴더 10분마다 자동 · KRX 매일 자동(15:50 · 수급 18:15 · 마스터 07:40) · 중복 없이 누적</small></h2>
     <div class="row"><button class="btn p" id="cFull">📥 처음 전체 수집 (2022-06 ~ 오늘 · 약 1~2시간 · 이어받기)</button><button class="btn" id="cDay">오늘까지 수집</button>
       <button class="btn" id="cImp" title="바탕화면의 scout_allmarket_*.zip · scout_allflow_*.zip을 TK자동매매\\가져오기 폴더에 넣고">📂 가져오기 폴더 지금 확인</button><button class="btn" id="cMaster">KIS 종목 마스터</button><button class="btn" id="cSig">🎯 신호 지금 계산</button></div>
@@ -467,7 +472,33 @@ function bt(s){const b=s.backtest;$('#btMsg').textContent=s.job.bt?'⏳ '+s.job.
 const dur=x=>x==null?'-':x<60?Math.round(x)+'초':x<3600?Math.floor(x/60)+'분 '+String(Math.round(x%60)).padStart(2,'0')+'초':Math.floor(x/3600)+'시간 '+Math.round(x%3600/60)+'분';
 function tline(T,extra){if(!T.started_at)return '';const run=T.running;return `<span class="pill" style="margin-top:6px">⏱ 시작 <b>${T.started_at}</b></span> <span class="pill">${run?'걸린 시간':'걸린 시간(끝)'} <b>${dur(T.elapsed)}</b></span> `+
   (run?`<span class="pill w">남은 시간 <b>${T.eta==null?'계산 중…':'약 '+dur(T.eta)}</b></span> `+(T.eta!=null?`<span class="pill">끝 예상 <b>${new Date(Date.now()+T.eta*1000).toTimeString().slice(0,5)}</b></span> `:''):'')+(extra?`<span class="pill">${extra}</span>`:'')}
-function data(s){const D=s.data,C=D.collect;
+let INV=null,INV_AT=0;
+const ymd8=d=>d&&d.length>=8?d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8):'-',rng=r=>r.note==='달 단위'?(r.first?r.first.slice(0,4)+'-'+r.first.slice(4,6)+' ~ ':'')+r.last.slice(0,4)+'-'+r.last.slice(4,6):(r.first?ymd8(r.first)+' ~ ':'')+ymd8(r.last);
+async function inv(force){const r=await get('/api/inventory'+(force?'?force=1':''));if(r.ok===false)return;INV=r;INV_AT=Date.now();invDraw()}
+function invDraw(){const V=INV;if(!V)return;const R=V.rows,today=new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const has=R.filter(r=>r.first&&r.last),t0=has.length?has.map(r=>r.first).sort()[0]:today;
+  const toT=d=>Date.UTC(+d.slice(0,4),+d.slice(4,6)-1,+d.slice(6,8)),a=toT(t0.slice(0,4)+'0101'),b=toT(today)+864e5*20;
+  const L=250,W=1000,rh=24,top=26,H=top+R.length*rh+6,x=d=>L+(toT(d)-a)/(b-a)*(W-L-12);
+  let g='',y0=+t0.slice(0,4),y1=+today.slice(0,4),grp='';
+  for(let y=y0;y<=y1;y++){const xx=x(y+'0101');g+=`<line x1="${xx}" x2="${xx}" y1="${top-6}" y2="${H}" stroke="currentColor" stroke-opacity=".10"/><text x="${xx+4}" y="15" font-size="12" fill="currentColor" fill-opacity=".6">${y}</text>`}
+  R.forEach((r,i)=>{const yy=top+i*rh;if(r.group!==grp){grp=r.group;if(i)g+=`<line x1="0" x2="${W}" y1="${yy-1}" y2="${yy-1}" stroke="currentColor" stroke-opacity=".12"/>`}
+    g+=`<text x="0" y="${yy+15}" font-size="12.5" fill="currentColor" fill-opacity=".85">${r.group} · ${r.name.length>18?r.name.slice(0,17)+'…':r.name}</text>`;
+    if(r.first&&r.last){const x1=x(r.first),x2=Math.max(x1+4,x(r.last));const c=r.status==='늦음'?'#b45309':'var(--accent)';
+      g+=`<rect class="invb" data-i="${i}" x="${x1}" y="${yy+5}" width="${x2-x1}" height="13" rx="4" fill="${c}" fill-opacity="${r.status==='늦음'?.85:.9}"/><rect class="invb" data-i="${i}" x="${x1}" y="${yy}" width="${Math.max(24,x2-x1)}" height="${rh}" fill="transparent"/>`}
+    else if(r.last){const xx=x(r.last);g+=`<circle class="invb" data-i="${i}" cx="${xx}" cy="${yy+11.5}" r="5" fill="var(--accent)"/>`}
+    else g+=`<text x="${L}" y="${yy+15}" font-size="12" fill="currentColor" fill-opacity=".45">아직 없음</text>`});
+  const tx=x(today);g+=`<line x1="${tx}" x2="${tx}" y1="${top-6}" y2="${H}" stroke="#c8323f" stroke-width="1.5" stroke-dasharray="3 3"/><text x="${tx-4}" y="15" text-anchor="end" font-size="12" fill="#c8323f">오늘</text>`;
+  $('#invTl').innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;color:var(--t1)" role="img" aria-label="데이터별 기간 막대">${g}</svg>`;
+  const tip=$('#invTip');document.querySelectorAll('#invTl .invb').forEach(el=>{const r=R[+el.dataset.i];
+    el.onmousemove=e=>{tip.style.display='block';tip.style.left=Math.min(e.clientX+14,innerWidth-330)+'px';tip.style.top=(e.clientY+14)+'px';
+      tip.innerHTML=`<b>${r.group} · ${r.name}</b><br>${rng(r)}${r.days!=null?'<br>날 수 '+won(r.days):''}${r.tickers!=null?' · 종목 '+won(r.tickers):''}${r.n!=null?'<br>'+won(r.n)+' '+r.unit:''}${r.note?'<br>'+r.note:''}`};
+    el.onmouseleave=()=>tip.style.display='none'});
+  const st=r=>r.status==='최신'?'<span class="inv-st ok">✅ 최신</span>':r.status==='늦음'?'<span class="inv-st late">⚠️ 늦음</span>':'<span class="inv-st none">— 없음</span>';
+  $('#invT').innerHTML=tbl([{h:'묶음',f:r=>r.group},{h:'데이터',f:r=>r.name},{h:'기간',f:r=>r.last?rng(r):'-'},{h:'날 수',r:1,f:r=>r.days==null?'-':won(r.days)},
+    {h:'종목',r:1,f:r=>r.tickers==null?'-':won(r.tickers)},{h:'양',r:1,f:r=>r.n==null?'-':won(r.n)+' '+r.unit},{h:'상태',f:st},{h:'메모',f:r=>`<span class="mut">${r.note||''}</span>`}],R);
+  const F=V.files;$('#invF').innerHTML=`<span class="pill">기준 거래일 <b>${ymd8(V.last_td)}</b></span><span class="pill">💾 백업 <b>${V.backups.n}</b>개 · ${V.backups.mb}MB${V.backups.last?' · 마지막 '+V.backups.last.replace(/\D/g,'').slice(-8):''}</span>`+
+    Object.entries(F).map(([k,v])=>`<span class="pill">${k} <b>${v}MB</b></span>`).join('')+`<span class="pill mut">확인 ${V.made.slice(11,16)}</span>`}
+function data(s){const D=s.data,C=D.collect;if(!INV||Date.now()-INV_AT>60000)inv();
   $('#dataK').innerHTML=kpi(md(D.last_bar),'마지막 일봉',D.n_days+'거래일 · '+(D.first_bar||'-')+'~','info')+kpi(md(D.last_flow),'마지막 수급','외국인 · 기관 · 연기금')+kpi((D.n_stocks||0).toLocaleString(),'종목','상장폐지 '+(D.n_delisted||0).toLocaleString())+
     kpi(D.last_month?D.last_month.slice(0,4)+'-'+D.last_month.slice(4):'-','월 자료',D.months+'개월')+kpi(md(D.etf_last),'ETF 일봉','229200 · 069500')+kpi(D.dq_bad?'⚠️ '+md(D.dq_bad):'OK','데이터 품질','',D.dq_bad?'warn':'good');
   $('#cBar').style.width=(C.running?C.pct:(C.last?100:0))+'%';$('#cMsg').innerHTML=(C.running?'⏳ ':'')+(C.msg||'')+(C.err?' · ⚠️ '+C.err:'')+(D.collect_msg?' · '+D.collect_msg:'')+(D.master_at?' · 마스터 '+D.master_at.slice(5,16):'')+'<br>'+tline(C,C.running?`진행 ${C.pct||0}%`:'');
@@ -574,6 +605,7 @@ $('#bSaveKeys').onclick=async()=>{const b={accounts:{paper:{},real:{}}};['app_ke
 $('#bTg').onclick=()=>act('/api/tg_test',{},'보냄');$('#bSync').onclick=()=>act('/api/sync',{});
 $('#cFull').onclick=()=>{if(confirm('처음 전체 수집: 2022-06부터 전종목(상장폐지 포함) 일봉 · 수급 · 월 자료 (약 1~2시간 · 중간에 꺼도 이어받음)'))act('/api/job/collect',{full:true})};
 $('#cDay').onclick=()=>act('/api/job/collect',{full:false});$('#cMaster').onclick=()=>act('/api/job/collect',{kind:'master'});$('#cImp').onclick=()=>{act('/api/job/import',{})};$('#cSig').onclick=()=>act('/api/job/signal',{});
+$('#invRe').onclick=()=>inv(true);
 $('#mnProbe').onclick=async()=>{$('#mnMsg').textContent='점검 중…';const r=await post('/api/job/minute',{kind:'probe'});$('#mnMsg').textContent=r.ok?'✅ '+r.msg:'❌ '+r.error};
 $('#mnToday').onclick=()=>act('/api/job/minute',{kind:'today'});$('#mnStop').onclick=()=>act('/api/job/minute',{kind:'stop'});
 $('#mnBf').onclick=()=>{if(confirm('과거 1분봉 채우기를 지금 시작합니다 (장중이면 주문 조회와 호출 한도를 나눠 씀 — 평소엔 밤에 자동)'))act('/api/job/minute',{kind:'backfill'})};
