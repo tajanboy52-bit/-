@@ -140,6 +140,17 @@ def enrich(m=None, limit=2000):
         return 0
     frm, to = min(l['entry_date'] for l in todo), max(l['exit_date'] for l in todo)
     raw = db.panel(frm, to, [l['ticker'] for l in todo], adjusted=False)
+    etfs = {l['ticker'] for l in todo if l['sleeve'] in ('ON', 'SW')}              # 밤사이 칸 ETF는 ETF 일봉에서
+    if etfs:
+        import pandas as _pd
+        raw = dict(raw) if raw else {}
+        for t in etfs:
+            e = db.etf_bars(t, frm, to)
+            if len(e):
+                for k in ('open', 'high', 'low', 'close'):
+                    base = raw.get(k, _pd.DataFrame())
+                    raw[k] = base.join(e[k].rename(t), how='outer') if len(base) else e[k].rename(t).to_frame()
+                raw['chg'] = raw.get('chg', _pd.DataFrame()).reindex(raw['close'].index)
     n = 0
     for l in todo:
         t = l['ticker']
@@ -151,7 +162,7 @@ def enrich(m=None, limit=2000):
         win = (O.index >= l['entry_date']) & (O.index <= l['exit_date'])
         o_in = _f(O.get(l['entry_date']))
         o_out = _f(O.get(l['exit_date']))
-        buy_close = l['sleeve'] == 'ON'                                  # 밤사이는 종가에 사서 다음 날 시가에 팜
+        buy_close = l['sleeve'] in ('ON', 'SW')                          # 밤사이 칸은 종가에 사서 다음 날 시가에 팜
         ref_in = _f(C.get(l['entry_date'])) if buy_close else o_in
         slip_in = (l['entry_px'] / ref_in - 1) * 100 if ref_in and l['entry_px'] else None
         slip_out = (l['exit_px'] / o_out - 1) * 100 if o_out and l['exit_px'] else None
@@ -162,7 +173,7 @@ def enrich(m=None, limit=2000):
         mfe = (hi / base - 1) * 100 if base and hi == hi else None
         mae = (lo / base - 1) * 100 if base and lo == lo else None
         # 보유 중 권리락 · 분할이 있으면 원주가 비교가 틀어짐 → 그 거래는 MAE/MFE · 모델 수익을 비움
-        chg = raw['chg'][t][win] if 'chg' in raw else None
+        chg = raw['chg'][t][win] if 'chg' in raw and t in raw['chg'].columns else None
         if chg is not None:
             prev = C.shift(1)[win]
             base_ = C[win] / (1 + chg / 100)

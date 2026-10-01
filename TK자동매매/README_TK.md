@@ -114,4 +114,4 @@
 | `tk_analyze.py` | 거래내역 조회 · 분석 · 고도화 후보 · 분석 패키지 · 과거 후보 채우기 |
 | `tk_config.py` | 설정 · DPAPI 암호화 |
 | `tk_server.py` · `tk_app.html` | 서버(보안) · 화면 |
-| `tests/test_tk.py` | 종합 시험 56항목 (가짜 KRX · 가짜 KIS · 가짜 KIS 서버) |
+| `tests/test_tk.py` | 종합 시험 59항목 (가짜 KRX · 가짜 KIS · 가짜 KIS 서버) |

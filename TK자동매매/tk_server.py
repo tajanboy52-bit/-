@@ -139,8 +139,11 @@ def report(d):
         L.append(f"💰 계좌 {e['value']:,.0f}원" + (f" · 오늘 {e['value'] - p['value']:+,.0f}원 ({(e['value'] / p['value'] - 1) * 100:+.2f}%)" if p else '')
                  + (f" · 시작 대비 {(e['value'] / sv - 1) * 100:+.2f}%" if sv else ''))
         L.append(f"   고점 대비 {(e['value'] / e['peak'] - 1) * 100:+.1f}% · 현금(D+2) {e['cash'] / 1e4:,.0f}만" + (f" · 한도 {tr.ramp(CFG)}%" if db.mode() == 'real' else ''))
+    al_ = tr.alloc(CFG)
     for s, m in S.SLEEVES.items():
         ls = [l for l in tr.open_lots(s) if l['status'] == '보유']
+        if not ls and al_.get(s, 1) == 0 and not x.execute("SELECT 1 FROM lots WHERE sleeve=? AND exit_date=?", (s, d)).fetchone():
+            continue                                                                # 꺼진 칸(비중 0)은 리포트에서 뺌
         val = sum(l['qty'] * (l['last_px'] or l['entry_px'] or 0) for l in ls)
         inv = sum(l['cost'] * (l['qty'] / l['qty0'] if l['qty0'] else 1) for l in ls)
         cl = [dict(r) for r in x.execute("SELECT pnl FROM lots WHERE sleeve=? AND status='청산'", (s,))]
@@ -157,6 +160,9 @@ def report(d):
     sig = [dict(r) for r in x.execute('SELECT * FROM signals WHERE date=? AND rank<100 ORDER BY sleeve, rank', (d,))]
     L.append('\n🗓 다음 거래일 08:50')
     L.append(' 매도: ' + (', '.join(f"[{l['sleeve']}] {l['name']}" for l in sells) or '없음'))
+    sw_q = sum(q for _, q in tr.sw_avail())
+    if sw_q:
+        L.append(f' 💤 KODEX 200 {sw_q}주 ({S.SW_MODES.get(CFG.get("sweep_mode") or "night", "")})')
     for s in ('LVH', 'REV', 'DV'):
         ss = [r['name'] for r in sig if r['sleeve'] == s]
         if ss:
@@ -280,6 +286,13 @@ def _state():
     for s, m in S.SLEEVES.items():
         ls = [l for l in lots if l['sleeve'] == s and l['status'] == '보유']
         cl = list(x.execute("SELECT pnl, ret FROM lots WHERE sleeve=? AND status='청산'", (s,)))
+        if s == 'SW':                                                               # 남는 현금 칸: 비율이 아니라 남는 만큼
+            v_ = sum(l['qty'] * l['px'] for l in ls)
+            sleeves.append({'key': s, **m, 'pct': None, 'limit': v_ or 1, 'value': v_, 'npos': len(ls), 'slots': None, 'on': tr.sweep_on(CFG),
+                            'mode': S.SW_MODES.get(CFG.get('sweep_mode') or 'night', ''), 'eval': sum(l['eval'] for l in ls),
+                            'realized': sum(r[0] or 0 for r in cl), 'closed': len(cl), 'win': sum(1 for r in cl if (r[0] or 0) > 0) / len(cl) * 100 if cl else None,
+                            'avg': sum(r[1] or 0 for r in cl) / len(cl) if cl else None})
+            continue
         sleeves.append({'key': s, **m, 'pct': al.get(s, 0), 'limit': base * al.get(s, 0) / 100, 'value': sum(l['qty'] * l['px'] for l in ls),
                         'npos': len(ls), 'slots': tr.slots(CFG).get(s, 1), 'eval': sum(l['eval'] for l in ls), 'realized': sum(r[0] or 0 for r in cl),
                         'closed': len(cl), 'win': sum(1 for r in cl if (r[0] or 0) > 0) / len(cl) * 100 if cl else None,
@@ -319,7 +332,7 @@ def _state():
                      'etf_last': mc.execute('SELECT MAX(date) FROM etf').fetchone()[0], 'master_at': db.gmeta_get('master_at'),
                      'collect': {**col.STATE, **_eta(col.STATE)}, 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250))},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
-            'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
+            'schedule': SCHEDULE, 'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
             'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')),
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
