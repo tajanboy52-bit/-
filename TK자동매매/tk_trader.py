@@ -562,6 +562,31 @@ def preopen(cfg, kc, d):
             sweep_sell(cfg, kc, d, sum(o['amt'] for o in pl['defer']) * 1.03 - sells * 0.99, '09:02 미룬 매수 자금')
 
 
+def late_open(cfg, kc, d):
+    """PC가 장 시작(08:58) 뒤에 켜져 장전 주문을 놓쳤을 때 — 매도할 것(밤사이 ETF · KODEX 200 · 보유 끝)만 지금 시장가로 팖.
+       새 매수는 하지 않음 (시가 매수를 전제로 한 신호라 장중 매수는 백테스트와 달라짐)"""
+    log('⏰ 장전 주문 시간을 놓침 (PC가 늦게 켜짐) → 매도할 것만 지금 시장가 · 오늘 새 매수 없음', 'warn')
+    alert('PC가 늦게 켜져 장전 주문을 놓쳤습니다 — 매도할 것만 지금 팔고 오늘 새 매수는 쉽니다', 'late')
+    x = db.conn()
+    sd = db.meta_get('last_signal_date')
+    for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sell_flag=1 AND qty>0")]:
+        J.decision(x, d, sd, {**l, 'ref': l['last_px'], 'amt': (l['last_px'] or 0) * l['qty']}, 'sell', '늦게 켜짐 · ' + KIND.get(l['sell_reason'], l['sell_reason'] or ''))
+        x.commit()
+        send(cfg, kc, 'sell', l['sell_reason'] or 'manual', l['id'], l['sleeve'], l['ticker'], l['name'], l['qty'], sig_ref=l['last_px'])
+        if halted():
+            return
+    if sweep_on(cfg) and (cfg.get('sweep_mode') or 'night') == 'night':
+        have = sum(q for _, q in sw_avail())
+        if have:
+            sweep_sell(cfg, kc, d, have * (kc.price(S.SW_TICKER)['price'] or 1) * 1.1, '늦게 켜짐 · 밤사이 지수 매도')
+    if sd and db.meta_get(f'plan_used_{sd}') != '1':
+        db.meta_set(f'plan_used_{sd}', '1')
+        pl = plan(cfg, None, None, sd)
+        for o in pl['buys'] + pl['defer']:
+            J.decision(x, d, sd, o, 'skip', 'PC가 늦게 켜져 장전 매수를 놓침')
+        x.commit()
+
+
 def deferred(cfg, kc, d):
     """09:02 — 미뤄 둔 매수 (아침에 판 돈 · 밤사이 ETF 판 돈으로) + 장전 시간 때문에 거절된 매도 재시도"""
     sync(kc, d)
@@ -933,7 +958,7 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
             if '08:05' <= hm <= '08:15' and not _done('holiday', d):
                 _mark('holiday', d)
                 holiday_check(cfg, d)
-            if configured(cfg) and is_trading_day(d) and '08:20' <= hm <= '16:30':
+            if configured(cfg) and is_trading_day(d) and '08:20' <= hm <= '23:59':
                 kc = client(cfg)
                 with _lock:
                     STATE['running'] = True
@@ -943,6 +968,9 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
                     if cfg.get('preopen_time', '08:50') <= hm <= '08:58' and not _done('pre', d) and can_order(cfg):
                         _mark('pre', d)
                         preopen(cfg, kc, d)
+                    if '08:59' <= hm <= '15:00' and not _done('pre', d) and can_order(cfg):     # 장전 주문을 놓쳤으면 매도만
+                        _mark('pre', d)
+                        late_open(cfg, kc, d)
                     if '09:02' <= hm <= '09:20' and not _done('defer', d) and can_order(cfg):
                         _mark('defer', d)
                         deferred(cfg, kc, d)
@@ -964,7 +992,7 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
                         on_buy(cfg, kc, d)
                         if not halted():
                             sweep_buy(cfg, kc, d)
-                    if '15:45' <= hm <= '16:30' and not _done('eod', d):
+                    if '15:45' <= hm <= '23:59' and not _done('eod', d):                       # 늦게 켜져도 그날 마감 기록
                         _mark('eod', d)
                         eod(cfg, kc, d)
                     STATE['running'] = False

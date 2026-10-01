@@ -180,6 +180,19 @@ gap = [abs(l['ret'] + (l['fee'] + l['tax']) / l['cost'] * 100 - l['model_ret']) 
 check('사후 계산: 가짜 체결(시가) → 체결 차이 0 · 실제 = 모델 수익', len(post) > 20 and all(abs(l['slip_in'] or 0) < 0.01 for l in post) and max(gap) < 0.05
       and all(l['mae'] <= 0.001 and l['mfe'] >= -0.001 for l in post if l['mae'] is not None), f'{len(post)}건 · 최대 차이 {max(gap):.4f}%p')
 
+# PC가 늦게 켜짐 (10:00) → 매도할 것만 시장가 · 새 매수 없음
+_lid = tr.new_lot('LVH', run_days and list(kc.pos)[0] if kc.pos else '005930', '늦게켜짐시험', '', run_days[-1])
+x.execute("UPDATE lots SET status='보유', qty=1, qty0=1, entry_px=1, cost=1, entry_date=?, sell_flag=1, sell_reason='hold20' WHERE id=?", (run_days[-1], _lid))
+x.commit()
+db.meta_set(f"plan_used_{db.meta_get('last_signal_date')}", '')
+clock['hm'] = '10:00'
+_n0 = x.execute('SELECT COUNT(*) FROM orders').fetchone()[0]
+tr.late_open(cfg, kc, run_days[-1])
+_new = [dict(r) for r in x.execute('SELECT * FROM orders WHERE id > (SELECT MAX(id) FROM orders) - ?', (x.execute('SELECT COUNT(*) FROM orders').fetchone()[0] - _n0,))]
+_sk = x.execute("SELECT COUNT(*) FROM decisions WHERE reason LIKE 'PC가 늦게%'").fetchone()[0]
+check('PC 늦게 켜짐: 매도할 것만 지금 시장가 · 오늘 새 매수 없음 (이유 기록)', any(o['lot_id'] == _lid and o['side'] == 'sell' for o in _new)
+      and not any(o['side'] == 'buy' for o in _new) and _sk > 0, f'새 주문 {len(_new)}건 (매수 0) · 안 산 후보 {_sk}')
+
 # ── 2-2. 모의 ↔ 실전 (계좌 설정만 바뀜) ──
 try:
     tr.switch_mode(cfg, 'real', True)

@@ -197,6 +197,15 @@ def scheduler():
                     db.log(f"장부 백업 {', '.join(db.backup())}")
                 except Exception as e:
                     db.log(f'장부 백업 실패: {CF.clean(e)}', 'warn')
+            pd_ = tr.prev_trading_day(d)                                             # 아침 따라잡기: 어젯밤 PC가 꺼져 있었으면
+            if tr.is_trading_day(d) and '06:00' <= hm <= '08:40' and not col.STATE['running'] and not JOB['signal']:
+                if db.last_bar_day() < pd_ and time.time() - float(db.gmeta_get('collect_try') or 0) > 900:
+                    db.gmeta_set('collect_try', time.time())
+                    db.log(f'아침 따라잡기: {pd_} 자료 수집 (어젯밤 놓침)', 'warn')
+                    threading.Thread(target=collect_run, daemon=True).start()
+                elif db.last_bar_day() >= pd_ and db.meta_get('last_signal_date') < pd_:
+                    db.log(f'아침 따라잡기: {pd_} 신호 계산 (어젯밤 놓침)', 'warn')
+                    threading.Thread(target=signal_run, args=(pd_,), daemon=True).start()
             if tr.is_trading_day(d) and '18:15' <= hm <= '21:00' and db.gmeta_get('flow_day') != d and not col.STATE['running']:
                 db.gmeta_set('flow_day', d)                                          # 수급 확정치 다시 (최근 3거래일)
                 threading.Thread(target=collect_run, daemon=True).start()
@@ -725,8 +734,30 @@ async def api_job_backfill(req: Request):
     return {'ok': True, 'msg': '과거 신호 후보 계산 시작'}
 
 
+def keep_awake():
+    """윈도우: 거래일 07:25~21:30 · 수집/신호/백테스트 중에는 PC가 잠들지 않게 · 그 밖에는 윈도우 절전 설정대로 (밤엔 잠들어도 됨 → 07:30 작업 스케줄러가 깨움)"""
+    if sys.platform != 'win32':
+        return
+    import ctypes
+    ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+    on = None
+    while True:
+        try:
+            n = datetime.now()
+            hm = n.strftime('%H:%M')
+            need = (tr.is_trading_day(n.strftime('%Y%m%d')) and '07:25' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf']
+            if need != on:
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if need else 0))
+                db.log('PC 잠들지 않게 유지' if need else 'PC 절전 허용 (윈도우 절전 설정대로)')
+                on = need
+        except Exception:
+            pass
+        time.sleep(60)
+
+
 def main():
     import uvicorn
+    threading.Thread(target=keep_awake, daemon=True).start()
     tr.NOTIFY = lambda m: telegram(m)
     tk_kis.HOOK[0] = J.api_hit
     threading.Thread(target=scheduler, daemon=True).start()

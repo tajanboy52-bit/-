@@ -9,7 +9,7 @@ $triggers = @(
   (New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At '15:40'),
   (New-ScheduledTaskTrigger -Weekly -DaysOfWeek $days -At '18:00')
 )
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
   -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 'TKAuto' -Action $action -Trigger $triggers -Settings $settings `
   -Description 'TK자동매매 시스템 자동 실행' -Force | Out-Null
