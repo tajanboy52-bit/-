@@ -45,6 +45,7 @@ import tk_db as db
 import tk_journal as J
 import tk_kis
 import tk_minute as mn
+import tk_brief as BR
 import tk_intraday as IL
 import tk_shadow as SH
 import tk_signals as S
@@ -83,12 +84,13 @@ TG_SSL_HINT = (' → PC의 백신 · 보안 프로그램이 HTTPS를 검사하�
                '윈도우 인증서로 확인합니다 · 그래도 안 되면 백신의 "HTTPS/SSL 검사"에서 api.telegram.org 예외 추가')
 
 
-def telegram(msg):
+def telegram(msg, head=None):
     t, ch = CFG.get('telegram_token'), CFG.get('telegram_chat')
     if not (t and ch):
         return False, '텔레그램 미설정'
     try:
-        head = '[TK' + ('·실전' if db.mode() == 'real' else '·모의') + '] '
+        if head is None:                                                         # 브리핑은 자체 머리글(모드 포함)이 있으므로 붙이지 않음
+            head = '' if msg.startswith(('☀', '🕐', '🌙')) else '[TK' + ('·실전' if db.mode() == 'real' else '·모의') + '] '
         body = urllib.parse.urlencode({'chat_id': ch, 'text': head + msg[:3900]}).encode()
         with urllib.request.urlopen(f'https://api.telegram.org/bot{t}/sendMessage', data=body, timeout=10) as r:
             ok = bool(json.loads(r.read().decode()).get('ok'))
@@ -161,17 +163,18 @@ def signal_run(d):
     try:
         tr.signal_job(CFG, d)
         JOB['signal_msg'] = f'{d} 신호 계산 끝 {datetime.now():%H:%M}'
-        telegram(report(d))
+        n = 0
         try:                                                                     # 📅 실전: 다음 거래일 매도를 예약주문으로 (PC가 아침에 꺼져 있어도)
             if tr.configured(CFG) and tr.can_order(CFG) and '15:40' <= datetime.now().strftime('%H:%M') <= '23:30':
                 kc = tr.client(CFG)
                 if tr.resv_supported(kc):
                     with tr._lock:
                         n = tr.reserve_sells(CFG, kc, tr.next_trading_day(d))
-                    if n:
-                        telegram(f'📅 내일({tr.next_trading_day(d)[4:6]}/{tr.next_trading_day(d)[6:]}) 시가 매도 {n}건 예약주문 완료 — PC가 꺼져 있어도 나갑니다')
         except Exception as e:
             db.log(f'예약주문 오류: {CF.clean(e)}', 'warn')
+        if CFG.get('hourly_report', True) and db.gmeta_get('brief_close') != d:  # 🌙 장마감 브리핑 (오늘 결과 + 내일 계획)
+            db.gmeta_set('brief_close', d)
+            telegram(BR.closing(CFG, d, True, n))
         try:                                                                     # 날마다 거래 분석 갱신 (보고서 파일 · 화면)
             ANALYSIS['res'] = AN.analyze()
             open(os.path.join(db.DATA_DIR, 'analysis_result.md'), 'w', encoding='utf-8').write(AN.report_md(ANALYSIS['res']))
@@ -189,53 +192,6 @@ def signal_run(d):
         return False
     finally:
         JOB['signal'] = False
-
-
-def report(d):
-    x = db.conn()
-    wd = '월화수목금토일'[datetime.strptime(d, '%Y%m%d').weekday()]
-    L = [f"🏦 {d[4:6]}/{d[6:]}({wd}) 장 마감 {'🔴 실전' if db.mode() == 'real' else '🟢 모의'}", '━━━━━━━━━━━━━━']
-    eq = [dict(r) for r in x.execute('SELECT * FROM equity WHERE date<=? ORDER BY date DESC LIMIT 2', (d,))]
-    sv = float(db.meta_get('start_value') or 0)
-    if eq and eq[0]['date'] == d:
-        e, p = eq[0], (eq[1] if len(eq) > 1 else None)
-        L.append(f"💰 계좌 {e['value']:,.0f}원" + (f" · 오늘 {e['value'] - p['value']:+,.0f}원 ({(e['value'] / p['value'] - 1) * 100:+.2f}%)" if p else '')
-                 + (f" · 시작 대비 {(e['value'] / sv - 1) * 100:+.2f}%" if sv else ''))
-        L.append(f"   고점 대비 {(e['value'] / e['peak'] - 1) * 100:+.1f}% · 현금(D+2) {e['cash'] / 1e4:,.0f}만" + (f" · 한도 {tr.ramp(CFG)}%" if db.mode() == 'real' else ''))
-    al_ = tr.alloc(CFG)
-    for s, m in S.SLEEVES.items():
-        ls = [l for l in tr.open_lots(s) if l['status'] == '보유']
-        if not ls and al_.get(s, 0 if s == 'IN' else 1) == 0 and not x.execute("SELECT 1 FROM lots WHERE sleeve=? AND exit_date=?", (s, d)).fetchone():
-            continue                                                                # 꺼진 칸(비중 0)은 리포트에서 뺌
-        val = sum(l['qty'] * (l['last_px'] or l['entry_px'] or 0) for l in ls)
-        inv = sum(l['cost'] * (l['qty'] / l['qty0'] if l['qty0'] else 1) for l in ls)
-        cl = [dict(r) for r in x.execute("SELECT pnl FROM lots WHERE sleeve=? AND status='청산'", (s,))]
-        L.append(f"{m['icon']} {m['name']}: 보유 {len(ls)} · 평가 {val - inv:+,.0f}원 · 누적 실현 {sum(r['pnl'] or 0 for r in cl):+,.0f}원")
-    fills = [dict(r) for r in x.execute('SELECT * FROM orders WHERE date=? AND filled>0 ORDER BY id', (d,))]
-    if fills:
-        L.append('\n🧾 오늘 체결')
-        L += [f" {'🟢' if f['side'] == 'buy' else '🔵'} [{f['sleeve']}] {f['name']} {f['filled']}주 @{f['avg'] or 0:,.0f} · {tr.KIND.get(f['kind'], f['kind'])}" for f in fills[:25]]
-    done = [dict(r) for r in x.execute("SELECT * FROM lots WHERE exit_date=? AND status='청산'", (d,))]
-    if done:
-        L.append(f"\n💵 청산 {len(done)}건 · {sum(r['pnl'] or 0 for r in done):+,.0f}원")
-        L += [f" {'🟢' if (r['pnl'] or 0) > 0 else '🔻'} [{r['sleeve']}] {r['name']} {r['ret'] or 0:+.2f}%" for r in done[:20]]
-    sells = [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sell_flag=1 AND sleeve!='ON'")]
-    sig = [dict(r) for r in x.execute('SELECT * FROM signals WHERE date=? AND rank<100 ORDER BY sleeve, rank', (d,))]
-    L.append('\n🗓 다음 거래일 08:50')
-    L.append(' 매도: ' + (', '.join(f"[{l['sleeve']}] {l['name']}" for l in sells) or '없음'))
-    sw_q = sum(q for _, q in tr.sw_avail())
-    if sw_q:
-        L.append(f' 💤 KODEX 200 {sw_q}주 ({S.SW_MODES.get(CFG.get("sweep_mode") or "night", "")})')
-    for s in ('LVH', 'REV', 'DV'):
-        ss = [r['name'] for r in sig if r['sleeve'] == s]
-        if ss:
-            L.append(f" {S.SLEEVES[s]['icon']} 후보: {', '.join(ss[:8])}" + (f' 외 {len(ss) - 8}' if len(ss) > 8 else ''))
-    for k, v in (('⛔ 정지', tr.halted()), ('⏸ 매수 중지', db.meta_get('auto_pause')), ('⚠️ 새 매수 차단', db.meta_get('block_new'))):
-        if v:
-            L.append(f'{k}: {v}')
-    if not CFG.get('kis_on'):
-        L.append('○ 자동주문 꺼짐')
-    return '\n'.join(L)
 
 
 def minute_client():
@@ -289,6 +245,10 @@ def scheduler():
                     and time.time() - float(db.gmeta_get('collect_try') or 0) > 1800:                   # 실패하면 30분마다 다시 (22시까지)
                 db.gmeta_set('collect_try', time.time())
                 threading.Thread(target=collect_run, daemon=True).start()
+            if tr.is_trading_day(d) and hm >= '20:30' and CFG.get('hourly_report', True) and db.gmeta_get('brief_close') != d \
+                    and not JOB['signal'] and db.conn().execute('SELECT 1 FROM equity WHERE date=?', (d,)).fetchone():   # 신호가 늦으면 내일 계획 없이
+                db.gmeta_set('brief_close', d)
+                threading.Thread(target=telegram, args=(BR.closing(CFG, d, plan=db.meta_get('last_signal_date') == d),), daemon=True).start()
             if hm >= '16:40' and db.gmeta_get('backup_day') != d:                  # 장부 백업 (날마다 · 기록이 핵심이므로)
                 db.gmeta_set('backup_day', d)
                 try:
@@ -520,10 +480,10 @@ RESEARCH = [
 SCHEDULE = [('07:30', '작업 스케줄러가 PC 깨워 실행 (절전 해제)'), ('06:00~08:40', '어젯밤 놓친 자료 수집 · 신호 계산 따라잡기'), ('07:40', 'KIS 종목 마스터 (정지 · 관리 · 경고)'),
             ('08:05', '휴장일 확인'), ('08:20', '장전 점검 — 연결 · 잔고 · 모르는 종목 · 신호 날짜 (주문 없음)'),
             ('08:50', '장전: 밤사이 ETF · KODEX 200 · 보유 끝 종목 시가 매도 → 예상체결가로 갭 확인 → 새 매수 (시가)'),
-            ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:05~15:15', '⏱ 장중 칸 (켰을 때만 · 통과한 규칙만 · 15:15 모두 정리)'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치 · 매시 텔레그램'),
+            ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:05~15:15', '⏱ 장중 칸 (켰을 때만 · 통과한 규칙만 · 15:15 모두 정리)'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치'), ('10:00 · 13:00', '📱 텔레그램 오전 브리핑(작동 상태 · 아침 매매) · 중간 브리핑'),
             ('15:10', '밤사이 칸 매수 자금 확인'), ('15:20', '🌙 KODEX 코스닥150 + 💤 KODEX 200 종가 매수 (밤사이)'), ('15:45', '잔고 대조 · 매매일지 · 잔고 이력 · 계좌 안전장치'),
             ('15:50', '📥 KRX 자료 수집 (실패하면 30분마다 · 22시까지)'), ('16:20', '⏱ 오늘 1분봉'), ('16:40', '💾 장부 백업'), ('18:15', '수급 확정치'),
-            ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 👥 그림자 운용 → ⏱ 장중 연구실 → 텔레그램'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
+            ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 📱 장마감 브리핑(오늘 결과 · 내일 계획) → 👥 그림자 운용 → ⏱ 장중 연구실'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
 
 
 def sysinfo():
@@ -909,7 +869,7 @@ async def api_emergency(req: Request):
 TG_HELP = """📱 TK자동매매 명령
 /상태 — 계좌 · 자동주문 · 정지 · 오늘 손익
 /보유 — 보유 묶음과 평가
-/오늘 — 오늘 체결 · 청산
+/오늘 — 지금 브리핑 (장중: 중간 · 마감 뒤: 장마감)
 /매수중지 — 새 매수만 멈춤 (매도는 계속)
 /재개 — 새 매수 다시 (계좌 안전장치 해제 포함)
 /정지 — ⛔ 긴급 정지: 자동주문 끔 · 미체결 · 예약 취소 (보유는 그대로)
@@ -922,7 +882,7 @@ def tg_command(text):
     c = (text or '').strip().split()[0].lower() if (text or '').strip() else ''
     c = c.split('@')[0]
     alias = {'/status': '/상태', '/hold': '/보유', '/today': '/오늘', '/pause': '/매수중지', '/resume': '/재개', '/stop': '/정지', '/unhalt': '/정지해제',
-             '/help': '/도움', '/start': '/도움'}
+             '/help': '/도움', '/start': '/도움', '/brief': '/브리핑'}
     c = alias.get(c, c)
     x = db.conn()
     if c == '/상태':
@@ -943,8 +903,14 @@ def tg_command(text):
         if not lots:
             return '보유 없음'
         return f'보유 {len(lots)}묶음\n' + '\n'.join(f"[{l['sleeve']}] {l['name']} {l['qty']}주 {l['eval_pct'] or 0:+.2f}% ({l['eval'] or 0:+,.0f})" for l in lots[:25])
-    if c == '/오늘':
-        return report(tr.today())
+    if c in ('/오늘', '/브리핑'):
+        bal = {}
+        try:
+            bal = tr.client(CFG).balance() if tr.configured(CFG) else {}
+        except Exception as e:
+            db.log(f'브리핑 잔고 조회 실패: {CF.clean(e)[:100]}', 'warn')
+        d = tr.today()
+        return BR.closing(CFG, d, plan=db.meta_get('last_signal_date') == d) if datetime.now().strftime('%H:%M') >= '15:45' else BR.midday(CFG, bal, d)
     if c == '/매수중지':
         CFG['pause_buy'] = True
         CF.save(CFG)

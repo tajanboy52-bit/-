@@ -455,6 +455,18 @@ check('장중 칸 끄면 아무것도 안 함', IL.step({**_cfgi, 'intraday_on':
 kc.cash -= 5_000_000
 open(IL.RESULT, 'w', encoding='utf-8').write(_save)
 
+# ── 2-4c. 📱 텔레그램 브리핑 3종 ──
+import tk_brief as BR
+_d = run_days[-1]
+clock['d'], kc.d = _d, _d
+clock['hm'] = '10:00'
+_bal = kc.balance()
+_m1, _m2, _m3 = BR.morning(cfg, _bal, _d), BR.midday(cfg, _bal, _d), BR.closing(cfg, _d, True, 3)
+open(os.path.join(db.DATA_DIR, 'brief_sample.txt'), 'w', encoding='utf-8').write(_m1 + '\n\n=====\n\n' + _m2 + '\n\n=====\n\n' + _m3)
+check('📱 브리핑 3종: 오전(작동 상태 · 아침 매매) · 중간(흐름) · 장마감(결과 · 누적 · 내일 계획 · 예약)', _m1.startswith('☀️ 오전 브리핑') and '⚙️ 시스템' in _m1 and '🔄 오늘 매매' in _m1
+      and '💰 계좌' in _m1 and _m2.startswith('🕐 중간 브리핑') and '⏭ 남은 일정' in _m2 and _m3.startswith('🌙 장마감 브리핑') and '🗓 내일' in _m3 and '예약주문' in _m3
+      and '📊 칸별' in _m3 and max(len(_m1), len(_m2), len(_m3)) < 3900, f'{len(_m1)} · {len(_m2)} · {len(_m3)}자')
+
 # ── 2-5. 👥 그림자 운용 ──
 import tk_shadow as SHD
 db.gmeta_set('shadow_start', run_days[-10])

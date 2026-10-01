@@ -548,9 +548,11 @@ def precheck(cfg, kc, d):
     if halted():
         probs.append(f'자동주문 정지 상태: {halted()}')
     if probs:
+        db.meta_set('precheck', f"{d} " + ' / '.join(probs)[:300])
         log('장전 점검 — ' + ' / '.join(probs), 'warn')
         alert('장전 점검(08:20) 문제 — ' + ' / '.join(probs), 'precheck')
     else:
+        db.meta_set('precheck', f'{d} OK')
         log(f'장전 점검 OK — {info}')
         if not db.meta_get('start_value') and info:
             db.meta_set('start_value', bal['equity'])
@@ -1020,20 +1022,6 @@ def intraday(cfg, kc, d, prices):
     return bal
 
 
-def hourly_text(cfg, bal, d):
-    x = db.conn()
-    prev = x.execute('SELECT value FROM equity WHERE date<? ORDER BY date DESC LIMIT 1', (d,)).fetchone()
-    L = [f"⏰ {now():%H:%M} {'[실전] ' if db.mode() == 'real' else ''}계좌 {bal['equity']:,.0f}원"
-         + (f" · 오늘 {bal['equity'] - prev[0]:+,.0f}원 ({(bal['equity'] / prev[0] - 1) * 100:+.2f}%)" if prev and prev[0] else '')]
-    pos = sorted(bal['positions'], key=lambda p: -(p['pnl'] or 0))
-    if pos:
-        L.append('▲ ' + ' · '.join(f"{p['name']} {p['pnl']:+,.0f}" for p in pos[:3]))
-        L.append('▼ ' + ' · '.join(f"{p['name']} {p['pnl']:+,.0f}" for p in pos[-3:][::-1]))
-    fills = x.execute('SELECT COUNT(*) FROM orders WHERE date=? AND filled>0', (d,)).fetchone()[0]
-    L.append(f'오늘 체결 {fills}건 · 보유 {len(pos)}종목')
-    return '\n'.join(L)
-
-
 def holiday_check(cfg, d):
     """08:05 하루 1번 — 실전 키가 있으면 KIS 공식 휴장일 조회 (모의 모드여도 조회만)"""
     if db.gmeta_get(f'open_{d}') in ('Y', 'N'):
@@ -1139,10 +1127,12 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
                     if '09:01' <= hm <= '15:30' and time.time() - last_live > 60 and cfg.get('kis_on'):
                         last_live = time.time()
                         bal = intraday(cfg, kc, d, get_prices())
-                        hh = now().strftime('%H')
-                        if cfg.get('hourly_report') and notify_hourly and hm[3:] < '05' and '10' <= hh <= '15' and not _done(f'hour{hh}', d):
-                            _mark(f'hour{hh}', d)
-                            notify_hourly(hourly_text(cfg, bal, d))
+                        if cfg.get('hourly_report', True) and notify_hourly:              # 📱 브리핑: 10:00 오전 · 13:00 중간 (장마감은 신호 계산 뒤 tk_server)
+                            import tk_brief as BR
+                            for key, t0, t1, fn in (('brief_am', '10:00', '10:20', BR.morning), ('brief_mid', '13:00', '13:20', BR.midday)):
+                                if t0 <= hm <= t1 and not _done(key, d):
+                                    _mark(key, d)
+                                    notify_hourly(fn(cfg, bal, d))
                     if '15:10' <= hm <= '15:17' and not _done('swprep', d) and can_order(cfg):
                         _mark('swprep', d)
                         sweep_prep(cfg, kc, d)

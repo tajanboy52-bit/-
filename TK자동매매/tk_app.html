@@ -390,7 +390,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
       <label style="margin-top:10px">🧪 실험 — 자리 수 · 건너뛸 순위 (바꾸면 🧪 백테스트도 같은 값 · 기본 LVH 40 · REV 30 · DV 15 · 건너뜀 0)</label>
       <div class="row"><span>LVH 자리 <input id="slL" size="3"></span><span>REV 자리 <input id="slR" size="3"></span><span>DV 자리 <input id="slD" size="3"></span>
         <span>LVH 건너뛸 순위 <input id="skL" size="2"></span><span>REV 건너뛸 순위 <input id="skR" size="2"></span></div>
-      <div class="row" style="margin-top:10px"><label style="margin:0"><input type="checkbox" id="hr"> 매시 텔레그램 (10~15시)</label><label style="margin:0"><input type="checkbox" id="tgc"> 📱 텔레그램 명령 (/상태 /정지 …)</label><label style="margin:0"><input type="checkbox" id="rsv"> 📅 실전: 다음 날 매도 예약주문</label><label style="margin:0"><input type="checkbox" id="wso"> 📡 실시간 웹소켓</label></div>
+      <div class="row" style="margin-top:10px"><label style="margin:0"><input type="checkbox" id="hr"> 📱 텔레그램 브리핑 (10시 · 13시 · 장마감)</label><label style="margin:0"><input type="checkbox" id="tgc"> 📱 텔레그램 명령 (/상태 /정지 …)</label><label style="margin:0"><input type="checkbox" id="rsv"> 📅 실전: 다음 날 매도 예약주문</label><label style="margin:0"><input type="checkbox" id="wso"> 📡 실시간 웹소켓</label></div>
       <label style="margin-top:10px">⏱ 장중 칸 (낮에 노는 돈 · 기본 꺼짐 · 🔬 장중 연구실 '통과' 규칙만 실제로 씀 · 15:15 모두 정리)</label>
       <div class="row"><label style="margin:0"><input type="checkbox" id="inOn"> 장중 칸 켜기</label><span id="inRules"></span>
         <span>노는 돈의 <input id="inPct" size="3">%</span><span>자리 <input id="inSl" size="2"></span><span>볼 종목 <input id="inW" size="2"></span></div>
@@ -593,7 +593,7 @@ async function info(s){if(!SI){const r=await get('/api/sysinfo');if(r.ok===false
     return `<div class="mc" style="--c:${SC[k]||'#64748b'};margin-bottom:10px"><span class="k">${k}</span><b>${(SN[k]||'💤 남는 현금 → KODEX 200')}</b> <span class="pill" style="float:right">${a}</span><p>${rule[k]}${m?`<br><span class="mut">백테스트 단독: 연 ${pct(m.cagr*100,1)} · 낙폭 ${pct(m.mdd*100,1)} · 샤프 ${(m.sharpe||0).toFixed(2)}</span>`:''}</p></div>`}).join('');
   $('#siFeat').innerHTML=[['🔁 회전형','평균 약 8일 보유 + 밤사이 두 칸 매일 회전 — 돈을 묻어 두지 않고 굴림'],['✅ 검증된 규칙만','전종목(상장폐지 포함) 3년 실제 자료 · 두 기간 · 비용 반영 · 미리 정한 기준으로 판정'],
     ['🟢↔🔴 같은 시스템','모의 · 실전은 계좌 설정만 바뀜 · 장부는 따로 · 합쳐서 분석'],['📒 HTS급 기록','주문 상태 · 체결 조각 · 수수료 · 세금 · 판단(못 산 이유) · 잔고 · 매매일지 — 지우지 않고 쌓음'],
-    ['🔬 기록으로 고도화','칸별 · 체결 품질 · 진입 근거 구간 · 후보 순위 사후 수익 · 놓친 거래 → 고도화 후보 (자동 변경 없음)'],['📡 실시간','웹소켓 체결가 · 체결 통보(AES) · 장중 손실 감시 · 매시 텔레그램'],
+    ['🔬 기록으로 고도화','칸별 · 체결 품질 · 진입 근거 구간 · 후보 순위 사후 수익 · 놓친 거래 → 고도화 후보 (자동 변경 없음)'],['📡 실시간','웹소켓 체결가 · 체결 통보(AES) · 장중 손실 감시 · 텔레그램 브리핑 하루 3번'],
     ['⏱ 1분봉 축적','장중 매매 규칙 검증용 — 날짜별 대상 · 1년치 이어받기'],['💤 PC 자동 관리','아침 자동 깨움 · 낮엔 안 잠듦 · 놓친 일 따라잡기 · 장부 자동 백업'],['🔒 보안','이 PC에서만 · 세션 토큰 · 비밀 값 DPAPI 암호화 · 화면/로그/zip에서 가림']]
     .map(([t,d])=>`<div><b>${t}</b><span>${d}</span></div>`).join('');
   $('#siSafe').innerHTML=I.safety.map(([k,v])=>`<span>${k}<b style="max-width:65%;text-align:right">${v}</b></span>`).join('');
