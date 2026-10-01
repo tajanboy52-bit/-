@@ -350,7 +350,7 @@ def run(cfg, start='20220601', flow_start='20230601', month_start='202106', kc=N
             db.log(f'KRX 수집 불가: {e} → KIS 예비 경로', 'warn')
         if stock is None:
             if kc is None:
-                raise RuntimeError('KRX 계정도 KIS 키도 없어 자료를 받을 수 없음')
+                raise RuntimeError(f"KRX 로그인 안 됨({STATE['err'][:80]}) · KIS 예비 경로도 지금 모드 계좌(앱키 · 시크릿 · 계좌번호)가 다 채워져 있지 않음")
             d = today
             if datetime.now().strftime('%H:%M') < '15:40' or datetime.now().weekday() >= 5:
                 raise RuntimeError('KIS 예비 경로는 평일 장 마감(15:40) 뒤에만')
