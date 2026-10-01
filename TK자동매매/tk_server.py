@@ -42,7 +42,7 @@ import tk_trader as tr
 import tk_ws as rtws
 
 APP_NAME = 'TK자동매매 시스템'
-APP_VERSION = 'T1.1'
+APP_VERSION = 'T1.2'
 PORT = int(os.environ.get('TKAUTO_PORT', '8086'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TOKEN = secrets.token_urlsafe(24)
@@ -410,6 +410,60 @@ def data_inventory(force=False):
 @app.get('/api/inventory')
 async def api_inventory(force: int = 0):
     return await asyncio.to_thread(data_inventory, bool(force))
+
+
+MODULES = [('tk_server.py', '서버 · 화면 API · 일정(수집 · 신호 · 분봉 · 백업 · 따라잡기) · 보안'), ('tk_trader.py', '매매 엔진 — 장전 · 09:02 · 15:10/15:20 · 마감 · 안전장치 · 계좌 전환'),
+           ('tk_signals.py', '신호 엔진 — 저변동고점 · 반전·수급 · 배당·가치 · 밤사이 · 갭 · 지수 타이밍 (실전 · 백테스트 공용)'),
+           ('tk_backtest.py', '백테스트 — 실전과 같은 규칙 · 비용 · 두 기간 판정'), ('tk_kis.py', '한국투자증권 REST — 주문 · 잔고 · 체결 · 시세 · 예상체결가 · 1분봉'),
+           ('tk_ws.py', '웹소켓 — 실시간 체결가 · 체결 통보(AES 해독) · 재접속'), ('tk_collect.py', '자료 수집 — KRX 전종목 · 수급 · ETF · 월 재무 · 가져오기'),
+           ('tk_minute.py', '⏱ 1분봉 수집기 — 날짜별 대상 · 이어받기 · zip'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
+           ('tk_analyze.py', '거래내역 조회 · 분석 · 고도화 후보 · 분석 패키지'), ('tk_db.py', '저장소 — 시장 DB · 모드별 장부 · 수정주가 · 백업'),
+           ('tk_config.py', '설정 · 비밀 값 DPAPI 암호화'), ('tk_app.html', '화면 (우량주 앱 테마 7가지)')]
+RESEARCH = [
+    ('2026-09-30', '실제 자료 백테스트 (TK_STOCK_CHART_DB 278만 줄)', '합성 연 +15.7% → 기준선', '설계서 9장'),
+    ('2026-09-30', '반전·수급 30자리 (보고서 크기로)', '채택', '설계서 9장'),
+    ('2026-09-30', 'LVH · REV 순위 구간 · 자리 수', '미채택 (합성에서 두 기간 개선 없음) · 실험 설정으로', '설계서 11장'),
+    ('2026-10-01', '변동성 관리 · 추세 필터 · 배당+ROE', '미채택', '설계서 12장'),
+    ('2026-10-01', '시가 갭 +5% 넘으면 안 삼 (한국 밤사이 과잉반응 연구)', '채택', '설계서 12장'),
+    ('2026-10-01', '남는 현금 → KODEX 200', '채택 → 밤사이 회전으로', '설계서 12 · 13장'),
+    ('2026-10-01', '회전형 전환: 밤사이 35% · LVH 10일 · DV 0%', '채택 (연 +37.9% · 낙폭 −12.3% · 샤프 1.74)', '설계서 14장'),
+    ('2026-10-01', '⏱ 1분봉 수집기 → 장중 규칙 검증 준비', '수집 중 (몇 달 뒤 검증)', '설계서 15장')]
+SCHEDULE = [('07:30', '작업 스케줄러가 PC 깨워 실행 (절전 해제)'), ('06:00~08:40', '어젯밤 놓친 자료 수집 · 신호 계산 따라잡기'), ('07:40', 'KIS 종목 마스터 (정지 · 관리 · 경고)'),
+            ('08:05', '휴장일 확인'), ('08:20', '장전 점검 — 연결 · 잔고 · 모르는 종목 · 신호 날짜 (주문 없음)'),
+            ('08:50', '장전: 밤사이 ETF · KODEX 200 · 보유 끝 종목 시가 매도 → 예상체결가로 갭 확인 → 새 매수 (시가)'),
+            ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치 · 매시 텔레그램'),
+            ('15:10', '밤사이 칸 매수 자금 확인'), ('15:20', '🌙 KODEX 코스닥150 + 💤 KODEX 200 종가 매수 (밤사이)'), ('15:45', '잔고 대조 · 매매일지 · 잔고 이력 · 계좌 안전장치'),
+            ('15:50', '📥 KRX 자료 수집 (실패하면 30분마다 · 22시까지)'), ('16:20', '⏱ 오늘 1분봉'), ('16:40', '💾 장부 백업'), ('18:15', '수급 확정치'),
+            ('18:40', '🎯 신호 계산 → 거래 분석 갱신 → 텔레그램'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
+
+
+def sysinfo():
+    import platform
+    mods = []
+    for f, role in MODULES:
+        p = os.path.join(BASE_DIR, f)
+        n = sum(1 for _ in open(p, encoding='utf-8')) if os.path.exists(p) else 0
+        mods.append({'file': f, 'role': role, 'lines': n})
+    eps = sorted({(r.methods and ' '.join(sorted(r.methods - {'HEAD'}))) + ' ' + r.path for r in app.routes if getattr(r, 'path', '').startswith('/api/')})
+    tests = os.path.join(BASE_DIR, 'tests', 'test_tk.py')
+    n_tests = len(__import__('re').findall(r'(?m)^\s*check\(', open(tests, encoding='utf-8').read())) if os.path.exists(tests) else 0
+    return {'app': APP_NAME, 'version': APP_VERSION, 'python': platform.python_version(), 'os': platform.platform(terse=True), 'port': PORT,
+            'data_dir': db.DATA_DIR, 'modules': mods, 'lines': sum(m['lines'] for m in mods), 'endpoints': len(eps), 'tests': n_tests,
+            'schedule': SCHEDULE, 'research': RESEARCH,
+            'safety': [('계좌 낙폭', f"고점 대비 −{CFG.get('dd_limit', 15)}% → 새 매수 자동 중지 (매도는 계속)"),
+                       ('하루 손실', f"−{CFG.get('day_loss_limit', 4)}% (장중 1분마다 확인) → 새 매수 자동 중지"),
+                       ('갭 필터', f"예상 시가가 +{tr.gap_limit(CFG) or 0:g}% 넘게 높으면 LVH · REV 안 삼" if tr.gap_limit(CFG) else '꺼짐'),
+                       ('1회 · 하루 한도', '종목당 운용 한도의 15% · 하루 매수 60%'), ('운용 한도', f'{tr.cap(CFG):,}원 (계좌별 설정 가능)'),
+                       ('주문 결과 불분명', '재주문하지 않고 자동주문 정지 → KIS 앱에서 확인 뒤 해제'), ('모르는 보유 종목', '계좌에 앱이 모르는 종목이 있으면 새 매수 차단'),
+                       ('잔고 불일치', '장 마감에 KIS 잔고와 장부 대조 → 다르면 알림'), ('긴급 정지', '미체결 취소 · 자동주문 끔 (보유는 그대로)'),
+                       ('늦게 켜짐', '장전 주문을 놓치면 팔 것만 팔고 그날 새 매수 쉼'), ('손절', '없음 — 전종목 검증에서 손절은 모든 모델의 수익을 깎음 (꼬리 위험은 종목당 비중으로)')],
+            'security': ['이 PC에서만 접속 (127.0.0.1) · Host 머리글 확인', '실행마다 새 세션 토큰 · 바꾸는 호출은 JSON만 · CORS 없음',
+                         '앱키 · 시크릿 · 계좌 · KRX · 텔레그램은 윈도우 DPAPI 암호화', '화면 · 로그 · zip에서 비밀 값 가림']}
+
+
+@app.get('/api/sysinfo')
+async def api_sysinfo():
+    return await asyncio.to_thread(sysinfo)
 
 
 def _journal_counts():

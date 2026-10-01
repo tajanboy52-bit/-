@@ -193,6 +193,14 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 #jrTbl td{font-variant-numeric:tabular-nums}#jrTbl td.num{text-align:right}
 .idea{border:1px solid var(--bd);border-radius:10px;padding:10px 13px;margin-bottom:8px;background:rgba(255,255,255,.9)}
 .idea b{font-weight:var(--w8)}.idea .w{color:var(--t2);font-size:13.5px;margin-top:3px}.idea .a{font-size:13.5px;margin-top:3px}
+.si-hero{background:linear-gradient(135deg,var(--accent-soft),rgba(255,255,255,.85));border:1px solid var(--card-bd)}
+.si-hero h2{font-size:21px}.si-hero p{margin:6px 0 0;color:var(--t2);font-size:14.5px;line-height:1.7}
+.si-sch{display:grid;grid-template-columns:110px 1fr;gap:0;font-size:14px}.si-sch>div{padding:7px 10px;border-bottom:1px dashed rgba(15,23,42,.08)}
+.si-sch .t{font-family:"JetBrains Mono",Consolas,monospace;font-weight:var(--w8);color:var(--t2)}.si-sch .now{background:var(--accent-soft)}.si-sch .past{color:var(--t3)}
+.si-feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:10px}.si-feat>div{border:1px solid var(--bd);border-radius:11px;padding:12px 14px;background:rgba(255,255,255,.9)}
+.si-feat b{display:block;font-size:15px;margin-bottom:4px}.si-feat span{font-size:13.5px;color:var(--t2);line-height:1.6}
+#siRes td{white-space:normal;min-width:70px}
+.si-guide ol{margin:6px 0 0;padding-left:20px;line-height:1.85;font-size:14px}
 .inv-tip{position:fixed;z-index:200;pointer-events:none;background:#111827;color:#fff;border-radius:8px;padding:7px 10px;font-size:12.5px;line-height:1.5;display:none;max-width:320px}
 .inv-st{display:inline-flex;align-items:center;gap:4px;font-weight:var(--w7)}.inv-st.ok{color:#15803d}.inv-st.late{color:#b45309}.inv-st.none{color:var(--t3)}
 .an-t table{font-size:13px}.an-t th,.an-t td{padding:6px 8px}
@@ -202,7 +210,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 <div class="hdr">
   <header>
     <div class="logo-mark">🏦</div>
-    <div><h1><span class="tk">TK</span>자동매매 시스템</h1><span class="sub">한국투자증권 Open API · 전종목 검증 규칙 4칸 · 모의 → 실전</span></div>
+    <div><h1><span class="tk">TK</span>자동매매 시스템</h1><span class="sub">한국투자증권 Open API · 회전형 자동매매 · 모의 ↔ 실전 같은 시스템</span></div>
     <div class="chips" id="chips"></div>
     <div style="position:relative"><button class="th-btn" id="thBtn" title="화면 테마">🎨</button>
       <div class="th-pop" id="thPop"><div class="th-grid"></div><div class="tx-row"><span class="tx-l">글씨</span><div class="tx-seg"><button data-x="normal">보통</button><button data-x="bold">굵게</button><button data-x="bolder">더 굵게</button></div></div></div></div>
@@ -210,7 +218,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
   <div class="modebar"><span class="dot"></span><span id="modeTxt">모의투자</span><span style="margin-left:auto;font-weight:600;opacity:.9" id="modeSub"></span>
     <span class="mseg" title="계좌 전환 — 시스템은 그대로, 계좌 설정만 바뀜"><button data-m="paper" onclick="setMode('paper')">🟢 모의</button><button data-m="real" onclick="setMode('real')">🔴 실전</button></span></div>
   <nav id="nav">
-    <button data-t="dash" class="on">🏠 대시보드</button><button data-t="live">📡 실시간</button><button data-t="sig">🎯 신호 · 계획</button>
+    <button data-t="info">📋 시스템 정보</button><button data-t="dash" class="on">🏠 대시보드</button><button data-t="live">📡 실시간</button><button data-t="sig">🎯 신호 · 계획</button>
     <button data-t="res">📊 결과</button><button data-t="jr">📒 거래내역</button><button data-t="an">🔬 분석 · 고도화</button>
     <button data-t="bt">🧪 백테스트</button><button data-t="data">📥 데이터</button><button data-t="real">🔁 모의 · 실전 계좌</button><button data-t="set">⚙️ 설정</button><button data-t="sys">🖥 시스템</button>
   </nav>
@@ -259,6 +267,29 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
   <div class="card"><h2>포트폴리오 백테스트 <small>직접 모은 전종목 일봉(상장폐지 포함) · 실전과 같은 신호 함수 · 비용 반영</small></h2>
     <div class="row"><label style="margin:0">시작</label><input id="btS" value="20231024" size="9"><label style="margin:0">끝</label><input id="btE" placeholder="오늘까지" size="9">
       <button class="btn p" id="btRun">🧪 실행</button><span id="btMsg" class="mut"></span></div><div id="bt" style="margin-top:12px"></div></div>
+</section>
+
+<section id="t-info" hidden>
+  <div class="card si-hero"><h2>📋 TK자동매매 시스템 <small id="siVer"></small></h2>
+    <p>한국투자증권 Open API로 <b>모의투자 → 실전</b>까지 같은 시스템으로 운용하는 <b>회전형 자동매매</b>입니다. 전종목 3년 실제 자료로 검증한 규칙으로 날마다 사고팔고,
+      모든 주문 · 체결 · 판단을 기록해 그 기록으로 다시 고도화합니다. 다른 앱 없이 혼자 돌아갑니다.</p>
+    <div class="kbar" id="siChips" style="margin-top:12px"></div></div>
+  <div class="card"><h2>🗺 시스템 구조도 <small>자료 → 신호 → 주문 → 기록 → 분석 → (검증 뒤) 규칙 개선</small></h2><div id="siMap"></div></div>
+  <div class="grid g2">
+    <div class="card"><h2>🕘 하루 흐름 <small id="siNow"></small></h2><div class="si-sch" id="siSch"></div></div>
+    <div class="card"><h2>🎯 전략 칸 <small>지금 비중 · 규칙 · 백테스트 성적</small></h2><div id="siSl"></div></div></div>
+  <div class="card"><h2>⭐ 핵심 특장점</h2><div class="si-feat" id="siFeat"></div></div>
+  <div class="grid g2">
+    <div class="card"><h2>🛡 안전장치 <small>지금 설정값</small></h2><div class="kv" id="siSafe" style="grid-template-columns:1fr"></div></div>
+    <div class="card"><h2>🔬 연구 · 검증 이력 <small>미리 정한 기준으로 판정 · 채택한 것만 반영</small></h2><div class="tw" id="siRes"></div></div></div>
+  <div class="grid g2">
+    <div class="card"><h2>🧩 구성 요약</h2><div class="kv" id="siEnv" style="grid-template-columns:1fr"></div><div class="tw" id="siMod" style="margin-top:12px"></div></div>
+    <div class="card si-guide"><h2>📖 사용 가이드</h2>
+      <b>처음 한 번</b><ol><li>⚙️ 설정: 모의 앱키 · 시크릿 · 계좌 → 🔌 연결 테스트 · KRX 아이디 · 텔레그램(선택)</li><li>📥 데이터: 처음 전체 수집 (ETF 실제 가격 포함 · 1~2시간 · 이어받기) → ⏱ 분봉 조회 점검</li>
+        <li>🧪 백테스트 실행 → 결과 확인 (밤사이 두 칸이 실제 ETF 가격으로 다시 계산됨)</li><li><code>TK_AutoStart_On.bat</code> · 절전 1시간 · 절전 해제 타이머 허용 (시스템 종료 말고 절전)</li><li>⚙️ 자동주문 켜기 → 다음 거래일 08:50부터</li></ol>
+      <b>매일 (자동)</b><ol><li>아침 텔레그램 · 장 마감 리포트 확인 — 할 일 없음</li><li>🏠 대시보드 · 📡 실시간에서 상태 확인 · 필요하면 수동 주문</li></ol>
+      <b>몇 주마다</b><ol><li>🔬 분석 · 고도화 → 📦 분석 패키지 · ⏱ 분봉 zip을 Claude에게 → 고도화 점검</li><li>🔁 모의 성적 판정 확인 → 실전 계좌로 전환 (계좌 설정만 바뀜)</li></ol>
+      <b>문제가 생기면</b><ol><li>⛔ 정지 · 경고 → 🖥 시스템 로그 확인 · 📦 기록 · 점검 zip을 Claude에게</li><li>주문 결과 불분명 → KIS 앱에서 체결 확인 뒤 정지 해제</li></ol></div></div>
 </section>
 
 <section id="t-data" hidden>
@@ -472,6 +503,44 @@ function bt(s){const b=s.backtest;$('#btMsg').textContent=s.job.bt?'⏳ '+s.job.
 const dur=x=>x==null?'-':x<60?Math.round(x)+'초':x<3600?Math.floor(x/60)+'분 '+String(Math.round(x%60)).padStart(2,'0')+'초':Math.floor(x/3600)+'시간 '+Math.round(x%3600/60)+'분';
 function tline(T,extra){if(!T.started_at)return '';const run=T.running;return `<span class="pill" style="margin-top:6px">⏱ 시작 <b>${T.started_at}</b></span> <span class="pill">${run?'걸린 시간':'걸린 시간(끝)'} <b>${dur(T.elapsed)}</b></span> `+
   (run?`<span class="pill w">남은 시간 <b>${T.eta==null?'계산 중…':'약 '+dur(T.eta)}</b></span> `+(T.eta!=null?`<span class="pill">끝 예상 <b>${new Date(Date.now()+T.eta*1000).toTimeString().slice(0,5)}</b></span> `:''):'')+(extra?`<span class="pill">${extra}</span>`:'')}
+// ── 시스템 정보 ──
+let SI=null;
+function siMap(){const B=(x,y,w,ic,t,sub,c='var(--accent)')=>`<g><rect x="${x}" y="${y}" width="${w}" height="64" rx="12" fill="var(--card)" stroke="${c}" stroke-width="2"/><text x="${x+w/2}" y="${y+27}" text-anchor="middle" font-size="15" font-weight="800" fill="currentColor">${ic} ${t}</text><text x="${x+w/2}" y="${y+48}" text-anchor="middle" font-size="11.5" fill="currentColor" fill-opacity=".65">${sub}</text></g>`;
+  const A=(x1,y1,x2,y2)=>`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="currentColor" stroke-opacity=".45" stroke-width="2" marker-end="url(#ah)"/>`;
+  const w=176,g=22,xs=[0,1,2,3,4].map(i=>8+i*(w+g)),y1=20,y2=150;
+  let h=`<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor" fill-opacity=".55"/></marker></defs>`;
+  h+=B(xs[0],y1,w,'📥','자료','KRX · KIS · 가져오기')+B(xs[1],y1,w,'🗄','저장소','시장 · 1분봉 · 장부 DB')+B(xs[2],y1,w,'🎯','신호 엔진','4칸 + 갭 · 지수 회전')+B(xs[3],y1,w,'⚙️','매매 엔진','일정 · 안전장치')+B(xs[4],y1,w,'🏦','한국투자증권','주문 · 체결 · 웹소켓','#b45309');
+  for(let i=0;i<4;i++)h+=A(xs[i]+w,y1+32,xs[i+1]-2,y1+32);
+  h+=B(xs[4],y2,w,'📒','거래 기록','주문 · 체결 · 판단 · 잔고')+B(xs[3],y2,w,'🔬','분석','칸별 · 체결 품질 · 후보')+B(xs[2],y2,w,'💡','고도화 후보','근거 수치와 함께')+B(xs[1],y2,w,'🧪','검증','백테스트 → 모의')+B(xs[0],y2,w,'👤','사람이 결정','자동 변경 없음','#7c3aed');
+  h+=A(xs[4]+w/2,y1+64,xs[4]+w/2,y2-2);for(let i=4;i>0;i--)h+=A(xs[i],y2+32,xs[i-1]+w+2,y2+32);
+  h+=`<path d="M${xs[0]+w/2} ${y2} C ${xs[0]+w/2} 110, ${xs[2]+w/2} 120, ${xs[2]+w/2} ${y1+66}" fill="none" stroke="#7c3aed" stroke-opacity=".6" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ah)"/>`;
+  h+=`<rect x="${xs[1]+w/2-62}" y="104" width="124" height="20" rx="10" fill="var(--card)"/><text x="${xs[1]+w/2}" y="118" text-anchor="middle" font-size="11.5" font-weight="700" fill="#7c3aed">통과한 규칙만 반영</text>`;
+  return `<svg viewBox="0 0 ${xs[4]+w+10} 225" width="100%" style="display:block;color:var(--t1);max-width:1000px;margin:0 auto" role="img" aria-label="시스템 구조도">${h}</svg>`}
+async function info(s){if(!SI){const r=await get('/api/sysinfo');if(r.ok===false)return;SI=r}const I=SI;
+  $('#siVer').textContent=`${I.version} · 파이썬 ${I.python} · ${I.os}`;
+  const bt=s.backtest&&s.backtest.models&&s.backtest.models['★ TK자동매매 (합성)'];
+  $('#siChips').innerHTML=[`모드 <b>${s.mode==='real'?'🔴 실전':'🟢 모의'}</b>`,`자동주문 <b>${s.kis_on?'ON':'OFF'}</b>`,`운용 한도 <b>${man(s.cap)}</b>`,
+    bt?`백테스트 <b>연 ${pct(bt.cagr*100,1)} · 낙폭 ${pct(bt.mdd*100,1)} · 샤프 ${(bt.sharpe||0).toFixed(2)}</b>`:'백테스트 <b>아직</b>',`코드 <b>${won(I.lines)}줄 · ${I.modules.length}개 파일</b>`,`API <b>${I.endpoints}개</b>`,`종합 시험 <b>${I.tests}곳</b>`]
+    .map(x=>`<span class="pill">${x}</span>`).join('');
+  $('#siMap').innerHTML=siMap();
+  const hm=s.now.slice(11,16),td=s.trading_day;let cur=-1;I.schedule.forEach((r,i)=>{if(r[0].slice(0,5)<=hm)cur=i});
+  $('#siNow').textContent=`지금 ${hm} · ${td?'거래일':'휴장일 (주문 없음)'}`;
+  $('#siSch').innerHTML=I.schedule.map((r,i)=>`<div class="t ${i===cur&&td?'now':(i<cur?'past':'')}">${r[0]}</div><div class="${i===cur&&td?'now':(i<cur?'past':'')}">${i===cur&&td?'▶ ':''}${r[1]}</div>`).join('');
+  const M=(s.backtest&&s.backtest.models)||{},key={LVH:'🏔 저변동고점만 100%',REV:'🔄 반전·수급만 100%',DV:'🏛 배당·가치만 100%',ON:'🌙 밤사이 ETF만 100%'};
+  const rule={LVH:'변동성 낮고 · 250일 고점 가깝고 · 과열 없는 종목 상위 3 → 다음날 시가 → 10거래일 보유 (40자리)',REV:'과매도 + 외국인 매수 + 연기금 역방향 상위 3 → 9일 EMA 복귀 또는 10일 (30자리)',
+    DV:'코스피200 · 코스닥150 배당 · 저PBR 상위 15 (월 교체) — 회전형 기본에선 0%',ON:'15:20 KODEX 코스닥150 종가 매수 → 다음날 시가 매도 (매일)',SW:'남는 현금 → 15:20 KODEX 200 → 다음날 시가 매도 (매일 · 평가액 5%만 현금)'};
+  $('#siSl').innerHTML=['LVH','REV','ON','SW','DV'].map(k=>{const m=M[key[k]],a=k==='SW'?(s.cfg.sweep_on!==false?'나머지':'끔'):(s.alloc[k]||0)+'%';
+    return `<div class="mc" style="--c:${SC[k]||'#64748b'};margin-bottom:10px"><span class="k">${k}</span><b>${(SN[k]||'💤 남는 현금 → KODEX 200')}</b> <span class="pill" style="float:right">${a}</span><p>${rule[k]}${m?`<br><span class="mut">백테스트 단독: 연 ${pct(m.cagr*100,1)} · 낙폭 ${pct(m.mdd*100,1)} · 샤프 ${(m.sharpe||0).toFixed(2)}</span>`:''}</p></div>`}).join('');
+  $('#siFeat').innerHTML=[['🔁 회전형','평균 약 8일 보유 + 밤사이 두 칸 매일 회전 — 돈을 묻어 두지 않고 굴림'],['✅ 검증된 규칙만','전종목(상장폐지 포함) 3년 실제 자료 · 두 기간 · 비용 반영 · 미리 정한 기준으로 판정'],
+    ['🟢↔🔴 같은 시스템','모의 · 실전은 계좌 설정만 바뀜 · 장부는 따로 · 합쳐서 분석'],['📒 HTS급 기록','주문 상태 · 체결 조각 · 수수료 · 세금 · 판단(못 산 이유) · 잔고 · 매매일지 — 지우지 않고 쌓음'],
+    ['🔬 기록으로 고도화','칸별 · 체결 품질 · 진입 근거 구간 · 후보 순위 사후 수익 · 놓친 거래 → 고도화 후보 (자동 변경 없음)'],['📡 실시간','웹소켓 체결가 · 체결 통보(AES) · 장중 손실 감시 · 매시 텔레그램'],
+    ['⏱ 1분봉 축적','장중 매매 규칙 검증용 — 날짜별 대상 · 1년치 이어받기'],['💤 PC 자동 관리','아침 자동 깨움 · 낮엔 안 잠듦 · 놓친 일 따라잡기 · 장부 자동 백업'],['🔒 보안','이 PC에서만 · 세션 토큰 · 비밀 값 DPAPI 암호화 · 화면/로그/zip에서 가림']]
+    .map(([t,d])=>`<div><b>${t}</b><span>${d}</span></div>`).join('');
+  $('#siSafe').innerHTML=I.safety.map(([k,v])=>`<span>${k}<b style="max-width:65%;text-align:right">${v}</b></span>`).join('');
+  $('#siRes').innerHTML=tbl([{h:'날짜',f:r=>r[0]},{h:'시험한 것',f:r=>r[1]},{h:'결과',f:r=>/미채택/.test(r[2])?`<span class="mut">${r[2]}</span>`:`<b>${r[2]}</b>`},{h:'',f:r=>`<span class="mut">${r[3]}</span>`}],I.research);
+  $('#siEnv').innerHTML=[['주소',`http://127.0.0.1:${I.port} (이 PC에서만)`],['데이터 폴더',I.data_dir],['저장소','market.db(시장 · 후보) · minute.db(1분봉) · trade_paper/real.db(장부) · backups/'],
+    ['보안',I.security.join(' · ')],['설계 문서','설계서_T1.md · README_TK.md']].map(([k,v])=>`<span>${k}<b style="max-width:70%;text-align:right;white-space:normal">${v}</b></span>`).join('');
+  $('#siMod').innerHTML=tbl([{h:'파일',f:r=>`<code>${r.file}</code>`},{h:'역할',f:r=>`<span style="white-space:normal">${r.role}</span>`},{h:'줄',r:1,f:r=>won(r.lines)}],I.modules)}
 let INV=null,INV_AT=0;
 const ymd8=d=>d&&d.length>=8?d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8):'-',rng=r=>r.note==='달 단위'?(r.first?r.first.slice(0,4)+'-'+r.first.slice(4,6)+' ~ ':'')+r.last.slice(0,4)+'-'+r.last.slice(4,6):(r.first?ymd8(r.first)+' ~ ':'')+ymd8(r.last);
 async function inv(force){const r=await get('/api/inventory'+(force?'?force=1':''));if(r.ok===false)return;INV=r;INV_AT=Date.now();invDraw()}
@@ -583,7 +652,7 @@ function sett(s){$('#setMode').textContent=s.mode==='real'?'🔴 실전':'🟢 �
   $('#protMsg').textContent=s.cfg.protected?'🔒 윈도우 DPAPI 암호화 저장':'⚠️ 윈도우가 아니라 base64 저장'}
 function sys(s){$('#sysKv').innerHTML=`<span>모드<b>${s.mode}</b></span><span>지금<b>${s.now}</b></span><span>거래일<b>${s.trading_day?'예':'아니오'}</b></span><span>체결 반영<b>${s.trader.last_sync||'-'}</b></span><span>신호<b>${s.job.signal_msg||'-'}${s.job.signal_err?' ⚠️ '+s.job.signal_err:''}</b></span><span>일정 오류<b>${s.trader.last_err||'-'}</b></span><span>웹소켓<b>${s.ws.err||(s.ws.connected?'연결':'-')}</b></span><span>텔레그램<b>${s.cfg.telegram?'설정됨':'없음'}</b></span>`;
   const w=$('#logW').checked;$('#log').textContent=s.log.filter(x=>!w||x.level!=='info').map(x=>`${x.ts.slice(5,19).replace('T',' ')} ${x.mode==='real'?'[실전] ':''}${x.level==='info'?'':'['+x.level+'] '}${x.msg}`).join('\n')}
-async function load(){try{ST=await get('/api/state');if(ST.ok===false){toast(ST.error,false);return}header(ST);({dash,live:()=>{},sig,res,bt,data,real,set:sett,sys,jr:()=>{if(!JDATA)jr()},an:s=>{if(s.job.bf)$('#anMsg').textContent='⏳ '+s.job.bf_msg;if(!AN)runAn(true)}})[TAB](ST)}catch(e){toast('불러오기 실패: '+e.message,false)}}
+async function load(){try{ST=await get('/api/state');if(ST.ok===false){toast(ST.error,false);return}header(ST);({info,dash,live:()=>{},sig,res,bt,data,real,set:sett,sys,jr:()=>{if(!JDATA)jr()},an:s=>{if(s.job.bf)$('#anMsg').textContent='⏳ '+s.job.bf_msg;if(!AN)runAn(true)}})[TAB](ST)}catch(e){toast('불러오기 실패: '+e.message,false)}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!=='t-'+TAB);load();if(TAB==='live')live()});
 $('#fSl').innerHTML+=['LVH','REV','DV','ON','MAN'].map(k=>`<option value="${k}">${SN[k]}</option>`).join('');$('#fSl').onchange=()=>res(ST);$('#logW').onchange=()=>sys(ST);
 $('#csvBtn').onclick=()=>{const f=$('#fSl').value,rows=ST.closed.filter(r=>!f||r.sleeve===f),h=['sleeve','ticker','name','entry_date','exit_date','entry_px','exit_px','qty0','pnl','ret','sell_reason'];

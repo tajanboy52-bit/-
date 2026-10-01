@@ -336,6 +336,9 @@ check('보안: 다른 Host 403 (DNS 재바인딩)', evil.get('/api/state', heade
 rr = cli.post('/api/pause', content='{"pause":true}', headers={'X-TK-Token': SV.TOKEN, 'content-type': 'text/plain'})
 check('보안: JSON 아닌 POST 415 (CSRF 단순 요청 차단)', rr.status_code == 415)
 check('보안: 화면에 토큰 주입', SV.TOKEN in cli.get('/').text)
+_si = cli.get('/api/sysinfo', headers={'X-TK-Token': SV.TOKEN}).json()
+check('📋 시스템 정보: 모듈 · 줄 수 · API · 하루 흐름 · 안전장치 · 연구 이력', len(_si['modules']) >= 12 and _si['lines'] > 4000 and _si['endpoints'] >= 25
+      and len(_si['schedule']) >= 15 and len(_si['safety']) >= 8 and _si['research'], f"{_si['lines']:,}줄 · API {_si['endpoints']} · 일정 {len(_si['schedule'])}")
 _inv = cli.get('/api/inventory?force=1', headers={'X-TK-Token': SV.TOKEN}).json()
 _names = {r['name'] for r in _inv['rows']}
 check('📚 데이터 현황: 일봉 · 수급 · ETF · 월 자료 · 후보 · 1분봉 · 모의/실전 기록 기간', len(_inv['rows']) >= 20 and '1분봉' in _names
