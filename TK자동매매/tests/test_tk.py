@@ -510,6 +510,23 @@ _kq = {t_: q_ for t_, q_ in kc.pos.items() if q_ > 0}
 check('💼 계좌 잔고: KIS 잔고 그대로(예수금 · 주문 가능 · 종목별 평단 · 평가 손익) + 앱 칸 표시 + 잔고 이력', _bv['src'] == 'kis' and len(_bv['rows']) == len(_kq)
       and all(r_['qty'] == _kq[r_['ticker']] for r_ in _bv['rows']) and any(r_['sleeves'] for r_ in _bv['rows']) and _bv['buyable'] is not None and len(_bv['hist']) > 10
       and abs(_bv['equity'] - kc.balance()['equity']) < 1, f"{len(_bv['rows'])}종목 · 평가 {_bv['equity']:,.0f} · 불일치 {[r_['name'] for r_ in _bv['rows'] if r_['diff']][:3]}")
+_held = {r_[0] for r_ in db.conn().execute("SELECT ticker FROM lots WHERE status IN ('보유','주문')")}
+_ext = [t_ for t_ in D['P']['close'].columns if t_ not in _held and float(D['P']['close'].at[kc.d, t_] or 0) > 0][:2]
+for t_ in _ext:
+    kc.pos[t_] = kc.pos.get(t_, 0) + 3                                    # 다른 프로그램이 산 종목 (앱 장부에 없음)
+_SVtc, _SVcf = SV.tr.client, SV.tr.configured
+SV.tr.client = lambda c, m=None: kc
+SV.tr.configured = lambda c, m=None: True
+_u0 = len(tr._balance_check(kc)[1])
+_a1 = cli.post('/api/adopt', json={'ticker': _ext[0], 'action': 'keep'}, headers={'X-TK-Token': SV.TOKEN}).json()
+_a2 = cli.post('/api/adopt', json={'ticker': _ext[1], 'action': 'sell'}, headers={'X-TK-Token': SV.TOKEN}).json()
+_a3 = cli.post('/api/adopt', json={'ticker': _ext[0], 'action': 'keep'}, headers={'X-TK-Token': SV.TOKEN}).json()
+SV.tr.client, SV.tr.configured = _SVtc, _SVcf
+_l1 = dict(db.conn().execute("SELECT * FROM lots WHERE ticker=? AND sleeve='MAN'", (_ext[0],)).fetchone())
+_l2 = dict(db.conn().execute("SELECT * FROM lots WHERE ticker=? AND sleeve='MAN'", (_ext[1],)).fetchone())
+_sold = _l2['sell_flag'] == 1 or db.conn().execute("SELECT 1 FROM orders WHERE lot_id=? AND side='sell'", (_l2['id'],)).fetchone()
+check('💼 앱 밖 종목 가져오기: 수동 보유 · 정리(매도) → 앱이 모르는 종목 0 (새 매수 차단 풀림) · 두 번 가져오기 막음', _u0 == 2 and _a1['ok'] and _a2['ok'] and not _a3['ok']
+      and _l1['qty'] == 3 and _l1['status'] == '보유' and not _l1['sell_flag'] and _sold and not tr._balance_check(kc)[1], f"{_a1.get('msg')} / {_a2.get('msg')}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

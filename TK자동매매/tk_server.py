@@ -646,6 +646,52 @@ def balance_view(force=False):
             'ret': sum(r['pnl'] for r in rows if r['pnl'] is not None) / tot_buy * 100 if tot_buy else None, 'prev': prev, 'hist': hist}
 
 
+def adopt(ticker, action):
+    """KIS에는 있는데 앱 장부에 없는 종목(다른 프로그램 · 직접 산 것) → 앱 장부로 가져오기
+       keep = '수동' 묶음으로 보유 (자동 규칙이 팔지 않음 · 직접 매도) · sell = 가져와서 정리 (장중이면 지금 시장가 · 아니면 다음 장전 08:50 시가)
+       가져오면 '앱이 모르는 종목 → 새 매수 차단'이 풀림"""
+    if action not in ('keep', 'sell'):
+        raise ValueError('keep 또는 sell')
+    kc = tr.client(CFG)
+    bal = kc.balance()
+    p = next((p for p in bal['positions'] if p['ticker'] == str(ticker).zfill(6)), None)
+    if not p:
+        raise ValueError('KIS 잔고에 없는 종목')
+    x = db.conn()
+    have = x.execute("SELECT COALESCE(SUM(qty),0) FROM lots WHERE ticker=? AND status IN ('보유','주문')", (p['ticker'],)).fetchone()[0]
+    q = p['qty'] - have
+    if q <= 0:
+        raise ValueError('이미 앱 장부에 있음')
+    d = tr.today()
+    p = {**p, 'avg': p.get('avg') or p.get('price') or 0}
+    if not p.get('name') or p['name'] == p['ticker']:
+        p['name'] = (db.stocks().get(p['ticker']) or {}).get('name') or p['ticker']
+    with tr._lock:
+        lid = tr.new_lot('MAN', p['ticker'], p['name'], '', d, {'ref': p['avg'], 'info': json.dumps({'adopted': d, 'from': 'KIS 잔고'}, ensure_ascii=False)})
+        x.execute("UPDATE lots SET status='보유', qty=?, qty0=?, entry_px=?, cost=?, entry_date=?, last_px=?, entry_ts=?, updated=? WHERE id=?",
+                  (q, q, p['avg'], q * p['avg'], d, p['price'], db.now_s(), db.now_s(), lid))
+        x.commit()
+        db.log(f"앱 밖 종목 가져옴: {p['name']} {q}주 @ {p['avg']:,.0f} → 수동 묶음" + (' · 정리(매도)' if action == 'sell' else ' · 보유'), 'warn')
+        if action == 'keep':
+            return f"{p['name']} {q}주 → 수동 묶음으로 보유 (자동 규칙이 팔지 않음 · 📡 실시간에서 직접 매도)"
+        hm = datetime.now().strftime('%H:%M')
+        if tr.is_trading_day(d) and '09:00' <= hm < '15:20' and tr.can_order(CFG):
+            oid = tr.send(CFG, kc, 'sell', 'manual', lid, 'MAN', p['ticker'], p['name'], q, sig_ref=p['price'])
+            if oid:
+                return f"{p['name']} {q}주 지금 시장가 매도 주문"
+        x.execute("UPDATE lots SET sell_flag=1, sell_reason='manual' WHERE id=?", (lid,))
+        x.commit()
+        return f"{p['name']} {q}주 → 다음 장전 08:50 시가 매도 예정 (자동주문이 켜져 있어야 함)"
+
+
+@app.post('/api/adopt')
+async def api_adopt(req: Request):
+    b = await req.json()
+    r = await _ok(adopt)(b.get('ticker'), b.get('action'))
+    BAL.clear()
+    return r
+
+
 @app.get('/api/balance')
 async def api_balance(force: int = 0):
     return await asyncio.to_thread(balance_view, bool(force))
