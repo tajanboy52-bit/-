@@ -269,6 +269,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
     <div class="kpis" id="mnK" style="grid-template-columns:repeat(4,minmax(0,1fr))"></div>
     <div class="row"><button class="btn" id="mnProbe">🔌 분봉 조회 점검</button><button class="btn p" id="mnToday">오늘 분봉 받기</button><button class="btn" id="mnBf">과거 채우기 지금</button><button class="btn" id="mnStop">멈춤</button>
       <input type="date" id="mnFrm"> ~ <input type="date" id="mnTo"><button class="btn" id="mnZip">📦 분봉 zip (Claude에게 보내기)</button></div>
+    <div style="margin-top:12px"><div class="bar"><i id="mnBar" style="width:0%"></i></div></div>
     <div class="mut" id="mnMsg" style="margin-top:8px;font-size:13.5px"></div>
     <div class="mut" style="font-size:12.5px;margin-top:6px">대상(날짜마다 그날 알 수 있던 것으로): 직전 20일 거래대금 상위 200 · 전날 신호 후보 상위 50 · 보유 · 거래 종목 · KODEX 코스닥150 · KODEX 200 · 그날 급등(+3%)/급락(−5%) · 실전 키가 있으면 실전 도메인으로 빠르게(시세 조회만) · 단타 앱 분봉 zip/danta.db도 가져오기 폴더에 넣으면 자동으로 들어감</div></div>
   <div class="card"><h2>한국투자증권 API 규칙 <small>공식 샘플(open-trading-api)에서 확인 · 이 앱이 지키는 것</small></h2><div class="kv" id="apiRules"></div></div>
@@ -463,13 +464,17 @@ function bt(s){const b=s.backtest;$('#btMsg').textContent=s.job.bt?'⏳ '+s.job.
     line(rows.map(([k,v],i)=>({name:k.replace('만 100%',''),color:pal[i%pal.length],pts:v.curve,w:i?1.3:2.6})),380,1200)+
     tbl([{h:'모델',f:r=>r[0]},{h:'누적',r:1,f:r=>f(r[1].total)},{h:'연수익',r:1,f:r=>f(r[1].cagr)},{h:'최대낙폭',r:1,f:r=>f(r[1].mdd)},{h:'샤프',r:1,f:r=>r[1].sharpe?.toFixed(2)},{h:'조정 기간',r:1,f:r=>f(r[1]['조정']?.ret)},{h:'검증 기간',r:1,f:r=>f(r[1]['검증']?.ret)},{h:'검증 낙폭',r:1,f:r=>f(r[1]['검증']?.mdd)}],rows)}
 // ── 데이터 ──
+const dur=x=>x==null?'-':x<60?Math.round(x)+'초':x<3600?Math.floor(x/60)+'분 '+String(Math.round(x%60)).padStart(2,'0')+'초':Math.floor(x/3600)+'시간 '+Math.round(x%3600/60)+'분';
+function tline(T,extra){if(!T.started_at)return '';const run=T.running;return `<span class="pill" style="margin-top:6px">⏱ 시작 <b>${T.started_at}</b></span> <span class="pill">${run?'걸린 시간':'걸린 시간(끝)'} <b>${dur(T.elapsed)}</b></span> `+
+  (run?`<span class="pill w">남은 시간 <b>${T.eta==null?'계산 중…':'약 '+dur(T.eta)}</b></span> `+(T.eta!=null?`<span class="pill">끝 예상 <b>${new Date(Date.now()+T.eta*1000).toTimeString().slice(0,5)}</b></span> `:''):'')+(extra?`<span class="pill">${extra}</span>`:'')}
 function data(s){const D=s.data,C=D.collect;
   $('#dataK').innerHTML=kpi(md(D.last_bar),'마지막 일봉',D.n_days+'거래일 · '+(D.first_bar||'-')+'~','info')+kpi(md(D.last_flow),'마지막 수급','외국인 · 기관 · 연기금')+kpi((D.n_stocks||0).toLocaleString(),'종목','상장폐지 '+(D.n_delisted||0).toLocaleString())+
     kpi(D.last_month?D.last_month.slice(0,4)+'-'+D.last_month.slice(4):'-','월 자료',D.months+'개월')+kpi(md(D.etf_last),'ETF 일봉','229200 · 069500')+kpi(D.dq_bad?'⚠️ '+md(D.dq_bad):'OK','데이터 품질','',D.dq_bad?'warn':'good');
-  $('#cBar').style.width=(C.running?C.pct:(C.last?100:0))+'%';$('#cMsg').textContent=(C.running?'⏳ ':'')+(C.msg||'')+(C.err?' · ⚠️ '+C.err:'')+(D.collect_msg?' · '+D.collect_msg:'')+(D.master_at?' · 마스터 '+D.master_at.slice(5,16):'');
+  $('#cBar').style.width=(C.running?C.pct:(C.last?100:0))+'%';$('#cMsg').innerHTML=(C.running?'⏳ ':'')+(C.msg||'')+(C.err?' · ⚠️ '+C.err:'')+(D.collect_msg?' · '+D.collect_msg:'')+(D.master_at?' · 마스터 '+D.master_at.slice(5,16):'')+'<br>'+tline(C,C.running?`진행 ${C.pct||0}%`:'');
   const M=D.minute||{};$('#mnK').innerHTML=kpi((M.days||0)+'일','1분봉 날짜',(M.first||'-')+' ~ '+(M.last||'-'),'info')+kpi((M.tickers||0).toLocaleString(),'종목',`마지막 날 ${M.last_tickers||0}종목 · ${(M.last_bars||0).toLocaleString()}봉`)+
     kpi((M.mb||0)+'MB','용량','minute.db')+kpi(M.left!=null?M.left+'일':'-','과거 남은 날',M.today_done?'오늘 분봉 '+md(M.today_done):'',M.left?'warn':'good');
-  $('#mnMsg').textContent=(M.running?'⏳ ':'')+(M.msg||'')+(M.err?' · ⚠️ '+M.err:'');
+  $('#mnBar').style.width=(M.running?M.pct:(M.eta===0?100:M.pct||0))+'%';
+  $('#mnMsg').innerHTML=(M.running?'⏳ ':'')+(M.msg||'')+(M.err?' · ⚠️ '+M.err:'')+'<br>'+tline(M,M.running?(M.days_n>1?`${M.day_i+1}/${M.days_n}일째 · `:'')+`종목 ${M.n||0}/${M.total||0}`+(M.rate?` · 분당 ${M.rate}종목`:''):'');
   $('#apiRules').innerHTML=[['도메인','실전 openapi…:9443 · 모의 openapivts…:29443'],['웹소켓','실전 :21000 · 모의 :31000 · 구독 40'],['호출 간격','실전 0.06초 · 모의 0.55초 (공식 0.05 / 0.5)'],['한도 초과','EGW00201 → 조회만 잠깐 쉬고 다시'],
     ['TR ID','실전 T/J/C → 모의 V로 · 매수 0012U · 매도 0011U'],['토큰','1일 유효 · 파일 재사용 · 1분 1회 발급'],['체결 통보','실전 H0STCNI0 · 모의 H0STCNI9 · AES 해독'],['휴장일','CTCA0903R 실전 전용 · 하루 1번'],
     ['주문 불분명','재주문 없이 정지 → 확인 뒤 해제'],['매수 가능','TTTC8908R 미수 없는 매수금액']].map(([k,v])=>`<span>${k}<b>${v}</b></span>`).join('')}
@@ -575,6 +580,7 @@ $('#mnBf').onclick=()=>{if(confirm('과거 1분봉 채우기를 지금 시작합
 $('#mnZip').onclick=async()=>{toast('분봉 zip 만드는 중…');const q=new URLSearchParams({frm:$('#mnFrm').value,to:$('#mnTo').value});const r=await fetch('/api/minute/export?'+q,{headers:{'X-TK-Token':TK}});const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='tk_minute.zip';a.click()};
 $('#btRun').onclick=()=>act('/api/job/backtest',{start:$('#btS').value,end:$('#btE').value});
 load();setInterval(()=>{if(!document.hidden&&TAB!=='live')load()},15000);
+setInterval(()=>{if(!document.hidden&&TAB==='data'&&ST&&(ST.data.collect.running||(ST.data.minute||{}).running))load()},3000);
 </script>
 </body>
 </html>

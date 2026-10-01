@@ -317,7 +317,7 @@ def _state():
                      'months': mc.execute("SELECT COUNT(*) FROM done WHERE kind='month'").fetchone()[0],
                      'last_month': mc.execute("SELECT MAX(key) FROM done WHERE kind='month'").fetchone()[0],
                      'etf_last': mc.execute('SELECT MAX(date) FROM etf').fetchone()[0], 'master_at': db.gmeta_get('master_at'),
-                     'collect': dict(col.STATE), 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250))},
+                     'collect': {**col.STATE, **_eta(col.STATE)}, 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250))},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
             'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
@@ -328,6 +328,14 @@ def _state():
                                                                                'sweep_on', 'sweep_mode', 'sweep_reserve', 'gap_skip', 'preopen_time')},
                     'sw_weight': db.meta_get('sw_weight')},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
+
+
+def _eta(st):
+    """진행률(pct)과 걸린 시간으로 남은 시간 추정 (KRX 수집 · 자료 넣기)"""
+    t = mn.timing(st)
+    p = st.get('pct') or 0
+    t['eta'] = round(t['elapsed'] * (100 - p) / p) if st.get('running') and t.get('elapsed') and p >= 2 else None
+    return t
 
 
 def _journal_counts():
@@ -620,7 +628,7 @@ def import_run():
     """seed/ · 가져오기/ 에서 새 파일만 DB에 (지문으로 중복 방지)"""
     if col.STATE['running']:
         return 0
-    col.STATE.update(running=True, err='', pct=0, msg='내장 · 가져오기 자료 확인')
+    col.STATE.update(running=True, err='', pct=0, msg='내장 · 가져오기 자료 확인', started=time.time(), ended=0.0)
     try:
         n = col.auto_import(say=lambda m: col.STATE.update(msg=m))
         col.STATE.update(msg=f'자료 확인 끝 · 새로 넣은 파일 {n}개 · 마지막 일봉 {db.last_bar_day() or "-"} · 수급 {db.last_flow_day() or "-"}', pct=100)
@@ -629,7 +637,7 @@ def import_run():
         col.STATE['err'] = CF.clean(e)
         return 0
     finally:
-        col.STATE['running'] = False
+        col.STATE.update(running=False, ended=time.time())
 
 
 @app.post('/api/job/import')

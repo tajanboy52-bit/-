@@ -276,7 +276,12 @@ for t, nm, rk, w in uni:
 _prev20 = [x for x in db.trading_days('0', d_m) if x < d_m][-20:]
 check('분봉 대상: 직전 20일 거래대금(그날 자료 안 씀) · 전날 후보 · 보유 · ETF · 급등락', why.get('거래대금') == 50 and why.get('후보', 0) > 0 and why.get('보유', 0) + why.get('거래', 0) > 0
       and {'229200', '069500'} <= {u[0] for u in uni} and d_m not in _prev20, str(why))
+MN.STATE.update(started=time.time() - 30, ended=0.0, done_tk=0, day_i=0, days_n=3, running=True)
 n1 = MN.collect_day(mk, d_m, top=50)
+_st = MN.status()
+check('분봉 진행: 걸린 시간 · 남은 시간 · 진행률 · 속도', _st['elapsed'] >= 30 and _st['eta'] is not None and _st['eta'] > 0 and 30 <= _st['pct'] <= 36 and _st['rate'],
+      f"걸린 {_st['elapsed']}초 · 남은 약 {_st['eta']:.0f}초 · {_st['pct']}% · 분당 {_st['rate']}종목")
+MN.STATE.update(running=False)
 c1 = _MK.calls
 n2 = MN.collect_day(mk, d_m, top=50)
 bars = MN.day_bars(uni[0][0], d_m)

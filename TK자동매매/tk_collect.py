@@ -33,7 +33,7 @@ MASTER_URL = 'https://new.real.download.dws.co.kr/common/master'
 SECTOR_MAP = {'반도체': '전기·전자', 'IT부품': '전기·전자', '통신장비': '전기·전자', '정보기기': '전기·전자', '소프트웨어': 'IT 서비스', '인터넷': 'IT 서비스',
               '디지털컨텐츠': 'IT 서비스', '컴퓨터서비스': 'IT 서비스', '통신서비스': '통신', '방송서비스': '오락·문화', '출판·매체복제': 'IT 서비스',
               '기타금융': '금융', '증권': '금융', '보험': '금융', '은행': '금융', '전기·가스·수도': '전기·가스'}
-STATE = {'running': False, 'msg': '', 'err': '', 'pct': 0, 'last': ''}
+STATE = {'running': False, 'msg': '', 'err': '', 'pct': 0, 'last': '', 'started': 0.0, 'ended': 0.0}
 STOCK = [None]                                # pykrx.stock (시험에서는 가짜를 넣음)
 
 
@@ -339,7 +339,7 @@ def quality(day):
 def run(cfg, start='20220601', flow_start='20230601', month_start='202106', kc=None, progress=None, full=True):
     """처음(backfill)이든 매일이든 같은 함수 — 이미 받은 것은 건너뜀 · 최근 3거래일 수급은 다시 받음"""
     say = progress or (lambda m: None)
-    STATE.update(running=True, err='', msg='시작', pct=0)
+    STATE.update(running=True, err='', msg='시작', pct=0, started=time.time(), ended=0.0)
     today = datetime.now().strftime('%Y%m%d')
     try:
         try:
@@ -413,7 +413,7 @@ def run(cfg, start='20220601', flow_start='20230601', month_start='202106', kc=N
         db.log(f'수집 오류: {str(e)[:200]}', 'error')
         raise
     finally:
-        STATE['running'] = False
+        STATE.update(running=False, ended=time.time())
 
 
 def pool_tickers(min_value=3e9):
@@ -624,14 +624,20 @@ def auto_import(dirs=None, say=None):
             if os.path.isfile(p) and f.lower().endswith(('.zip', '.csv', '.csv.gz', '.db')):
                 todo.append(p)
     n = 0
+    new = []
     for p in todo:
         try:
             fp = _fingerprint(p)
         except Exception:
             continue
-        if fp in done:
-            continue
-        say(f'자료 넣는 중 {os.path.basename(p)}')
+        if fp not in done:
+            new.append((p, fp))
+    total = sum(os.path.getsize(p) for p, _ in new) or 1
+    did = 0
+    for p, fp in new:
+        STATE['pct'] = int(did / total * 100)
+        say(f'자료 넣는 중 {os.path.basename(p)} ({new.index((p, fp)) + 1}/{len(new)}개 파일)')
+        did += os.path.getsize(p)
         t0 = time.time()
         try:
             out = import_file(p)

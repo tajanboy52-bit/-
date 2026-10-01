@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS done (ticker TEXT, date TEXT, n INTEGER, ts TEXT, PRI
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 """
 ETFS = {'229200': 'KODEX 코스닥150', '069500': 'KODEX 200'}
-STATE = {'running': False, 'msg': '', 'err': '', 'day': '', 'n': 0, 'total': 0, 'stop': False}
+STATE = {'running': False, 'msg': '', 'err': '', 'day': '', 'n': 0, 'total': 0, 'stop': False, 'started': 0.0, 'ended': 0.0,
+         'done_tk': 0, 'day_i': 0, 'days_n': 0, 'eta': None, 'pct': 0}
 _local = threading.local()
 
 
@@ -149,14 +150,26 @@ def collect_day(kc, d, top=200, say=None, today=False):
                 continue
         save(d, t, bars)
         got += 1
+        _progress(i + 1, len(todo))
         if i % 20 == 0:
             c.commit()
-            STATE.update(n=i + 1, total=len(todo))
             say(f'{d} 분봉 {i + 1}/{len(todo)} · {nm}')
     c.commit()
     if not STATE['stop'] and not today:
         meta_set(f'day_{d}', '1')
     return got
+
+
+def _progress(i, n):
+    """걸린 시간 · 남은 시간 계산 — 지금까지 종목당 평균 시간 × (이 날 남은 종목 + 남은 날 × 이 날 종목 수)"""
+    STATE['done_tk'] += 1
+    STATE.update(n=i, total=n)
+    el = time.time() - STATE['started']
+    left_days = max(0, STATE['days_n'] - STATE['day_i'] - 1)
+    remain = (n - i) + left_days * n
+    STATE['eta'] = el / STATE['done_tk'] * remain if STATE['done_tk'] >= 3 else None
+    whole = STATE['days_n'] * n or 1
+    STATE['pct'] = min(100, int((STATE['day_i'] * n + i) / whole * 100))
 
 
 def backfill_days(n_days=250):
@@ -169,7 +182,7 @@ def backfill_days(n_days=250):
 def run_today(kc, d, top=200):
     if STATE['running']:
         return 0
-    STATE.update(running=True, stop=False, err='', day=d, msg=f'{d} 오늘 분봉')
+    STATE.update(running=True, stop=False, err='', day=d, msg=f'{d} 오늘 분봉', started=time.time(), ended=0.0, done_tk=0, day_i=0, days_n=1, eta=None, pct=0)
     t0 = time.time()
     try:
         n = collect_day(kc, d, top, say=lambda m: STATE.update(msg=m), today=True)
@@ -182,17 +195,19 @@ def run_today(kc, d, top=200):
         db.log(f'[분봉] 오늘 수집 오류: {str(e)[:200]}', 'warn')
         return 0
     finally:
-        STATE.update(running=False, msg=STATE['msg'] + ' · 끝')
+        STATE.update(running=False, msg=STATE['msg'] + ' · 끝', ended=time.time(), eta=0)
 
 
 def run_backfill(kc, n_days=250, top=200, allowed=lambda: True):
     """과거 채우기 — allowed()가 False가 되면(장 시간 가까움) 멈추고 다음에 이어받기"""
     if STATE['running']:
         return 0
-    STATE.update(running=True, stop=False, err='', msg='과거 분봉 채우기')
+    days = backfill_days(n_days)
+    STATE.update(running=True, stop=False, err='', msg='과거 분봉 채우기', started=time.time(), ended=0.0, done_tk=0, day_i=0, days_n=len(days), eta=None, pct=0)
     done = 0
     try:
-        for d in backfill_days(n_days):
+        for k, d in enumerate(days):
+            STATE['day_i'] = k
             if STATE['stop'] or not allowed():
                 break
             STATE['day'] = d
@@ -206,7 +221,7 @@ def run_backfill(kc, n_days=250, top=200, allowed=lambda: True):
         db.log(f'[분봉] 과거 채우기 오류: {str(e)[:200]}', 'warn')
         return done
     finally:
-        STATE.update(running=False, msg=(STATE['msg'] or '') + ' · 멈춤/끝')
+        STATE.update(running=False, msg=(STATE['msg'] or '') + ' · 멈춤/끝', ended=time.time(), eta=0 if not backfill_days(n_days) else None)
 
 
 # ════════════════════════════════════════════
@@ -224,7 +239,18 @@ def status(n_days=250):
     last = c.execute('SELECT date, COUNT(*), SUM(n) FROM done WHERE date=(SELECT MAX(date) FROM done WHERE n>0)').fetchone()
     return {'days': r[0], 'first': r[1], 'last': r[2], 'mb': round(size / 1e6, 1), 'last_tickers': last[1] if last else 0,
             'last_bars': last[2] if last else 0, 'left': len(backfill_days(n_days)), 'today_done': meta_get('today_done'),
-            'tickers': c.execute('SELECT COUNT(DISTINCT ticker) FROM done WHERE n>0').fetchone()[0], **{k: STATE[k] for k in ('running', 'msg', 'err', 'day')}}
+            'tickers': c.execute('SELECT COUNT(DISTINCT ticker) FROM done WHERE n>0').fetchone()[0],
+            **{k: STATE[k] for k in ('running', 'msg', 'err', 'day', 'pct', 'eta', 'n', 'total', 'day_i', 'days_n', 'done_tk')}, **timing(STATE)}
+
+
+def timing(st):
+    """화면용: 시작 시각 · 걸린 시간(초) · 속도"""
+    if not st.get('started'):
+        return {'started_at': '', 'elapsed': None}
+    end = st.get('ended') or time.time()
+    el = end - st['started']
+    return {'started_at': datetime.fromtimestamp(st['started']).strftime('%H:%M:%S'), 'elapsed': round(el),
+            'rate': round(st.get('done_tk', 0) / el * 60, 1) if el > 0 and st.get('done_tk') else None}
 
 
 def export_zip(frm='0', to='99999999'):
