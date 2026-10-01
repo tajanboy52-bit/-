@@ -1102,8 +1102,16 @@ def main():
     threading.Thread(target=tg_poll, daemon=True, name='tg_poll').start()
     tr.NOTIFY = lambda m: telegram(m)
     tk_kis.HOOK[0] = J.api_hit
+    tr.EXP_GAP[0] = rtws.exp_gap
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=tr.loop, args=(lambda: CFG, lambda: {k: v[0] for k, v in rtws.PRICE.items()}, lambda m: telegram(m)), daemon=True).start()
+
+    def wanted_exp():
+        """08:30~08:59 장전: 오늘 살 후보(LVH · REV)의 예상체결가 실시간 구독 → 08:50 갭 확인"""
+        if not ('08:30' <= datetime.now().strftime('%H:%M') < '09:00'):
+            return []
+        sd = db.meta_get('last_signal_date')
+        return [r[0] for r in db.conn().execute("SELECT ticker FROM signals WHERE date=? AND sleeve IN ('LVH','REV') AND rank<100 ORDER BY rank", (sd,))] if sd else []
 
     def on_notice():
         if tr._lock.acquire(timeout=30):
@@ -1115,7 +1123,7 @@ def main():
                 tr._lock.release()
     rtws.start(lambda: CFG.get('ws_on', True) and tr.configured(CFG), lambda: tr.client(CFG),
                lambda: list(dict.fromkeys(l['ticker'] for l in tr.open_lots() if l['status'] == '보유')),
-               lambda: tr.is_trading_day() and '08:30' <= datetime.now().strftime('%H:%M') <= '15:35', on_notice)
+               lambda: tr.is_trading_day() and '08:30' <= datetime.now().strftime('%H:%M') <= '15:35', on_notice, wanted_exp)
     print(f"""
 ╔══════════════════════════════════════════════╗
 ║   🏦 TK자동매매 시스템 {APP_VERSION}                      ║

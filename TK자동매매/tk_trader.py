@@ -40,6 +40,7 @@ KIND = {'entry': '매수', 'hold20': '보유 기간 끝(LVH 10일)', 'ema9': '9E
 STATE = {'running': False, 'last_sync': '', 'last_err': ''}
 _lock = threading.Lock()
 NOTIFY = None                     # tk_server가 텔레그램 함수를 넣어 줌
+EXP_GAP = [None]                  # tk_server가 웹소켓 장전 예상체결 갭 함수를 넣어 줌 (없으면 REST 예상체결가 조회)
 
 
 def now():
@@ -109,9 +110,11 @@ def gap_check(cfg, kc, o, when='pre'):
         return None
     try:
         if when == 'pre':
-            if not hasattr(kc, 'expected'):
-                return None
-            g = kc.expected(o['ticker'])['gap']
+            g = EXP_GAP[0](o['ticker']) if EXP_GAP[0] else None                      # 웹소켓 실시간 예상체결이 있으면 그것 (호출 없음)
+            if g is None:
+                if not hasattr(kc, 'expected'):
+                    return None
+                g = kc.expected(o['ticker'])['gap']
         else:
             p = kc.price(o['ticker'])
             base = p['price'] / (1 + p['chg'] / 100) if p['price'] else 0

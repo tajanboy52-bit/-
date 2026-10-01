@@ -474,6 +474,17 @@ kind, dd = W.parse('1|H0STCNI9|001|' + ct)
 check('체결 통보 AES 해독', kind == 'notice' and dd['STCK_SHRN_ISCD'] == '005930' and dd['CNTG_QTY'] == '10' and dd['CNTG_YN'] == '2')
 kind, pr = W.parse('0|H0STCNT0|001|' + '^'.join(['005930', '093015', '71600', '2', '100', '0.14'] + ['0'] * 40))
 check('실시간 체결가 해석', kind == 'price' and pr[0][:2] == ('005930', 71600.0) and pr[0][2] == 0.14)
+kind, ex = W.parse('0|H0STANC0|002|' + '^'.join(['005930', '084830', '75000', '2', '3500', '4.90'] + ['0'] * 39 + ['000660', '084830', '210000', '2', '15000', '7.69'] + ['0'] * 39))
+for t_, px_, chg_ in ex:
+    W.EXP[t_] = (px_, time.time(), chg_)
+_tr_exp = tr.EXP_GAP[0]
+tr.EXP_GAP[0] = W.exp_gap
+class _NoRest:
+    def expected(self, t): raise AssertionError('REST 호출하면 안 됨')
+_ga = tr.gap_check({}, _NoRest(), {'sleeve': 'LVH', 'ticker': '000660', 'name': 'B'}, 'pre')
+_gb = tr.gap_check({}, _NoRest(), {'sleeve': 'LVH', 'ticker': '005930', 'name': 'A'}, 'pre')
+tr.EXP_GAP[0] = _tr_exp
+check('📡 장전 예상체결 웹소켓(H0STANC0) 해석 · 갭 판단에 사용 (REST 호출 없음)', kind == 'exp' and len(ex) == 2 and ex[1] == ('000660', 210000.0, 7.69) and _ga and not _gb, f'{ex} · {_ga}')
 
 
 def mst_line(tk, name, tail, sets):

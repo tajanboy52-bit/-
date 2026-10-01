@@ -20,10 +20,11 @@ NOTICE_COLS = ['CUST_ID', 'ACNT_NO', 'ODER_NO', 'OODER_NO', 'SELN_BYOV_CLS', 'RC
                'CNTG_QTY', 'CNTG_UNPR', 'STCK_CNTG_HOUR', 'RFUS_YN', 'CNTG_YN', 'ACPT_YN', 'BRNC_NO', 'ODER_QTY', 'ACNT_NAME',
                'ORD_COND_PRC', 'ORD_EXG_GB', 'POPUP_YN', 'FILLER', 'CRDT_CLS', 'CRDT_LOAN_DATE', 'CNTG_ISNM40', 'ODER_PRC']
 PRICE = {}                                   # {ticker: (가격, time.time(), 등락률)}
+EXP = {}                                     # 장전 예상체결 {ticker: (예상가, time.time(), 전일 대비 %)} — H0STANC0 (08:30~09:00 갭 확인용)
 NOTICES = []                                 # 최근 체결 통보 (화면용)
 STATE = {'on': False, 'connected': False, 'subs': [], 'notice': False, 'decrypt': False, 'ticks': 0, 'err': '', 'reconnects': 0, 'since': ''}
 _keys = {}
-_hooks = {'on_notice': None, 'client': None, 'wanted': None, 'market_open': None}
+_hooks = {'on_notice': None, 'client': None, 'wanted': None, 'market_open': None, 'wanted_exp': None}
 _sync_at = [0.0]
 _started = [False]
 
@@ -44,6 +45,22 @@ def parse(raw):
         if len(parts) < 4:
             return None, None
         trid, cnt, body = parts[1], parts[2], parts[3]
+        if trid == 'H0STANC0':                                                     # 장전 예상체결: 0 종목 · 2 예상가 · 5 전일 대비 %
+            f = body.split('^')
+            try:
+                n = max(1, int(cnt))
+            except ValueError:
+                n = 1
+            step = len(f) // n
+            out = []
+            for i in range(n):
+                r = f[i * step:(i + 1) * step]
+                if len(r) > 5:
+                    try:
+                        out.append((r[0], float(r[2]), float(r[5] or 0)))
+                    except ValueError:
+                        pass
+            return 'exp', out
         if trid == 'H0STCNT0':
             f = body.split('^')
             try:
@@ -111,6 +128,7 @@ def _session(ws_mod):
     ws.settimeout(1.0)
     STATE.update(connected=True, err='', since=datetime.now().strftime('%H:%M:%S'))
     subs, last_rx, last_check, notice = set(), time.time(), 0.0, False
+    xsubs = set()
     try:
         STATE['decrypt'] = True
         try:
@@ -131,7 +149,14 @@ def _session(ws_mod):
                 for t in sorted(want - subs):
                     ws.send(sub_msg(key, 'H0STCNT0', t, True))
                     subs.add(t)
-                STATE.update(subs=sorted(subs), notice=notice)
+                wx = set((_hooks['wanted_exp']() if _hooks['wanted_exp'] else [])[:max(0, MAX_SUB - len(subs))])
+                for t in sorted(xsubs - wx):
+                    ws.send(sub_msg(key, 'H0STANC0', t, False))
+                    xsubs.discard(t)
+                for t in sorted(wx - xsubs):
+                    ws.send(sub_msg(key, 'H0STANC0', t, True))
+                    xsubs.add(t)
+                STATE.update(subs=sorted(subs), exp_subs=sorted(xsubs), notice=notice)
             try:
                 raw = ws.recv()
             except ws_mod.WebSocketTimeoutException:
@@ -146,6 +171,9 @@ def _session(ws_mod):
                 for t, px, chg in data:
                     PRICE[t] = (px, time.time(), chg)
                     STATE['ticks'] += 1
+            elif kind == 'exp':
+                for t, px, chg in data:
+                    EXP[t] = (px, time.time(), chg)
             elif kind == 'notice':
                 _notice(data)
             elif kind == 'json':
@@ -198,8 +226,14 @@ def loop(enabled):
         time.sleep(5)
 
 
-def start(enabled, client, wanted, market_open, on_notice):
-    _hooks.update(client=client, wanted=wanted, market_open=market_open, on_notice=on_notice)
+def exp_gap(t, max_age=90):
+    """웹소켓 장전 예상체결 → 전일 대비 갭 % (90초 넘게 묵었거나 없으면 None)"""
+    v = EXP.get(t)
+    return v[2] if v and v[0] and time.time() - v[1] <= max_age else None
+
+
+def start(enabled, client, wanted, market_open, on_notice, wanted_exp=None):
+    _hooks.update(client=client, wanted=wanted, market_open=market_open, on_notice=on_notice, wanted_exp=wanted_exp)
     if not _started[0]:
         _started[0] = True
         threading.Thread(target=loop, args=(enabled,), daemon=True, name='tk_ws').start()
