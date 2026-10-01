@@ -81,7 +81,7 @@ TRADE_COLUMNS = {
     'lots': [('sig_rank', 'INTEGER'), ('sig_score', 'REAL'), ('sig_ref', 'REAL'), ('entry_info', 'TEXT'), ('fee', 'REAL DEFAULT 0'),
              ('tax', 'REAL DEFAULT 0'), ('mae', 'REAL'), ('mfe', 'REAL'), ('model_ret', 'REAL'), ('slip_in', 'REAL'), ('slip_out', 'REAL'),
              ('gap_in', 'REAL'), ('entry_ts', 'TEXT'), ('exit_ts', 'TEXT'), ('exit_kind', 'TEXT'), ('post_at', 'TEXT')],
-    'orders': [('sig_ref', 'REAL'), ('ack_ts', 'TEXT'), ('fill_ts', 'TEXT'), ('msg_cd', 'TEXT'), ('ord_time', 'TEXT')],
+    'orders': [('sig_ref', 'REAL'), ('ack_ts', 'TEXT'), ('fill_ts', 'TEXT'), ('msg_cd', 'TEXT'), ('ord_time', 'TEXT'), ('resv_seq', 'TEXT')],
 }
 _local = threading.local()
 MODE = ['paper']                                   # 지금 장부 모드 (tk_server가 설정에서 정함)

@@ -76,6 +76,7 @@ D = B.load('20180101', '99999999')
 days = list(D['P']['close'].index)
 run_days = days[-n:]
 kc = FM.FakeKIS(D['P'], D['on'], swb=db.etf_bars('069500'))
+kc.resv_ok = True                                    # 예약주문 경로까지 (실전 계좌처럼)
 clock = {'d': days[-n - 1], 'hm': '19:00'}
 tr.today = lambda: clock['d']
 import datetime as _dt
@@ -83,12 +84,14 @@ tr.now = lambda: _dt.datetime.strptime(clock['d'] + clock['hm'], '%Y%m%d%H:%M')
 kc.now = lambda: clock['hm']
 tr.prev_trading_day = lambda d: days[days.index(d) - 1]
 tr.is_trading_day = lambda d=None: True
-cfg.update(kis_on=True, cap=10_000_000)
+cfg.update(kis_on=True, cap=10_000_000, guard_per_min=10 ** 9, guard_per_day=10 ** 9)   # 40일을 몇 초에 돌리므로 폭주 방지는 아래에서 따로 시험
 cfg['accounts']['paper'] = {'app_key': 'x' * 20, 'app_secret': 'y' * 20, 'account': '12345678-01'}
 tr.signal_job(cfg, clock['d'])
-for d in run_days:
+for i_d, d in enumerate(run_days):
     clock['d'] = d
     kc.d = d
+    clock['hm'] = '08:30'
+    kc.transmit_resv()                                   # 어젯밤 예약주문 → 장 시작 전 실제 주문
     clock['hm'] = '08:35'
     tr.preopen(cfg, kc, d)
     kc.settle('open')
@@ -108,6 +111,8 @@ for d in run_days:
     tr.eod(cfg, kc, d)
     clock['hm'] = '19:00'
     tr.signal_job(cfg, d)
+    if i_d + 1 < len(run_days):
+        tr.reserve_sells(cfg, kc, run_days[i_d + 1])
 x = db.conn()
 live = {(r['sleeve'], r['ticker'], r['entry_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND entry_date IS NOT NULL")}
 live_x = {(r['sleeve'], r['ticker'], r['entry_date'], r['exit_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND status='청산'")}
@@ -131,6 +136,9 @@ on = x.execute("SELECT COUNT(*), AVG(ret) FROM lots WHERE sleeve='ON' AND status
 check('밤사이 ETF 매일 (자산 35%)', on[0] >= n - 2, f'ON {on[0]}건 평균 {on[1]:+.3f}%')
 bad = db.mconn().execute("SELECT COUNT(*) FROM log WHERE msg LIKE '%불일치%'").fetchone()[0]
 check('잔고 불일치 0', bad == 0)
+_rs = dict(x.execute("SELECT status, COUNT(*) FROM orders WHERE resv_seq IS NOT NULL GROUP BY status").fetchall())
+_dup = x.execute("SELECT COUNT(*) FROM (SELECT lot_id, date FROM orders WHERE side='sell' AND status='체결' GROUP BY lot_id, date HAVING SUM(filled) > (SELECT qty0 FROM lots WHERE id=lot_id))").fetchone()[0]
+check('📅 예약주문: 저녁에 다음 날 매도 예약 → 아침 주문번호 연결 → 체결 · 중복 매도 없음', _rs.get('체결', 0) > 50 and not _rs.get('예약') and _dup == 0, str(_rs))
 check('장중 평가 기록 (최근 10일만 보관)', 5 <= x.execute('SELECT COUNT(*) FROM intraday').fetchone()[0] <= 12, f"{x.execute('SELECT COUNT(*) FROM intraday').fetchone()[0]}건")
 g = tr.gate(cfg)
 check('판정: 40일이라 60일 기준 미달', not g['pass'] and not g['rows'][0]['ok'], g['rows'][0]['v'])
@@ -151,6 +159,23 @@ check('KODEX 200 하락 추세 → 전부 매도 주문 (60일선 계산 포함)
 kc.settle('close')
 tr.sync(kc, run_days[-1])
 
+# 🛡 주문 안전장치
+_g = {'guard_per_min': 3, 'guard_per_day': 10 ** 9, 'cap_mode': 'fixed', 'cap': 10_000_000}
+x.execute("INSERT INTO orders (date, ts, side, ticker, qty, status, kind) VALUES (?,?,?,?,?,?,?)", (clock['d'], db.now_s(), 'buy', 'Z1', 1, '거절', 'x'))
+x.execute("INSERT INTO orders (date, ts, side, ticker, qty, status, kind) VALUES (?,?,?,?,?,?,?)", (clock['d'], db.now_s(), 'buy', 'Z2', 1, '거절', 'x'))
+x.execute("INSERT INTO orders (date, ts, side, ticker, qty, status, kind) VALUES (?,?,?,?,?,?,?)", (clock['d'], db.now_s(), 'buy', 'Z3', 1, '거절', 'x'))
+g1 = tr.guard(_g, x, 'buy', 'entry', None, 'A', 1, 1000)
+_lid0 = x.execute("SELECT lot_id FROM orders WHERE lot_id IS NOT NULL AND status='접수' LIMIT 1").fetchone()
+_g['guard_per_min'] = 10 ** 9
+g2 = tr.guard(_g, x, 'sell', 'manual', _lid0[0], 'A', 1, 1000) if _lid0 else '같은 묶음'
+g3 = tr.guard(_g, x, 'buy', 'entry', None, 'A', 100, 30_000)
+g4 = tr.guard(_g, x, 'buy', 'on_buy', None, 'A', 100, 30_000)
+g5 = tr.guard(_g, x, 'buy', 'entry', None, 'A', 10, 30_000)
+x.execute("DELETE FROM orders WHERE ticker IN ('Z1','Z2','Z3')")
+x.commit()
+check('🛡 주문 안전장치: 분당 폭주 · 같은 묶음 중복 · 큰 금액 실수 막고 정상 주문은 통과', '분당' in g1 and '같은 묶음' in g2 and '20%' in g3 and not g4 and not g5,
+      f'{g1} / {g2} / {g3}')
+
 # ── 2-1. 거래 기록 (HTS급) ──
 import tk_journal as J
 o_all = [dict(r) for r in x.execute('SELECT * FROM orders')]
@@ -159,7 +184,7 @@ check('기록: 체결 조각 합 = 주문 체결 수량', all(fq.get(o['id'], 0)
 ev = {}
 for r in x.execute('SELECT order_id, status FROM order_events'):
     ev.setdefault(r[0], []).append(r[1])
-check('기록: 주문마다 상태 이력 (보냄 → 접수 → 체결)', all(ev.get(o['id'], [None])[0] == '보냄' for o in o_all)
+check('기록: 주문마다 상태 이력 (보냄/예약 → 접수 → 체결)', all(ev.get(o['id'], [None])[0] in ('보냄', '예약') for o in o_all if o['status'] != '거절' or o['resv_seq'] is None)
       and all('접수' in ev[o['id']] and '체결' in ev[o['id']] for o in o_all if o['status'] == '체결'), f'이벤트 {sum(len(v) for v in ev.values())}건')
 cl = [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='청산'")]
 okp = all(abs(l['pnl'] - (l['proceeds'] - l['cost'] - l['fee'] - l['tax'])) < 1 for l in cl)

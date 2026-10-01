@@ -133,7 +133,7 @@ def sw_avail():
     x = db.conn()
     out = []
     for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE sleeve='SW' AND status='보유' AND qty>0 ORDER BY id")]:
-        pend = x.execute("SELECT COALESCE(SUM(qty - COALESCE(applied,0)),0) FROM orders WHERE lot_id=? AND side='sell' AND status IN ('보냄','접수','부분')",
+        pend = x.execute("SELECT COALESCE(SUM(qty - COALESCE(applied,0)),0) FROM orders WHERE lot_id=? AND side='sell' AND status IN ('보냄','접수','부분','예약')",
                          (l['id'],)).fetchone()[0]
         q = (l['qty'] or 0) - pend
         if q > 0:
@@ -313,8 +313,42 @@ def _mark(job, d):
 # ════════════════════════════════════════════
 #  주문 · 체결
 # ════════════════════════════════════════════
+ACTIVE = ('보냄', '접수', '부분', '예약')
+BIG_OK = ('on_buy', 'sw_buy', 'sw_sell', 'on_sell', 'manual')                     # 원래 큰 금액인 주문 (밤사이 · 남는 현금 · 수동은 따로 확인)
+
+
+def guard(cfg, x, side, kind, lot_id, ticker, qty, sig_ref):
+    """주문 안전장치 → 막을 이유 (없으면 '') — 분당 · 하루 주문 수 · 같은 묶음 중복 · 같은 종목 30초 안 중복 · 큰 금액 실수"""
+    n_min = x.execute("SELECT COUNT(*) FROM orders WHERE ts >= ?", ((datetime.now() - timedelta(seconds=60)).isoformat(timespec='seconds'),)).fetchone()[0]
+    if n_min >= int(cfg.get('guard_per_min') or 60):
+        return f'분당 주문 {n_min}건 — 폭주 방지'
+    n_day = x.execute("SELECT COUNT(*) FROM orders WHERE date=?", (today(),)).fetchone()[0]
+    if n_day >= int(cfg.get('guard_per_day') or 400):
+        halt(f'하루 주문 {n_day}건 — 폭주 방지 한도')
+        return f'하루 주문 {n_day}건 — 폭주 방지 (자동주문 정지)'
+    if lot_id and x.execute(f"SELECT 1 FROM orders WHERE lot_id=? AND side=? AND status IN ({','.join('?' * len(ACTIVE))})",
+                            (lot_id, side, *ACTIVE)).fetchone():
+        return '같은 묶음에 진행 중인 주문이 있음 — 중복 방지'
+    if kind == 'manual' and x.execute("SELECT 1 FROM orders WHERE ticker=? AND side=? AND qty=? AND ts >= ? AND status NOT IN ('거절','취소','만료')",
+                                      (ticker, side, int(qty), (datetime.now() - timedelta(seconds=30)).isoformat(timespec='seconds'))).fetchone():
+        return '같은 종목 · 수량 주문이 30초 안에 또 — 중복 방지'
+    if side == 'buy' and sig_ref and kind not in BIG_OK and qty * sig_ref > cap(cfg) * 0.2:
+        return f'1건 {qty * sig_ref:,.0f}원 > 운용 자금의 20% — 큰 금액 실수 방지'
+    return ''
+
+
 def send(cfg, kc, side, kind, lot_id, sleeve, ticker, name, qty, ord_dvsn='01', price=0, sig_ref=None):
     x = db.conn()
+    why = guard(cfg, x, side, kind, lot_id, ticker, qty, sig_ref)
+    if why:
+        x.execute("""INSERT INTO orders (date, ts, sleeve, lot_id, ticker, name, side, kind, qty, ord_dvsn, price, status, sig_ref, msg)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?,'거절',?,?)""", (today(), db.now_s(), sleeve, lot_id, ticker, name, side, kind, int(qty), ord_dvsn,
+                                                              float(price or 0), sig_ref, '안전장치: ' + why))
+        J.event(x, x.execute('SELECT last_insert_rowid()').fetchone()[0], '거절', '안전장치: ' + why)
+        x.commit()
+        log(f'🛡 주문 막음 {name} {KIND.get(kind, kind)} {qty}주 — {why}', 'warn')
+        alert(f'주문 안전장치 — {name}: {why}', 'guard')
+        return None
     x.execute("""INSERT INTO orders (date, ts, sleeve, lot_id, ticker, name, side, kind, qty, ord_dvsn, price, status, sig_ref)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,'보냄',?)""", (today(), db.now_s(), sleeve, lot_id, ticker, name, side, kind, int(qty), ord_dvsn,
                                                            float(price or 0), sig_ref))
@@ -352,6 +386,8 @@ def sync(kc, d=None):
     """그날 체결 내역 → 주문 · 묶음(lot) 반영 (늘어난 만큼만 · 두 번 반영 안 함)"""
     d = d or today()
     x = db.conn()
+    if now().strftime('%H:%M') >= '08:31' and x.execute("SELECT 1 FROM orders WHERE date=? AND status='예약'", (d,)).fetchone():
+        resolve_resv(kc, d)
     fills = {f['order_no']: f for f in kc.fills(d) if f['order_no']}
     for o in [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND order_no IS NOT NULL AND order_no!='' AND status NOT IN ('체결','취소','거절','만료')", (d,))]:
         f = fills.get(o['order_no'])
@@ -526,7 +562,11 @@ def preopen(cfg, kc, d):
     sd = db.meta_get('last_signal_date')
     pl = plan(cfg, bal['equity'], min(bal['cash_d2'] or bal['cash'], bal['cash'] or bal['cash_d2']), sd)
     x = db.conn()
+    resolve_resv(kc, d)
+    rsv = reserved_lots(d)
     for l in pl['sells']:
+        if l['id'] in rsv:                                                          # 어젯밤 예약주문으로 이미 나감
+            continue
         J.decision(x, d, sd, {**l, 'ref': l['last_px'], 'amt': (l['last_px'] or 0) * l['qty']}, 'sell', KIND.get(l['sell_reason'], l['sell_reason'] or ''))
         x.commit()
         send(cfg, kc, 'sell', l['sell_reason'] or 'manual', l['id'], l['sleeve'], l['ticker'], l['name'], l['qty'], sig_ref=l['last_px'])
@@ -573,6 +613,94 @@ def preopen(cfg, kc, d):
             sweep_sell(cfg, kc, d, sum(o['amt'] for o in pl['defer']) * 1.03 - sells * 0.99, '09:02 미룬 매수 자금')
 
 
+def resv_supported(kc):
+    return getattr(kc, 'env', '') == 'real' or bool(getattr(kc, 'resv_ok', False))
+
+
+def reserve_sells(cfg, kc, nd):
+    """저녁(신호 계산 뒤) — 다음 거래일 팔 것(보유 끝 · 9EMA · 교체 · 밤사이 ETF · 남는 현금 KODEX 200)을 KIS 예약주문으로 미리 넣어 둠
+       → 아침에 PC가 꺼져 있어도 매도는 시가 동시호가로 나감. 실전 계좌 전용 · 매수는 갭 확인이 필요해서 08:50에 그대로"""
+    if not cfg.get('resv_on', True) or not resv_supported(kc) or not can_order(cfg):
+        return 0
+    if db.meta_get(f'resv_{nd}') == '1':
+        return 0
+    x = db.conn()
+    items = [(l, l['qty']) for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sell_flag=1 AND qty>0")]]
+    if sweep_on(cfg) and (cfg.get('sweep_mode') or 'night') == 'night':
+        items += [(l, q) for l, q in sw_avail()]
+    n = 0
+    for l, q in items:
+        if x.execute(f"SELECT 1 FROM orders WHERE lot_id=? AND side='sell' AND status IN ({','.join('?' * len(ACTIVE))})", (l['id'], *ACTIVE)).fetchone():
+            continue
+        kind = 'sw_sell' if l['sleeve'] == 'SW' else (l['sell_reason'] or 'manual')
+        x.execute("""INSERT INTO orders (date, ts, sleeve, lot_id, ticker, name, side, kind, qty, ord_dvsn, price, status, sig_ref)
+                     VALUES (?,?,?,?,?,?,'sell',?,?,'01',0,'예약 신청',?)""", (nd, db.now_s(), l['sleeve'], l['id'], l['ticker'], l['name'], kind, int(q), l['last_px']))
+        oid = x.execute('SELECT last_insert_rowid()').fetchone()[0]
+        x.commit()
+        try:
+            r = kc.order_resv('sell', l['ticker'], q)
+            x.execute("UPDATE orders SET status='예약', resv_seq=?, msg=?, ack_ts=? WHERE id=?", (r['seq'], ('예약 ' + r['msg'])[:200], db.now_s(), oid))
+            J.event(x, oid, '예약', f"{nd} 시가 매도 예약 #{r['seq']}")
+            n += 1
+        except Exception as e:
+            x.execute("UPDATE orders SET status='예약 실패', msg=? WHERE id=?", (CF.clean(e)[:200], oid))
+            J.event(x, oid, '예약 실패', CF.clean(e)[:200])
+            log(f"예약주문 실패 {l['name']} (아침 08:50에 그대로 매도): {CF.clean(e)[:120]}", 'warn')
+        x.commit()
+    db.meta_set(f'resv_{nd}', '1')
+    if n:
+        log(f'📅 {nd} 시가 매도 예약 {n}건 (PC가 꺼져 있어도 나감)')
+    return n
+
+
+def resolve_resv(kc, d):
+    """오늘 예약주문이 KIS에서 실제 주문으로 바뀌었는지 → 주문번호 붙여서 체결 반영 · 거부면 '거절'"""
+    x = db.conn()
+    pend = [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND status='예약' AND resv_seq IS NOT NULL", (d,))]
+    if not pend or not hasattr(kc, 'resv_list'):
+        return 0
+    try:
+        rows = {r['seq']: r for r in kc.resv_list(prev_trading_day(d) or d, d)}
+    except Exception as e:
+        log(f'예약주문 조회 실패: {CF.clean(e)[:120]}', 'warn')
+        return 0
+    n = 0
+    for o in pend:
+        r = rows.get(o['resv_seq'])
+        if not r:
+            continue
+        if r['odno']:
+            x.execute("UPDATE orders SET order_no=?, status='접수', msg=? WHERE id=?", (r['odno'], f"예약 → 주문 {r['odno']}", o['id']))
+            J.event(x, o['id'], '접수', f"예약 #{o['resv_seq']} → 주문번호 {r['odno']}")
+            n += 1
+        elif r['reject'] or '거부' in r['result'] or r['cancel_dt']:
+            x.execute("UPDATE orders SET status='거절', msg=? WHERE id=?", (f"예약 거부/취소: {r['reject'] or r['result']}"[:200], o['id']))
+            J.event(x, o['id'], '거절', f"예약 거부/취소: {r['reject'] or r['result']}")
+            log(f"예약주문 거부 {o['name']}: {r['reject'] or r['result']} → 지금 시장가로 다시", 'warn')
+    x.commit()
+    return n
+
+
+def reserved_lots(d):
+    """오늘 이미 매도 주문(예약 · 접수 · 체결)이 있는 묶음"""
+    return {r[0] for r in db.conn().execute("SELECT lot_id FROM orders WHERE date=? AND side='sell' AND status IN ('예약','접수','부분','체결')", (d,))}
+
+
+def resend_failed_resv(cfg, kc, d):
+    """09:02 — 예약이 거부됐거나 아직도 처리 안 된 매도는 지금 시장가로"""
+    x = db.conn()
+    resolve_resv(kc, d)
+    for o in [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND resv_seq IS NOT NULL AND status IN ('거절','예약')", (d,))]:
+        if x.execute("SELECT 1 FROM orders WHERE lot_id=? AND date=? AND side='sell' AND resv_seq IS NULL AND status NOT IN ('거절','취소','만료')", (o['lot_id'], d)).fetchone():
+            continue
+        lot = x.execute("SELECT * FROM lots WHERE id=? AND status='보유' AND qty>0", (o['lot_id'],)).fetchone()
+        if o['status'] == '예약':
+            x.execute("UPDATE orders SET status='만료', msg='예약 미처리 → 시장가로 다시' WHERE id=?", (o['id'],))
+            x.commit()
+        if lot:
+            send(cfg, kc, 'sell', o['kind'], lot['id'], lot['sleeve'], lot['ticker'], lot['name'], min(o['qty'], lot['qty']), sig_ref=lot['last_px'])
+
+
 def late_open(cfg, kc, d):
     """PC가 장 시작(08:58) 뒤에 켜져 장전 주문을 놓쳤을 때 — 매도할 것(밤사이 ETF · KODEX 200 · 보유 끝)만 지금 시장가로 팖.
        새 매수는 하지 않음 (시가 매수를 전제로 한 신호라 장중 매수는 백테스트와 달라짐)"""
@@ -580,7 +708,11 @@ def late_open(cfg, kc, d):
     alert('PC가 늦게 켜져 장전 주문을 놓쳤습니다 — 매도할 것만 지금 팔고 오늘 새 매수는 쉽니다', 'late')
     x = db.conn()
     sd = db.meta_get('last_signal_date')
+    resolve_resv(kc, d)
+    rsv = reserved_lots(d)
     for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE status='보유' AND sell_flag=1 AND qty>0")]:
+        if l['id'] in rsv:
+            continue
         J.decision(x, d, sd, {**l, 'ref': l['last_px'], 'amt': (l['last_px'] or 0) * l['qty']}, 'sell', '늦게 켜짐 · ' + KIND.get(l['sell_reason'], l['sell_reason'] or ''))
         x.commit()
         send(cfg, kc, 'sell', l['sell_reason'] or 'manual', l['id'], l['sleeve'], l['ticker'], l['name'], l['qty'], sig_ref=l['last_px'])
@@ -602,7 +734,8 @@ def deferred(cfg, kc, d):
     """09:02 — 미뤄 둔 매수 (아침에 판 돈 · 밤사이 ETF 판 돈으로) + 장전 시간 때문에 거절된 매도 재시도"""
     sync(kc, d)
     x = db.conn()
-    for o in [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND status='거절' AND side='sell' AND ord_dvsn='01'", (d,))]:
+    resend_failed_resv(cfg, kc, d)
+    for o in [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND status='거절' AND side='sell' AND ord_dvsn='01' AND resv_seq IS NULL", (d,))]:
         if any(k in (o['msg'] or '') for k in ('시간', '장개시', '장시작', '장운영', '동시호가')):
             x.execute("UPDATE orders SET status='거절(재시도)' WHERE id=?", (o['id'],))
             x.commit()
@@ -682,7 +815,7 @@ def eod(cfg, kc, d):
     """15:45 — 체결 마감 · 못 산 매수 정리 · 잔고 대조 · 평가 기록 · 계좌 안전장치"""
     x = db.conn()
     sync(kc, d)
-    for o in [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND status IN ('보냄','접수','부분')", (d,))]:
+    for o in [dict(r) for r in x.execute("SELECT * FROM orders WHERE date=? AND status IN ('보냄','접수','부분','예약')", (d,))]:
         x.execute("UPDATE orders SET status='만료' WHERE id=?", (o['id'],))
         J.event(x, o['id'], '만료', f"장 마감 · 체결 {o['filled'] or 0}/{o['qty']}주")
         if o['side'] == 'buy':

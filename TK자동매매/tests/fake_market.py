@@ -109,6 +109,7 @@ class FakeKIS:
     def __init__(self, P, onb, cash=10_000_000, env='paper', swb=None):
         self.P, self.onb, self.cash, self.pos, self.orders, self.d = P, onb, float(cash), {}, [], None
         self.swb = swb
+        self.resv, self.resv_ok = [], False
         self.env, self.masked_account, self.hts_id, self.notice_tr = env, 'FAKE', '', 'H0STCNI9'
         self.now = lambda: '08:35'
 
@@ -130,6 +131,24 @@ class FakeKIS:
         return {'order_no': no, 'org_no': '1', 'msg': 'ok'}
 
     def cancel(self, *a):
+        return {}
+
+    # 예약주문 — 저녁에 받아 두었다가 transmit_resv()(다음 날 장 시작 전)에 실제 주문으로
+    def order_resv(self, side, t, q, dv='01', p=0):
+        seq = str(len(self.resv) + 1)
+        self.resv.append({'seq': seq, 't': t, 'side': side, 'qty': int(q), 'odno': ''})
+        return {'seq': seq, 'msg': '예약 ok'}
+
+    def transmit_resv(self):
+        for r in self.resv:
+            if not r['odno']:
+                r['odno'] = self.order(r['side'], r['t'], r['qty'])['order_no']
+
+    def resv_list(self, frm, to):
+        return [{'seq': r['seq'], 'ticker': r['t'], 'qty': r['qty'], 'filled': 0, 'odno': r['odno'], 'result': '', 'reject': '', 'ord_dt': '', 'cancel_dt': ''}
+                for r in self.resv]
+
+    def resv_cancel(self, seq, ord_dt, orgno=''):
         return {}
 
     def settle(self, when):

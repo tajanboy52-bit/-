@@ -257,6 +257,34 @@ class KIS:
         return {'order_no': str(o.get('ODNO') or o.get('odno') or ''), 'org_no': str(o.get('KRX_FWDG_ORD_ORGNO') or o.get('krx_fwdg_ord_orgno') or ''),
                 'time': str(o.get('ORD_TMD') or o.get('ord_tmd') or ''), 'msg': j.get('msg1', ''), 'msg_cd': j.get('msg_cd', '')}
 
+    # ── 예약주문 (실전 전용 · 15:40 ~ 다음 영업일 07:30 접수 · 다음 영업일 장 시작 때 KIS가 주문 전송) ──
+    def order_resv(self, side, ticker, qty, ord_dvsn='01', price=0):
+        """예약주문 CTSC0008U → 예약주문 순번 · 모의투자는 지원하지 않음"""
+        if self.is_paper:
+            raise KISError('예약주문은 실전 계좌 전용입니다')
+        body = {'CANO': self.cano, 'ACNT_PRDT_CD': self.product, 'PDNO': str(ticker).zfill(6), 'ORD_QTY': str(int(qty)),
+                'ORD_UNPR': str(int(price or 0)), 'SLL_BUY_DVSN_CD': '01' if side == 'sell' else '02', 'ORD_DVSN_CD': str(ord_dvsn),
+                'ORD_OBJT_CBLC_DVSN_CD': '10'}
+        j = self.post_order('/uapi/domestic-stock/v1/trading/order-resv', 'CTSC0008U', body)
+        o = j.get('output') or {}
+        return {'seq': str(o.get('RSVN_ORD_SEQ') or o.get('rsvn_ord_seq') or ''), 'msg': j.get('msg1', '')}
+
+    def resv_list(self, frm, to):
+        """예약주문 조회 CTSC0004R → [{seq, ticker, qty, filled, odno(전송 뒤 생김), result, reject, ord_dt}]"""
+        p = {'RSVN_ORD_ORD_DT': frm, 'RSVN_ORD_END_DT': to, 'TMNL_MDIA_KIND_CD': '00', 'CANO': self.cano, 'ACNT_PRDT_CD': self.product,
+             'PRCS_DVSN_CD': '0', 'CNCL_YN': 'Y', 'RSVN_ORD_SEQ': '', 'PDNO': '', 'SLL_BUY_DVSN_CD': '', 'CTX_AREA_FK200': '', 'CTX_AREA_NK200': ''}
+        a1, _ = self._paged('/uapi/domestic-stock/v1/trading/order-resv-ccnl', 'CTSC0004R', p, key1='output', fk='CTX_AREA_FK200', nk='CTX_AREA_NK200')
+        return [{'seq': str(r.get('rsvn_ord_seq', '')), 'ticker': str(r.get('pdno', '')).zfill(6), 'qty': int(_num(r.get('ord_rsvn_qty'))),
+                 'filled': int(_num(r.get('tot_ccld_qty'))), 'odno': str(r.get('odno') or '').strip(), 'result': str(r.get('prcs_rslt') or ''),
+                 'reject': str(r.get('rjct_rson2') or '').strip(), 'ord_dt': str(r.get('rsvn_ord_ord_dt') or ''), 'cancel_dt': str(r.get('cncl_ord_dt') or '')}
+                for r in a1 if r.get('rsvn_ord_seq')]
+
+    def resv_cancel(self, seq, ord_dt, orgno=''):
+        """예약주문 취소 CTSC0009U (예약주문조직번호가 없으면 KIS가 거절할 수 있음 → 그땐 KIS 앱에서 취소)"""
+        return self.post_order('/uapi/domestic-stock/v1/trading/order-resv-rvsecncl', 'CTSC0009U',
+                               {'CANO': self.cano, 'ACNT_PRDT_CD': self.product, 'RSVN_ORD_SEQ': str(seq), 'RSVN_ORD_ORGNO': str(orgno or ''),
+                                'RSVN_ORD_ORD_DT': ord_dt})
+
     def cancel(self, order_no, org_no=''):
         body = {'CANO': self.cano, 'ACNT_PRDT_CD': self.product, 'KRX_FWDG_ORD_ORGNO': str(org_no or ''), 'ORGN_ODNO': str(order_no),
                 'ORD_DVSN': '00', 'RVSE_CNCL_DVSN_CD': '02', 'ORD_QTY': '0', 'ORD_UNPR': '0', 'QTY_ALL_ORD_YN': 'Y', 'EXCG_ID_DVSN_CD': 'KRX'}

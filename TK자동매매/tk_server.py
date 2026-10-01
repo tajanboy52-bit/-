@@ -113,6 +113,16 @@ def signal_run(d):
         tr.signal_job(CFG, d)
         JOB['signal_msg'] = f'{d} 신호 계산 끝 {datetime.now():%H:%M}'
         telegram(report(d))
+        try:                                                                     # 📅 실전: 다음 거래일 매도를 예약주문으로 (PC가 아침에 꺼져 있어도)
+            if tr.configured(CFG) and tr.can_order(CFG) and '15:40' <= datetime.now().strftime('%H:%M') <= '23:30':
+                kc = tr.client(CFG)
+                if tr.resv_supported(kc):
+                    with tr._lock:
+                        n = tr.reserve_sells(CFG, kc, tr.next_trading_day(d))
+                    if n:
+                        telegram(f'📅 내일({tr.next_trading_day(d)[4:6]}/{tr.next_trading_day(d)[6:]}) 시가 매도 {n}건 예약주문 완료 — PC가 꺼져 있어도 나갑니다')
+        except Exception as e:
+            db.log(f'예약주문 오류: {CF.clean(e)}', 'warn')
         try:                                                                     # 날마다 거래 분석 갱신 (보고서 파일 · 화면)
             ANALYSIS['res'] = AN.analyze()
             open(os.path.join(db.DATA_DIR, 'analysis_result.md'), 'w', encoding='utf-8').write(AN.report_md(ANALYSIS['res']))
@@ -674,6 +684,14 @@ async def api_emergency(req: Request):
                 n += 1
             except Exception as ex:
                 db.log(f"취소 실패 {o['name']}: {CF.clean(ex)}", 'warn')
+        for o in db.conn().execute("SELECT * FROM orders WHERE status='예약' AND resv_seq IS NOT NULL").fetchall():      # 예약주문도 취소 시도
+            try:
+                kc.resv_cancel(o['resv_seq'], (o['ts'] or '')[:10].replace('-', ''))
+                db.conn().execute("UPDATE orders SET status='취소', msg='긴급 정지로 예약 취소' WHERE id=?", (o['id'],))
+                n += 1
+            except Exception as ex:
+                db.log(f"예약 취소 실패 {o['name']} — KIS 앱에서 예약주문 취소: {CF.clean(ex)}", 'error')
+        db.conn().commit()
         return {'cancelled': n}
     return await _ok(f)()
 
