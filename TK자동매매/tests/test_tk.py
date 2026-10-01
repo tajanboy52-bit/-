@@ -501,6 +501,15 @@ _sc = cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN}).json()['cfg']['sec
 _js = json.dumps(_sc, ensure_ascii=False)
 check('⚙️ 저장 확인: KRX · 텔레그램 저장 여부(가린 값) · KRX 연결 테스트 결과 · 비밀 값은 화면에 안 나감', _kt['n'] > 0 and _sc['krx']['pw'] and _sc['krx']['id'].endswith('01')
       and _sc['krx']['check']['ok'] and 'krxuser' not in _js and '"pw"' in _js and _sc['tg']['check'] is None, f"{_sc['krx']['id']} · {_sc['krx']['check']}")
+_SVtc, _SVcf = SV.tr.client, SV.tr.configured
+SV.tr.client = lambda c, m=None: kc
+SV.tr.configured = lambda c, m=None: True
+_bv = cli.get('/api/balance?force=1', headers={'X-TK-Token': SV.TOKEN}).json()
+SV.tr.client, SV.tr.configured = _SVtc, _SVcf
+_kq = {t_: q_ for t_, q_ in kc.pos.items() if q_ > 0}
+check('💼 계좌 잔고: KIS 잔고 그대로(예수금 · 주문 가능 · 종목별 평단 · 평가 손익) + 앱 칸 표시 + 잔고 이력', _bv['src'] == 'kis' and len(_bv['rows']) == len(_kq)
+      and all(r_['qty'] == _kq[r_['ticker']] for r_ in _bv['rows']) and any(r_['sleeves'] for r_ in _bv['rows']) and _bv['buyable'] is not None and len(_bv['hist']) > 10
+      and abs(_bv['equity'] - kc.balance()['equity']) < 1, f"{len(_bv['rows'])}종목 · 평가 {_bv['equity']:,.0f} · 불일치 {[r_['name'] for r_ in _bv['rows'] if r_['diff']][:3]}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

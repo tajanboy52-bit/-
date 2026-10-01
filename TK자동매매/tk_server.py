@@ -579,6 +579,78 @@ async def api_live():
     return await asyncio.to_thread(f)
 
 
+BAL = {}                                                                         # 모드별 잔고 조회 캐시 {mode: (time, 결과)}
+
+
+def balance_view(force=False):
+    """💼 계좌 잔고 — KIS 잔고(HTS 잔고 화면처럼) + 앱 칸 표시 + 앱/KIS 불일치 + 날마다 잔고 이력
+       KIS 호출은 20초에 한 번까지 (안 되면 마지막 장 마감 잔고 기록으로)"""
+    m = db.mode()
+    x = db.conn()
+    hist = [dict(r) for r in x.execute('SELECT * FROM account_daily ORDER BY date DESC LIMIT 60')]
+    eq = [dict(r) for r in x.execute('SELECT date, value FROM equity ORDER BY date DESC LIMIT 2')]
+    lots = [l for l in _lots_view() if l['status'] == '보유']
+    by = {}
+    for l in lots:
+        by.setdefault(l['ticker'], []).append(l)
+    c = BAL.get(m)
+    out = None
+    if c and not force and time.time() - c[0] < 20:
+        out = c[1]
+    elif tr.configured(CFG):
+        try:
+            kc = tr.client(CFG)
+            b = kc.balance()
+            try:
+                can = kc.buyable()['nrcvb']
+            except Exception:
+                can = None
+            out = {'src': 'kis', 'at': datetime.now().strftime('%H:%M:%S'), 'cash': b['cash'], 'cash_d2': b['cash_d2'], 'equity': b['equity'],
+                   'buyable': can, 'positions': b['positions']}
+            BAL[m] = (time.time(), out)
+        except Exception as e:
+            out = {'src': 'err', 'err': CF.clean(e)[:200]}
+    if not out or out['src'] == 'err':                                           # 조회가 안 되면 마지막 장 마감 잔고
+        d = x.execute('SELECT MAX(date) FROM positions_daily').fetchone()[0]
+        a = hist[0] if hist else {}
+        out = {**(out or {}), 'src': out['src'] if out else 'none', 'at': d or '', 'cash': a.get('cash'), 'cash_d2': a.get('cash_d2'), 'equity': a.get('equity'), 'buyable': None,
+               'positions': [dict(r) for r in x.execute('SELECT ticker, name, qty, qty sellable, avg, price, value, pnl FROM positions_daily WHERE date=?', (d,))] if d else []}
+    live = rtws.PRICE
+    st = db.stocks()
+    rows, tot_buy, tot_val = [], 0.0, 0.0
+    for p in out['positions']:
+        if not p.get('name') or p['name'] == p['ticker']:
+            p = {**p, 'name': (st.get(p['ticker']) or {}).get('name') or {S.ON_TICKER: S.ON_NAME, S.SW_TICKER: S.SW_NAME}.get(p['ticker'], p['ticker'])}
+        px = (live.get(p['ticker']) or (None,))[0] or p.get('price')
+        buy = (p.get('avg') or 0) * p['qty']
+        val = px * p['qty'] if px else (p.get('value') or 0)
+        ls = by.get(p['ticker'], [])
+        app_q = sum(l['qty'] or 0 for l in ls)
+        rows.append({**p, 'px': px, 'live': p['ticker'] in live, 'buy': buy, 'val': val, 'pnl': val - buy if buy else None, 'ret': (val / buy - 1) * 100 if buy else None,
+                     'sleeves': sorted({l['sleeve'] for l in ls}), 'app_qty': app_q, 'diff': p['qty'] - app_q})
+        if buy:
+            tot_buy += buy
+        tot_val += val
+    held = {p['ticker'] for p in out['positions']}
+    missing = [{'ticker': t, 'name': ls[0]['name'], 'qty': sum(l['qty'] or 0 for l in ls), 'sleeves': sorted({l['sleeve'] for l in ls})} for t, ls in by.items() if t not in held]
+    if out['src'] != 'kis':                                                      # 지난 기록과 지금 앱 기록은 비교하지 않음 (가짜 불일치)
+        missing = []
+        for r in rows:
+            r['diff'] = 0
+    for r in rows:
+        r['weight'] = r['val'] / (out['equity'] or 1) * 100 if out.get('equity') else None
+    prev = next((e['value'] for e in eq if e['date'] < tr.today()), None)
+    return {'mode': m, 'account': tr.client(CFG).masked_account if tr.configured(CFG) else '', **{k: out.get(k) for k in ('src', 'at', 'err', 'cash', 'cash_d2', 'equity', 'buyable')},
+            'rows': sorted(rows, key=lambda r: -r['val']), 'missing': missing, 'buy': tot_buy, 'val': tot_val,
+            'pnl': sum(r['pnl'] for r in rows if r['pnl'] is not None) if tot_buy else None,
+            'ret': sum(r['pnl'] for r in rows if r['pnl'] is not None) / tot_buy * 100 if tot_buy else None, 'prev': prev, 'hist': hist}
+
+
+@app.get('/api/balance')
+async def api_balance(force: int = 0):
+    return await asyncio.to_thread(balance_view, bool(force))
+
+
 def _ok(fn):
     async def run(*a):
         try:
