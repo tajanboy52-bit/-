@@ -39,11 +39,11 @@ echo  파이썬: %PY%
 %PY% --version
 
 rem ── 필요한 부품 (처음 한 번만 설치) ──
-%PY% -c "import fastapi, uvicorn, pandas, numpy, websocket, Crypto, pykrx" > nul 2>&1
+%PY% -c "import fastapi, uvicorn, pandas, numpy, websocket, Crypto, pykrx, truststore" > nul 2>&1
 if not errorlevel 1 goto parts_ok
 echo  필요한 부품을 설치합니다 - 처음 한 번, 몇 분 걸릴 수 있음
 %PY% -m pip install -r requirements.txt
-%PY% -c "import fastapi, uvicorn, pandas, numpy, websocket, Crypto, pykrx" > nul 2>&1
+%PY% -c "import fastapi, uvicorn, pandas, numpy, websocket, Crypto, pykrx, truststore" > nul 2>&1
 if not errorlevel 1 goto parts_ok
 echo.
 echo  [오류] 부품 설치에 실패했습니다. 위 메시지를 캡처해서 보내주세요.

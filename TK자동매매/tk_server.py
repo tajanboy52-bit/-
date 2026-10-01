@@ -27,6 +27,14 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
+SSL_MODE = '파이썬 기본 인증서'
+try:                                                                             # HTTPS 인증서를 윈도우와 똑같이 확인 (백신 · 보안 프로그램의 HTTPS 검사 인증서도 신뢰)
+    import truststore
+    truststore.inject_into_ssl()
+    SSL_MODE = '윈도우 인증서 저장소 (truststore)'
+except Exception:
+    pass
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
@@ -71,6 +79,10 @@ async def guard(request: Request, call_next):
     return resp
 
 
+TG_SSL_HINT = (' → PC의 백신 · 보안 프로그램이 HTTPS를 검사하는 중 (인증서 끼워 넣음). TK_Run.bat을 다시 실행하면 truststore 부품이 설치되어 '
+               '윈도우 인증서로 확인합니다 · 그래도 안 되면 백신의 "HTTPS/SSL 검사"에서 api.telegram.org 예외 추가')
+
+
 def telegram(msg):
     t, ch = CFG.get('telegram_token'), CFG.get('telegram_chat')
     if not (t and ch):
@@ -83,7 +95,7 @@ def telegram(msg):
         db.gmeta_set('tg_check', f"{datetime.now():%m-%d %H:%M} {'ok' if ok else 'fail 응답 ok=false'}")
         return ok, ''
     except Exception as e:
-        db.log(f'텔레그램 실패: {CF.clean(e)}', 'warn')
+        db.log(f'텔레그램 실패: {CF.clean(e)}' + (TG_SSL_HINT if 'CERTIFICATE' in str(e) else ''), 'warn')
         db.gmeta_set('tg_check', f'{datetime.now():%m-%d %H:%M} fail {CF.clean(e)[:120]}')
         return False, CF.clean(e)
 
@@ -524,7 +536,7 @@ def sysinfo():
     eps = sorted({(r.methods and ' '.join(sorted(r.methods - {'HEAD'}))) + ' ' + r.path for r in app.routes if getattr(r, 'path', '').startswith('/api/')})
     tests = os.path.join(BASE_DIR, 'tests', 'test_tk.py')
     n_tests = len(__import__('re').findall(r'(?m)^\s*check\(', open(tests, encoding='utf-8').read())) if os.path.exists(tests) else 0
-    return {'app': APP_NAME, 'version': APP_VERSION, 'python': platform.python_version(), 'os': platform.platform(terse=True), 'port': PORT,
+    return {'app': APP_NAME, 'version': APP_VERSION, 'python': platform.python_version(), 'os': platform.platform(terse=True), 'port': PORT, 'ssl': SSL_MODE,
             'data_dir': db.DATA_DIR, 'modules': mods, 'lines': sum(m['lines'] for m in mods), 'endpoints': len(eps), 'tests': n_tests,
             'schedule': SCHEDULE, 'research': RESEARCH,
             'safety': [('계좌 낙폭', f"고점 대비 −{CFG.get('dd_limit', 15)}% → 새 매수 자동 중지 (매도는 계속)"),
@@ -956,6 +968,7 @@ def tg_command(text):
 
 def tg_poll():
     """텔레그램 명령 받기 (25초 긴 대기) — 설정한 채팅방 · 2분 안 메시지만 · 처음 켤 때 밀린 명령은 실행 안 함"""
+    fails, last_err = 0, ''
     while True:
         t, ch = CFG.get('telegram_token'), str(CFG.get('telegram_chat') or '')
         if not (t and ch) or not CFG.get('tg_commands', True):
@@ -985,8 +998,14 @@ def tg_poll():
             if not off and not ups:
                 db.gmeta_set('tg_offset', '1')
         except Exception as e:
-            db.log(f'텔레그램 명령 받기 실패: {CF.clean(e)[:120]}', 'warn')
+            msg = CF.clean(e)[:120]
+            fails = fails + 1 if msg == last_err else 1
+            if fails == 1 or fails % 60 == 0:                                         # 같은 오류는 처음 한 번 · 그 뒤 약 1시간마다만 기록
+                db.log(f'텔레그램 명령 받기 실패{f" ({fails}번째)" if fails > 1 else ""}: {msg}' + (TG_SSL_HINT if 'CERTIFICATE' in msg else ''), 'warn')
+            last_err = msg
             time.sleep(60)
+            continue
+        fails, last_err = 0, ''
 
 
 @app.post('/api/sell_lot')
@@ -1366,7 +1385,7 @@ def main():
 ║   지금 모드: {'🔴 실전' if db.mode() == 'real' else '🟢 모의'}                               ║
 ╚══════════════════════════════════════════════╝
 """, flush=True)
-    db.log(f'{APP_NAME} {APP_VERSION} 시작 · 모드 {db.mode()} · 데이터 {db.DATA_DIR} · 비밀 값 {"DPAPI 암호화" if CF.protected() else "base64(윈도우 아님)"}')
+    db.log(f'{APP_NAME} {APP_VERSION} 시작 · 모드 {db.mode()} · 데이터 {db.DATA_DIR} · 비밀 값 {"DPAPI 암호화" if CF.protected() else "base64(윈도우 아님)"} · HTTPS 인증서 {SSL_MODE}')
     uvicorn.run(app, host='127.0.0.1', port=PORT, log_level='warning')
 
 
