@@ -569,6 +569,16 @@ _zf = zipfile.ZipFile(_xr['path'])
 check('📦 분봉 zip: 고른 폴더(없으면 만듦)에 파일로 바로 저장 · 진행률 · 저장 위치 기억', _xr['ok'] and os.path.exists(_xr['path']) and not _xs['err'] and _xs['pct'] == 100
       and any(n_.startswith('bars/') for n_ in _zf.namelist()) and 'universe.csv' in _zf.namelist() and SV.CFG.get('export_dir') == os.path.normpath(_xd)
       and not os.path.exists(_xr['path'] + '.part'), f"{os.path.basename(_xr['path'])} · {_xs['mb']}MB · {_xs['msg']}")
+_h = {'X-TK-Token': SV.TOKEN}
+_xd2 = os.path.join(db.DATA_DIR, '저장 폴더2')
+_e = cli.post('/api/export_dir', json={'folder': _xd2}, headers=_h).json()
+_s1 = cli.post('/api/save', json={'kind': 'package'}, headers=_h).json()
+_s2 = cli.post('/api/save', json={'kind': 'journal', 'view': 'orders', 'mode': 'paper'}, headers=_h).json()
+_s3 = cli.post('/api/save', json={'kind': 'csv', 'name': 'tk_closed/../x', 'content': 'a,b\n1,2'}, headers=_h).json()
+_bad = cli.post('/api/save', json={'kind': 'nope'}, headers=_h).json()
+check('💾 모든 내려받기 → 저장 폴더에 파일로: 분석 패키지 · 거래내역 CSV · 표 CSV · 이름에 경로 문자 막음', _e['ok'] and all(r_['ok'] and os.path.dirname(r_['path']) == os.path.normpath(_xd2)
+      and os.path.exists(r_['path']) for r_ in (_s1, _s2, _s3)) and zipfile.is_zipfile(_s1['path']) and '/' not in os.path.basename(_s3['path'])
+      and not _bad['ok'], ' · '.join(os.path.basename(r_['path']) for r_ in (_s1, _s2, _s3)))
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

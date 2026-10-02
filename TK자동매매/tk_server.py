@@ -1147,10 +1147,9 @@ async def api_tg_test(req: Request):
     return {'ok': ok, 'error': err}
 
 
-@app.get('/api/export')
-async def api_export():
+def build_package():
     """점검 · 분석 패키지 — 모의 · 실전 기록 전체 + 분석 보고서 + 로그 (비밀 값 없음)"""
-    def build():
+    if True:
         res = ANALYSIS['res'] or AN.analyze()
         data = AN.package(res, {'app': APP_NAME, 'version': APP_VERSION, 'mode': db.mode(), 'made': db.now_s(), 'alloc': tr.alloc(CFG),
                                 'cap': tr.cap(CFG), 'gate': tr.gate(CFG), 'data_last_bar': db.last_bar_day()})
@@ -1161,7 +1160,11 @@ async def api_export():
             csv.writer(s_).writerows([[d_[0] for d_ in cur.description]] + cur.fetchall())
             z.writestr('log.csv', '\ufeff' + s_.getvalue())
         return buf.getvalue()
-    data = await asyncio.to_thread(build)
+
+
+@app.get('/api/export')
+async def api_export():
+    data = await asyncio.to_thread(build_package)
     return Response(content=data, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="tk_record_{datetime.now():%Y%m%d}.zip"'})
 
 
@@ -1299,7 +1302,57 @@ def _quiet(fn, *a):
 
 @app.get('/api/minute/export_state')
 async def api_minute_export_state():
-    return {'ok': True, **mn.EXPORT, 'default': default_dir()}
+    return {'ok': True, **mn.EXPORT, 'default': default_dir(), 'dir': CFG.get('export_dir') or ''}
+
+
+@app.post('/api/save')
+async def api_save(req: Request):
+    """내려받기 대신 저장 폴더(⚙️ 설정 · 분봉 카드와 같은 폴더)에 파일로 바로 저장 → 저장 경로를 돌려줌
+       kind: package(📦 분석 패키지) · journal(📒 거래내역 CSV) · csv(화면에서 만든 표)"""
+    b = await req.json()
+
+    def f():
+        import re as _re
+        k, stamp = b.get('kind'), datetime.now().strftime('%Y%m%d_%H%M')
+        if k == 'package':
+            data, name = build_package(), f'tk_record_{stamp}.zip'
+        elif k == 'journal':
+            v = str(b.get('view') or 'orders')
+            m = b.get('mode') if b.get('mode') in ('paper', 'real', 'all') else db.mode()
+            data = AN.journal_csv(v, m, b.get('frm') or '', b.get('to') or '', str(b.get('q') or '')[:40]).encode('utf-8')
+            name = f'tk_{v}_{m}_{stamp}.csv'
+        elif k == 'csv':
+            txt = str(b.get('content') or '')
+            if len(txt) > 30_000_000:
+                raise ValueError('너무 큼')
+            data, name = txt.encode('utf-8'), _re.sub(r'[^0-9A-Za-z가-힣_.-]', '_', str(b.get('name') or 'tk_table'))[:60] + f'_{stamp}.csv'
+        else:
+            raise ValueError('kind: package · journal · csv')
+        folder = CFG.get('export_dir') or default_dir()
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, name)
+        with open(path + '.part', 'wb') as fh:
+            fh.write(data)
+        os.replace(path + '.part', path)
+        db.log(f'저장 {path} ({len(data) / 1e6:.1f}MB)')
+        return {'path': path, 'mb': round(len(data) / 1e6, 2), 'msg': f'저장됨 → {path}'}
+    return await _ok(f)()
+
+
+@app.post('/api/export_dir')
+async def api_export_dir(req: Request):
+    """저장 폴더 바꾸기 (비우면 기본: 바탕화면\\TK자료)"""
+    b = await req.json()
+
+    def f():
+        p = str(b.get('folder') or '').strip()
+        if p:
+            p = os.path.normpath(p)
+            os.makedirs(p, exist_ok=True)
+        CFG['export_dir'] = p or None
+        CF.save(CFG)
+        return {'path': p or default_dir(), 'msg': f'저장 폴더: {p or default_dir()}'}
+    return await _ok(f)()
 
 
 @app.post('/api/open_folder')
@@ -1307,6 +1360,7 @@ async def api_open_folder(req: Request):
     """저장한 폴더를 탐색기로 열기 (내보내기 폴더만)"""
     await req.json()
     p = CFG.get('export_dir') or default_dir()
+    os.makedirs(p, exist_ok=True)
     if sys.platform != 'win32' or not os.path.isdir(p):
         return {'ok': False, 'error': p}
     os.startfile(p)

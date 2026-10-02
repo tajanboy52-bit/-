@@ -398,6 +398,9 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
       <div class="row"><label style="margin:0"><input type="checkbox" id="inOn"> 장중 칸 켜기</label><span id="inRules"></span>
         <span>노는 돈의 <input id="inPct" size="3">%</span><span>자리 <input id="inSl" size="2"></span><span>볼 종목 <input id="inW" size="2"></span></div>
       <div class="row" style="margin-top:12px"><button class="btn p" id="bSaveRisk">저장</button></div></div>
+    <div class="card"><h2>💾 저장 폴더 <small>분봉 zip · 📦 분석 패키지 · 거래내역 CSV를 모두 이 폴더에 저장</small></h2>
+      <div class="row"><input id="xDir" style="flex:1;min-width:220px"><button class="btn" id="xPick">📁 폴더 선택</button><button class="btn p" id="xSave">저장</button><button class="btn" id="xOpen">📂 폴더 열기</button></div>
+      <div class="mut" id="xNow" style="font-size:12.5px;margin-top:6px"></div></div>
     <div class="card"><h2>연결 · 비밀 값 <small id="protMsg"></small></h2>
       <div class="grid" style="grid-template-columns:1fr 1fr;gap:4px 12px">
         <div><h3 style="margin:0 0 6px;font-size:14.5px">🟢 모의투자</h3>
@@ -677,7 +680,7 @@ function jrDraw(){const r=JDATA;if(!r)return;let rows=r.rows.slice();if(JSORT){c
   const sums=r.cols.map((c,i)=>/손익|금액|수수료|세금|수량/.test(c)&&nums[i]&&!/단가|평균/.test(c)?`<span class="pill">${c} 합계 <b class="${PNLC.test(c)?cls(rows.reduce((a,x)=>a+(x[i]||0),0)):''}">${won(rows.reduce((a,x)=>a+(x[i]||0),0))}</b></span>`:'').filter(Boolean);
   $('#jrSum').innerHTML=`<span class="pill">${r.title}</span><span class="pill">${r.mode==='all'?'모의 + 실전':r.mode==='real'?'🔴 실전':'🟢 모의'}</span><span class="pill"><b>${won(rows.length)}</b>줄</span>`+sums.join('')}
 $('#jrGo').onclick=jr;$('#jrQ').onkeydown=e=>{if(e.key==='Enter')jr()};$('#jrMode').onchange=jr;
-$('#jrCsv').onclick=async()=>{const r=await fetch('/api/journal.csv?'+jq(),{headers:{'X-TK-Token':TK}});const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`tk_${JVIEW}.csv`;a.click()};
+$('#jrCsv').onclick=()=>saveTo({kind:'journal',...Object.fromEntries(new URLSearchParams(jq()))});
 // ── 분석 ──
 let AN=null;
 function atbl(title,rows,cols,sub=''){return `<div class="card an-t"><h2>${title}${sub?` <small>${sub}</small>`:''}</h2><div class="tw" style="max-height:420px">${tbl(cols.map(([h,k,f])=>({h,r:!!f,f:r=>{const v=typeof k==='function'?k(r):r[k];return f?f(v,r):(v??'-')}})),rows||[],'기록이 쌓이면 표시')}</div></div>`}
@@ -723,7 +726,7 @@ $('#shRun').onclick=()=>{act('/api/job/shadow',{});setTimeout(shadow,1500)};
 async function runAn(cached){const modes=[];if($('#anP').checked)modes.push('paper');if($('#anR').checked)modes.push('real');$('#anMsg').textContent='분석 중…';
   const r=await post('/api/analysis',{modes,frm:$('#anFrm').value,to:$('#anTo').value,cached});if(!r.ok){$('#anMsg').textContent='';toast(r.error,false);return}AN=r.res;an()}
 $('#anGo').onclick=()=>runAn(false);
-$('#anPkg').onclick=async()=>{toast('패키지 만드는 중…');const r=await fetch('/api/export',{headers:{'X-TK-Token':TK}});const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='tk_record.zip';a.click()};
+$('#anPkg').onclick=()=>saveTo({kind:'package'},'📦 분석 패키지 만드는 중…');
 $('#anBf').onclick=()=>{if(confirm('과거 신호 후보를 시장 자료로 계산해 채웁니다 (2023-10부터 · 몇 분). 분석의 순위별 사후 수익 · IC를 처음부터 볼 수 있습니다.'))act('/api/job/backfill',{})};
 // ── 설정 ──
 function sett(s){$('#setMode').textContent=s.mode==='real'?'🔴 실전':'🟢 모의';$('#bOn').textContent=s.kis_on?'자동주문 끄기':'자동주문 켜기';$('#bPause').textContent=(s.pause_buy||s.auto_pause)?'새 매수 재개':'새 매수 일시 중지';
@@ -737,12 +740,20 @@ function sett(s){$('#setMode').textContent=s.mode==='real'?'🔴 실전':'🟢 �
   $('#protMsg').textContent=s.cfg.protected?'🔒 윈도우 DPAPI 암호화 저장':'⚠️ 윈도우가 아니라 base64 저장'}
 function sys(s){$('#sysKv').innerHTML=`<span>모드<b>${s.mode==='real'?'🔴 실전':'🟢 모의'}</b></span><span>자동주문<b>${s.kis_on?'ON':'OFF'}${s.halt?' · ⛔ 정지':''}</b></span><span>지금<b>${s.now}</b></span><span>거래일<b>${s.trading_day?'예':'아니오'}</b></span><span>체결 반영<b>${s.trader.last_sync||'-'}</b></span><span>신호<b>${s.job.signal_msg||'-'}${s.job.signal_err?' ⚠️ '+s.job.signal_err:''}</b></span><span>일정 오류<b>${s.trader.last_err||'-'}</b></span><span>웹소켓<b>${s.ws.err||(s.ws.connected?'연결':'-')}</b></span><span>텔레그램<b>${s.cfg.telegram?'설정됨':'없음'}</b></span><span>KRX 수집<b>${s.data.collect.running?'⏳ '+s.data.collect.msg:(s.data.collect.err?'⚠️ '+s.data.collect.err:'마지막 일봉 '+md(s.data.last_bar))}</b></span><span>1분봉<b>${(s.data.minute||{}).running?'⏳ '+s.data.minute.msg:((s.data.minute||{}).days||0)+'일 · 오늘 '+md((s.data.minute||{}).today_done||'')}</b></span>`;
   const w=$('#logW').checked;$('#log').textContent=s.log.filter(x=>!w||x.level!=='info').map(x=>`${x.ts.slice(5,19).replace('T',' ')} ${x.mode==='real'?'[실전] ':''}${x.level==='info'?'':'['+x.level+'] '}${x.msg}`).join('\n')}
-async function load(){try{ST=await get('/api/state');if(ST.ok===false){toast(ST.error,false);return}header(ST);({info,dash,live:()=>{},bal:()=>{},sig,res,bt,data,real,set:sett,sys,jr:()=>{if(!JDATA)jr()},an:s=>{if(s.job.bf)$('#anMsg').textContent='⏳ '+s.job.bf_msg;if(!AN)runAn(true);shadow();intra()}})[TAB](ST)}catch(e){toast('불러오기 실패: '+e.message,false)}}
+async function load(){try{ST=await get('/api/state');if(ST.ok===false){toast(ST.error,false);return}header(ST);({info,dash,live:()=>{},bal:()=>{},sig,res,bt,data,real,set:s=>{sett(s);dirLoad()},sys,jr:()=>{if(!JDATA)jr()},an:s=>{if(s.job.bf)$('#anMsg').textContent='⏳ '+s.job.bf_msg;if(!AN)runAn(true);shadow();intra()}})[TAB](ST)}catch(e){toast('불러오기 실패: '+e.message,false)}}
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{TAB=b.dataset.t;document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('main>section').forEach(s=>s.hidden=s.id!=='t-'+TAB);load();if(TAB==='live')live();if(TAB==='bal')bal(false)});
 $('#fSl').innerHTML+=['LVH','REV','DV','ON','SW','MAN'].map(k=>`<option value="${k}">${SN[k]}</option>`).join('');$('#fSl').onchange=()=>res(ST);$('#logW').onchange=()=>sys(ST);
 $('#csvBtn').onclick=()=>{const f=$('#fSl').value,rows=ST.closed.filter(r=>!f||r.sleeve===f),h=['sleeve','ticker','name','entry_date','exit_date','entry_px','exit_px','qty0','pnl','ret','sell_reason'];
-  const csv='﻿'+h.join(',')+'\n'+rows.map(r=>h.map(k=>JSON.stringify(r[k]??'')).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='tk_closed.csv';a.click()};
-$('#expBtn').onclick=async()=>{const r=await fetch('/api/export',{headers:{'X-TK-Token':TK}});const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='tk_export.zip';a.click()};
+  const csv='﻿'+h.join(',')+'\n'+rows.map(r=>h.map(k=>JSON.stringify(r[k]??'')).join(',')).join('\n');saveTo({kind:'csv',name:'tk_closed',content:csv})};
+$('#expBtn').onclick=()=>saveTo({kind:'package'},'📦 분석 패키지 만드는 중…');
+// 💾 모든 내려받기 → 저장 폴더(⚙️ 설정)에 파일로 바로 · 경로 알림
+async function saveTo(body,wait){toast(wait||'저장 중…');const r=await post('/api/save',body);
+  if(!r.ok){toast('저장 실패: '+r.error,false);return}const t=$('#toast');t.innerHTML=`✅ 저장됨 (${r.mb}MB)<br><span class="mono" style="font-size:12px">${r.path}</span><br><u style="cursor:pointer">📂 폴더 열기</u>`;
+  t.style.background='#111827';t.style.display='block';t.style.pointerEvents='auto';t.querySelector('u').onclick=()=>post('/api/open_folder',{});clearTimeout(t._t);t._t=setTimeout(()=>{t.style.display='none'},9000)}
+async function dirLoad(){const r=await get('/api/minute/export_state');$('#xDir').value=r.dir||'';$('#xDir').placeholder='비우면 '+r.default;$('#xNow').textContent='지금 저장 위치: '+(r.dir||r.default)}
+$('#xPick').onclick=async()=>{toast('폴더 선택 창을 띄웁니다 (작업 표시줄에 숨어 있을 수 있음)');const r=await post('/api/pick_folder',{start:$('#xDir').value});if(r.ok&&r.path){$('#xDir').value=r.path;await act('/api/export_dir',{folder:r.path});dirLoad()}else if(!r.ok)toast(r.error,false)};
+$('#xSave').onclick=async()=>{await act('/api/export_dir',{folder:$('#xDir').value});dirLoad()};
+$('#xOpen').onclick=async()=>{const r=await post('/api/open_folder',{});if(!r.ok)toast('폴더: '+r.error,false)};
 async function act(u,b,msg){const r=await post(u,b);toast(r.ok?(r.msg||msg||'완료'):r.error,r.ok);load();return r}
 async function sellLot(id,n){if(confirm(`${n} 묶음을 매도할까요? (장중이면 지금 시장가 · 아니면 다음 장전)`))act('/api/sell_lot',{id})}
 async function cancelO(id,n){if(confirm(`${n} 주문을 취소할까요?`))act('/api/cancel',{id})}
@@ -766,7 +777,7 @@ $('#mnProbe').onclick=async()=>{$('#mnMsg').textContent='점검 중…';const r=
 $('#mnToday').onclick=()=>act('/api/job/minute',{kind:'today'});$('#mnStop').onclick=()=>act('/api/job/minute',{kind:'stop'});
 $('#mnBf').onclick=()=>{if(confirm('과거 1분봉 채우기를 지금 시작합니다 (장중이면 주문 조회와 호출 한도를 나눠 씀 — 평소엔 밤에 자동)'))act('/api/job/minute',{kind:'backfill'})};
 let MXT=null;
-async function mnExpPoll(){const r=await get('/api/minute/export_state');if(!$('#mnDir').value&&r.default)$('#mnDir').placeholder='비우면 '+r.default;
+async function mnExpPoll(){const r=await get('/api/minute/export_state');if(!$('#mnDir').value){$('#mnDir').value=r.dir||'';$('#mnDir').placeholder='비우면 '+r.default}
   if(r.running){$('#mnExp').innerHTML=`⏳ 저장 중 ${r.pct}% · ${r.msg} · ${r.mb}MB<br><span class="mono">${r.path}</span>`;MXT=setTimeout(mnExpPoll,1500);return}
   if(r.err)$('#mnExp').innerHTML=`❌ 저장 실패: ${r.err}`;else if(r.path)$('#mnExp').innerHTML=`✅ 저장됨 (${r.mb}MB · ${r.msg})<br><b class="mono">${r.path}</b>`}
 $('#mnPick').onclick=async()=>{toast('폴더 선택 창을 띄웁니다 (작업 표시줄에 숨어 있을 수 있음)');const r=await post('/api/pick_folder',{start:$('#mnDir').value});if(r.ok&&r.path)$('#mnDir').value=r.path;else if(!r.ok)toast(r.error,false)};
