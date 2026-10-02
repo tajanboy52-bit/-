@@ -483,7 +483,7 @@ SCHEDULE = [('07:30', '작업 스케줄러가 PC 깨워 실행 (절전 해제)')
             ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:05~15:15', '⏱ 장중 칸 (켰을 때만 · 통과한 규칙만 · 15:15 모두 정리)'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치'), ('10:00 · 13:00', '📱 텔레그램 오전 브리핑(작동 상태 · 아침 매매) · 중간 브리핑'),
             ('15:10', '밤사이 칸 매수 자금 확인'), ('15:20', '🌙 KODEX 코스닥150 + 💤 KODEX 200 종가 매수 (밤사이)'), ('15:45', '잔고 대조 · 매매일지 · 잔고 이력 · 계좌 안전장치'),
             ('15:50', '📥 KRX 자료 수집 (실패하면 30분마다 · 22시까지)'), ('16:20', '⏱ 오늘 1분봉'), ('16:40', '💾 장부 백업'), ('18:15', '수급 확정치'),
-            ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 📱 장마감 브리핑(오늘 결과 · 내일 계획) → 👥 그림자 운용 → ⏱ 장중 연구실'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('21:30', 'PC 절전 허용')]
+            ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 📱 장마감 브리핑(오늘 결과 · 내일 계획) → 👥 그림자 운용 → ⏱ 장중 연구실'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('항상', 'PC 잠들지 않게 유지 (앱이 켜져 있는 동안 · 화면만 꺼짐)')]
 
 
 def sysinfo():
@@ -1293,7 +1293,9 @@ def _in_watch():
 
 
 def keep_awake():
-    """윈도우: 거래일 07:25~21:30 · 수집/신호/백테스트 중에는 PC가 잠들지 않게 · 그 밖에는 윈도우 절전 설정대로 (밤엔 잠들어도 됨 → 07:30 작업 스케줄러가 깨움)"""
+    """윈도우: 앱이 켜져 있는 동안 PC가 잠들지 않게 (설정 keep_awake='always' · 기본)
+       — 절전 해제 타이머가 꺼진 PC가 많아 '밤에 재우고 07:30에 깨우기'는 믿을 수 없음 (2026-10-02: 06:05 절전 허용 → 07:05 잠듦 → 하루 매매 없음)
+       keep_awake='trading'이면 예전처럼 거래일 06:00~21:30 · 작업 중에만"""
     if sys.platform != 'win32':
         return
     import ctypes
@@ -1303,11 +1305,13 @@ def keep_awake():
         try:
             n = datetime.now()
             hm = n.strftime('%H:%M')
-            need = (tr.is_trading_day(n.strftime('%Y%m%d')) and '07:25' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf'] \
+            need = CFG.get('keep_awake', 'always') == 'always' \
+                or (tr.is_trading_day(n.strftime('%Y%m%d')) and '06:00' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf'] \
                 or mn.STATE['running'] or SH.STATE['running'] or IL.STATE['running']
             if need != on:
                 ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if need else 0))
-                db.log('PC 잠들지 않게 유지' if need else 'PC 절전 허용 (윈도우 절전 설정대로)')
+                db.log(('PC 잠들지 않게 유지' + (' (항상 · 앱이 켜져 있는 동안)' if CFG.get('keep_awake', 'always') == 'always' else '')) if need
+                       else 'PC 절전 허용 (윈도우 절전 설정대로 · 내일 07:30 깨우기는 작업 스케줄러 · 절전 해제 타이머 필요)')
                 on = need
         except Exception:
             pass

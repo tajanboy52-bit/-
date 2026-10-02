@@ -23,7 +23,7 @@ DEFAULT = {'mode': 'paper', 'kis_on': False, 'cap': 10_000_000, 'cap_mode': 'aut
            'real_ramp_on': False, 'caps': {'paper': None, 'real': None}, 'fee_pct': 0.0140527, 'tax_pct': 0.20, 'min_paper_days': 60,
            'sweep_on': True, 'sweep_mode': 'night', 'sweep_reserve': 5, 'gap_skip': 5, 'preopen_time': '08:50',
            'minute_on': True, 'minute_top': 200, 'minute_days': 250, 'resv_on': True, 'guard_per_min': 60, 'guard_per_day': 400, 'tg_commands': True, 'shadow_on': True,
-           'intraday_lab': True, 'intraday_on': False, 'intraday_rules': [], 'intraday_pct': 50, 'intraday_slots': 5, 'intraday_watch': 25}
+           'intraday_lab': True, 'keep_awake': 'always', 'intraday_on': False, 'intraday_rules': [], 'intraday_pct': 50, 'intraday_slots': 5, 'intraday_watch': 25}
 
 
 # ── DPAPI ──
