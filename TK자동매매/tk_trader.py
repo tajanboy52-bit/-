@@ -1022,6 +1022,27 @@ def intraday(cfg, kc, d, prices):
     return bal
 
 
+def brief_step(cfg, kc, d, hm, notify):
+    """📱 10:00 오전 · 13:00 중간 브리핑 — 자동주문이 꺼져 있어도 보냄 (꺼져 있다는 것도 알려야 하므로)
+       PC가 늦게 켜졌으면 1시간 30분 안에는 늦게라도 보냄 · 보내기에 실패하면 1분 뒤 다시 (성공해야 그날 끝)"""
+    import tk_brief as BR
+    for key, t0, t1, fn, nm in (('brief_am', '10:00', '11:30', BR.morning, '오전'), ('brief_mid', '13:00', '14:30', BR.midday, '중간')):
+        if not (t0 <= hm <= t1) or _done(key, d):
+            continue
+        try:
+            bal = kc.balance()
+        except Exception as e:
+            bal = {}
+            log(f'{nm} 브리핑: KIS 잔고 조회 실패 → 계좌 없이 보냄 ({CF.clean(e)[:80]})', 'warn')
+        r = notify(fn(cfg, bal, d))
+        ok = r[0] if isinstance(r, tuple) else bool(r)
+        if ok:
+            _mark(key, d)
+            log(f'📱 {nm} 브리핑 보냄')
+        else:
+            log(f"📱 {nm} 브리핑 보내기 실패 → 1분 뒤 다시: {(r[1] if isinstance(r, tuple) else '')[:100]}", 'warn')
+
+
 def holiday_check(cfg, d):
     """08:05 하루 1번 — 실전 키가 있으면 KIS 공식 휴장일 조회 (모의 모드여도 조회만)"""
     if db.gmeta_get(f'open_{d}') in ('Y', 'N'):
@@ -1092,7 +1113,7 @@ def switch_mode(cfg, target, confirm=False):
 # ════════════════════════════════════════════
 def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
     time.sleep(10)
-    last_sync, last_live = 0.0, 0.0
+    last_sync, last_live, last_brief = 0.0, 0.0, 0.0
     while True:
         try:
             cfg = get_cfg()
@@ -1126,13 +1147,10 @@ def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
                         sync(kc, d)
                     if '09:01' <= hm <= '15:30' and time.time() - last_live > 60 and cfg.get('kis_on'):
                         last_live = time.time()
-                        bal = intraday(cfg, kc, d, get_prices())
-                        if cfg.get('hourly_report', True) and notify_hourly:              # 📱 브리핑: 10:00 오전 · 13:00 중간 (장마감은 신호 계산 뒤 tk_server)
-                            import tk_brief as BR
-                            for key, t0, t1, fn in (('brief_am', '10:00', '10:20', BR.morning), ('brief_mid', '13:00', '13:20', BR.midday)):
-                                if t0 <= hm <= t1 and not _done(key, d):
-                                    _mark(key, d)
-                                    notify_hourly(fn(cfg, bal, d))
+                        intraday(cfg, kc, d, get_prices())
+                    if cfg.get('hourly_report', True) and notify_hourly and time.time() - last_brief > 60:
+                        last_brief = time.time()
+                        brief_step(cfg, kc, d, hm, notify_hourly)
                     if '15:10' <= hm <= '15:17' and not _done('swprep', d) and can_order(cfg):
                         _mark('swprep', d)
                         sweep_prep(cfg, kc, d)

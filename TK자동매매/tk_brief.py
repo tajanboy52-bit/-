@@ -81,6 +81,8 @@ def status(cfg, d, market=True):
 
 
 def account(bal, d):
+    if not bal:
+        return ['💰 계좌', '  KIS 잔고 조회 실패 (연결 확인) — 📡 실시간 · 💼 계좌 잔고 탭에서 확인']
     prev = _prev_equity(d)
     eq = bal.get('equity')
     pos = bal.get('positions') or []

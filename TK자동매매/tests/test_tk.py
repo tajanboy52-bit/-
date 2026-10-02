@@ -467,6 +467,25 @@ check('📱 브리핑 3종: 오전(작동 상태 · 아침 매매) · 중간(흐
       and '💰 계좌' in _m1 and _m2.startswith('🕐 중간 브리핑') and '⏭ 남은 일정' in _m2 and _m3.startswith('🌙 장마감 브리핑') and '🗓 내일' in _m3 and '예약주문' in _m3
       and '📊 칸별' in _m3 and max(len(_m1), len(_m2), len(_m3)) < 3900, f'{len(_m1)} · {len(_m2)} · {len(_m3)}자')
 
+_sent, _fail = [], [True]
+def _nt(m):
+    if _fail[0]:
+        _fail[0] = False
+        return False, '시험: 첫 번째는 실패'
+    _sent.append(m)
+    return True, ''
+_cfg_off = {**cfg, 'kis_on': False}
+for k_ in ('brief_am', 'brief_mid'):
+    db.meta_set(f'done_{k_}_{_d}', '')
+tr.brief_step(_cfg_off, kc, _d, '09:59', _nt)
+_n0 = len(_sent)
+tr.brief_step(_cfg_off, kc, _d, '10:00', _nt)                             # 첫 시도 실패 → 다시
+tr.brief_step(_cfg_off, kc, _d, '10:01', _nt)
+tr.brief_step(_cfg_off, kc, _d, '10:02', _nt)                             # 이미 보냄 → 또 안 보냄
+tr.brief_step(_cfg_off, kc, _d, '13:40', _nt)                             # 늦게라도 (14:30까지)
+check('📱 브리핑: 자동주문 꺼져 있어도 10시 · 13시에 보냄 · 실패하면 다시 · 하루 한 번 · 늦게 켜져도 보냄', _n0 == 0 and len(_sent) == 2
+      and _sent[0].startswith('☀️') and '자동주문 꺼짐' in _sent[0] and _sent[1].startswith('🕐'), f'{len(_sent)}건')
+
 # ── 2-5. 👥 그림자 운용 ──
 import tk_shadow as SHD
 db.gmeta_set('shadow_start', run_days[-10])
