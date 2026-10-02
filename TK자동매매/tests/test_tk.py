@@ -558,6 +558,17 @@ _l2 = dict(db.conn().execute("SELECT * FROM lots WHERE ticker=? AND sleeve='MAN'
 _sold = _l2['sell_flag'] == 1 or db.conn().execute("SELECT 1 FROM orders WHERE lot_id=? AND side='sell'", (_l2['id'],)).fetchone()
 check('💼 앱 밖 종목 가져오기: 수동 보유 · 정리(매도) → 앱이 모르는 종목 0 (새 매수 차단 풀림) · 두 번 가져오기 막음', _u0 == 2 and _a1['ok'] and _a2['ok'] and not _a3['ok']
       and _l1['qty'] == 3 and _l1['status'] == '보유' and not _l1['sell_flag'] and _sold and not tr._balance_check(kc)[1], f"{_a1.get('msg')} / {_a2.get('msg')}")
+_xd = os.path.join(db.DATA_DIR, '내보내기 폴더')
+_xr = cli.post('/api/minute/export_file', json={'folder': _xd, 'frm': '', 'to': ''}, headers={'X-TK-Token': SV.TOKEN}).json()
+for _ in range(100):
+    _xs = cli.get('/api/minute/export_state', headers={'X-TK-Token': SV.TOKEN}).json()
+    if not _xs['running']:
+        break
+    time.sleep(0.1)
+_zf = zipfile.ZipFile(_xr['path'])
+check('📦 분봉 zip: 고른 폴더(없으면 만듦)에 파일로 바로 저장 · 진행률 · 저장 위치 기억', _xr['ok'] and os.path.exists(_xr['path']) and not _xs['err'] and _xs['pct'] == 100
+      and any(n_.startswith('bars/') for n_ in _zf.namelist()) and 'universe.csv' in _zf.namelist() and SV.CFG.get('export_dir') == os.path.normpath(_xd)
+      and not os.path.exists(_xr['path'] + '.part'), f"{os.path.basename(_xr['path'])} · {_xs['mb']}MB · {_xs['msg']}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

@@ -272,6 +272,47 @@ def export_zip(frm='0', to='99999999'):
     return buf.getvalue()
 
 
+EXPORT = {'running': False, 'msg': '', 'err': '', 'path': '', 'pct': 0, 'mb': 0.0, 'days': 0}
+
+
+def export_file(path, frm='0', to='99999999'):
+    """분봉 zip을 파일로 바로 씀 (메모리에 다 올리지 않음 · 진행률 EXPORT) — 형식은 export_zip과 같음"""
+    EXPORT.update(running=True, err='', path=path, pct=0, mb=0.0, days=0, msg='시작')
+    tmp = path + '.part'
+    try:
+        c = conn()
+        days = [r[0] for r in c.execute('SELECT DISTINCT date FROM bars WHERE date BETWEEN ? AND ? ORDER BY date', (frm, to))]
+        if not days:
+            raise ValueError('그 기간에 분봉 없음')
+        EXPORT['days'] = len(days)
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as z:
+            for i, d in enumerate(days):
+                s = io.StringIO()
+                w = csv.writer(s)
+                w.writerow(['ticker', 'hm', 'open', 'high', 'low', 'close', 'vol', 'amt'])
+                w.writerows(c.execute('SELECT ticker, hm, open, high, low, close, vol, amt FROM bars WHERE date=? ORDER BY ticker, hm', (d,)))
+                z.writestr(f'bars/{d}.csv', s.getvalue())
+                EXPORT.update(pct=int((i + 1) / len(days) * 100), msg=f'{d} ({i + 1}/{len(days)}일)', mb=round(os.path.getsize(tmp) / 1e6, 1))
+            s = io.StringIO()
+            w = csv.writer(s)
+            w.writerow(['date', 'ticker', 'name', 'rank', 'why'])
+            w.writerows(c.execute('SELECT * FROM universe WHERE date BETWEEN ? AND ? ORDER BY date, rank', (frm, to)))
+            z.writestr('universe.csv', '\ufeff' + s.getvalue())
+        os.replace(tmp, path)
+        EXPORT.update(mb=round(os.path.getsize(path) / 1e6, 1), msg=f'끝 · {days[0]}~{days[-1]} {len(days)}일', pct=100)
+        db.log(f"[분봉] zip 저장 {path} ({EXPORT['mb']}MB · {len(days)}일)")
+        return path
+    except Exception as e:
+        EXPORT['err'] = str(e)[:200]
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+    finally:
+        EXPORT['running'] = False
+
+
 def import_csv(d, text):
     """bars/날짜.csv 하나 → minute.db (단타 앱 · 이 앱 내보내기 형식) → 줄 수"""
     rows = []

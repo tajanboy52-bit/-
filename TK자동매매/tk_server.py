@@ -1230,6 +1230,89 @@ async def api_job_minute(req: Request):
     return {'ok': True, 'msg': '오늘 분봉 받기 시작' if k == 'today' else '과거 분봉 채우기 시작'}
 
 
+def default_dir():
+    """내보내기 기본 폴더 — 설정 export_dir → 바탕화면\\TK자료 → 내 다운로드"""
+    d = CFG.get('export_dir')
+    if d and os.path.isdir(d):
+        return d
+    home = os.path.expanduser('~')
+    for cand in (os.path.join(home, 'Desktop'), os.path.join(home, 'OneDrive', '바탕 화면'), os.path.join(home, 'OneDrive', 'Desktop'), os.path.join(home, 'Downloads')):
+        if os.path.isdir(cand):
+            return os.path.join(cand, 'TK자료')
+    return os.path.join(db.DATA_DIR, 'exports')
+
+
+_pick_lock = threading.Lock()
+
+
+def pick_folder(start=''):
+    """이 PC에서 폴더 고르기 창 (윈도우 · 앱이 같은 PC에서 돌아가므로)"""
+    if not _pick_lock.acquire(blocking=False):
+        raise ValueError('폴더 선택 창이 이미 열려 있음 (작업 표시줄 확인)')
+    try:
+        import tkinter
+        from tkinter import filedialog
+        root = tkinter.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        p = filedialog.askdirectory(parent=root, initialdir=start or default_dir(), title='분봉 zip 저장할 폴더 선택', mustexist=False)
+        root.destroy()
+        return os.path.normpath(p) if p else ''
+    finally:
+        _pick_lock.release()
+
+
+@app.post('/api/pick_folder')
+async def api_pick_folder(req: Request):
+    b = await req.json()
+    return await _ok(lambda: {'path': pick_folder(b.get('start') or '')})()
+
+
+@app.post('/api/minute/export_file')
+async def api_minute_export_file(req: Request):
+    """분봉 zip → 고른 폴더에 파일로 (진행률은 /api/minute/export_state)"""
+    b = await req.json()
+    if mn.EXPORT['running']:
+        return {'ok': False, 'error': '이미 저장 중'}
+    folder = os.path.normpath(str(b.get('folder') or '').strip() or default_dir())
+    frm, to = (b.get('frm') or '0').replace('-', ''), (b.get('to') or '99999999').replace('-', '')
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except Exception as e:
+        return {'ok': False, 'error': f'폴더를 만들 수 없음: {CF.clean(e)}'}
+    if CFG.get('export_dir') != folder:
+        CFG['export_dir'] = folder
+        CF.save(CFG)
+    name = f"tk_minute_{frm if frm != '0' else 'all'}_{to if to != '99999999' else datetime.now().strftime('%Y%m%d')}.zip"
+    path = os.path.join(folder, name)
+    mn.EXPORT.update(running=True, err='', path=path, pct=0, msg='준비')                     # 상태를 먼저 '저장 중'으로 (화면이 바로 따라오게)
+    threading.Thread(target=lambda: _quiet(mn.export_file, path, frm, to), daemon=True).start()
+    return {'ok': True, 'msg': f'저장 시작 → {path}', 'path': path}
+
+
+def _quiet(fn, *a):
+    try:
+        fn(*a)
+    except Exception as e:
+        db.log(f'저장 실패: {CF.clean(e)}', 'warn')
+
+
+@app.get('/api/minute/export_state')
+async def api_minute_export_state():
+    return {'ok': True, **mn.EXPORT, 'default': default_dir()}
+
+
+@app.post('/api/open_folder')
+async def api_open_folder(req: Request):
+    """저장한 폴더를 탐색기로 열기 (내보내기 폴더만)"""
+    await req.json()
+    p = CFG.get('export_dir') or default_dir()
+    if sys.platform != 'win32' or not os.path.isdir(p):
+        return {'ok': False, 'error': p}
+    os.startfile(p)
+    return {'ok': True, 'msg': p}
+
+
 @app.get('/api/minute/export')
 async def api_minute_export(frm: str = '0', to: str = '99999999'):
     data = await asyncio.to_thread(mn.export_zip, (frm or '0').replace('-', ''), (to or '99999999').replace('-', ''))

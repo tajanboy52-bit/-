@@ -313,7 +313,10 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
   <div class="card"><h2>⏱ 1분봉 수집 <small>장중 매수 · 매도 규칙을 검증하고 쓰기 위한 자료 · 거래일 16:20 오늘 분봉 자동 · 과거(최대 1년)는 평일 밤 18:30~07:00 · 주말에 자동 이어받기</small></h2>
     <div class="kpis" id="mnK" style="grid-template-columns:repeat(4,minmax(0,1fr))"></div>
     <div class="row"><button class="btn" id="mnProbe">🔌 분봉 조회 점검</button><button class="btn p" id="mnToday">오늘 분봉 받기</button><button class="btn" id="mnBf">과거 채우기 지금</button><button class="btn" id="mnStop">멈춤</button>
-      <input type="date" id="mnFrm"> ~ <input type="date" id="mnTo"><button class="btn" id="mnZip">📦 분봉 zip (Claude에게 보내기)</button></div>
+      <input type="date" id="mnFrm"> ~ <input type="date" id="mnTo"></div>
+    <div class="row" style="margin-top:8px"><span class="mut">저장 폴더</span><input id="mnDir" style="flex:1;min-width:220px" placeholder="비우면 바탕화면\TK자료">
+      <button class="btn" id="mnPick">📁 폴더 선택</button><button class="btn p" id="mnZip">📦 분봉 zip 저장</button><button class="btn" id="mnOpen">📂 폴더 열기</button></div>
+    <div class="mut" id="mnExp" style="font-size:12.5px;margin-top:4px">기간을 비우면 전체 · 하루치는 약 2~4MB · 251일 전체는 1GB 안팎 (Claude에게 보낼 때는 최근 몇 주만 고르세요)</div>
     <div style="margin-top:12px"><div class="bar"><i id="mnBar" style="width:0%"></i></div></div>
     <div class="mut" id="mnMsg" style="margin-top:8px;font-size:13.5px"></div>
     <div class="mut" style="font-size:12.5px;margin-top:6px">대상(날짜마다 그날 알 수 있던 것으로): 직전 20일 거래대금 상위 200 · 전날 신호 후보 상위 50 · 보유 · 거래 종목 · KODEX 코스닥150 · KODEX 200 · 그날 급등(+3%)/급락(−5%) · 실전 키가 있으면 실전 도메인으로 빠르게(시세 조회만) · 단타 앱 분봉 zip/danta.db도 가져오기 폴더에 넣으면 자동으로 들어감</div></div>
@@ -627,7 +630,7 @@ function invDraw(){const V=INV;if(!V)return;const R=V.rows,today=new Date().toIS
     {h:'종목',r:1,f:r=>r.tickers==null?'-':won(r.tickers)},{h:'양',r:1,f:r=>r.n==null?'-':won(r.n)+' '+r.unit},{h:'상태',f:st},{h:'메모',f:r=>`<span class="mut">${r.note||''}</span>`}],R);
   const F=V.files;$('#invF').innerHTML=`<span class="pill">기준 거래일 <b>${ymd8(V.last_td)}</b></span><span class="pill">💾 백업 <b>${V.backups.n}</b>개 · ${V.backups.mb}MB${V.backups.last?' · 마지막 '+V.backups.last.replace(/\D/g,'').slice(-8):''}</span>`+
     Object.entries(F).map(([k,v])=>`<span class="pill">${k} <b>${v}MB</b></span>`).join('')+`<span class="pill mut">확인 ${V.made.slice(11,16)}</span>`}
-function data(s){const D=s.data,C=D.collect;if(!INV||Date.now()-INV_AT>60000)inv();
+function data(s){const D=s.data,C=D.collect;if(!INV||Date.now()-INV_AT>60000)inv();if(!MXT){MXT=1;mnExpPoll()}
   $('#dataK').innerHTML=kpi(md(D.last_bar),'마지막 일봉',D.n_days+'거래일 · '+(D.first_bar||'-')+'~','info')+kpi(md(D.last_flow),'마지막 수급','외국인 · 기관 · 연기금')+kpi((D.n_stocks||0).toLocaleString(),'종목','상장폐지 '+(D.n_delisted||0).toLocaleString())+
     kpi(D.last_month?D.last_month.slice(0,4)+'-'+D.last_month.slice(4):'-','월 자료',D.months+'개월')+kpi(md(D.etf_last),'ETF 일봉','229200 · 069500')+kpi(D.dq_bad?'⚠️ '+md(D.dq_bad):'OK','데이터 품질','',D.dq_bad?'warn':'good');
   $('#cBar').style.width=(C.running?C.pct:(C.last?100:0))+'%';$('#cMsg').innerHTML=(C.running?'⏳ ':'')+(C.msg||'')+(C.err?' · ⚠️ '+C.err:'')+(D.collect_msg?' · '+D.collect_msg:'')+(D.master_at?' · 마스터 '+D.master_at.slice(5,16):'')+'<br>'+tline(C,C.running?`진행 ${C.pct||0}%`:'');
@@ -762,7 +765,13 @@ $('#invRe').onclick=()=>inv(true);
 $('#mnProbe').onclick=async()=>{$('#mnMsg').textContent='점검 중…';const r=await post('/api/job/minute',{kind:'probe'});$('#mnMsg').textContent=r.ok?'✅ '+r.msg:'❌ '+r.error};
 $('#mnToday').onclick=()=>act('/api/job/minute',{kind:'today'});$('#mnStop').onclick=()=>act('/api/job/minute',{kind:'stop'});
 $('#mnBf').onclick=()=>{if(confirm('과거 1분봉 채우기를 지금 시작합니다 (장중이면 주문 조회와 호출 한도를 나눠 씀 — 평소엔 밤에 자동)'))act('/api/job/minute',{kind:'backfill'})};
-$('#mnZip').onclick=async()=>{toast('분봉 zip 만드는 중…');const q=new URLSearchParams({frm:$('#mnFrm').value,to:$('#mnTo').value});const r=await fetch('/api/minute/export?'+q,{headers:{'X-TK-Token':TK}});const b=await r.blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='tk_minute.zip';a.click()};
+let MXT=null;
+async function mnExpPoll(){const r=await get('/api/minute/export_state');if(!$('#mnDir').value&&r.default)$('#mnDir').placeholder='비우면 '+r.default;
+  if(r.running){$('#mnExp').innerHTML=`⏳ 저장 중 ${r.pct}% · ${r.msg} · ${r.mb}MB<br><span class="mono">${r.path}</span>`;MXT=setTimeout(mnExpPoll,1500);return}
+  if(r.err)$('#mnExp').innerHTML=`❌ 저장 실패: ${r.err}`;else if(r.path)$('#mnExp').innerHTML=`✅ 저장됨 (${r.mb}MB · ${r.msg})<br><b class="mono">${r.path}</b>`}
+$('#mnPick').onclick=async()=>{toast('폴더 선택 창을 띄웁니다 (작업 표시줄에 숨어 있을 수 있음)');const r=await post('/api/pick_folder',{start:$('#mnDir').value});if(r.ok&&r.path)$('#mnDir').value=r.path;else if(!r.ok)toast(r.error,false)};
+$('#mnZip').onclick=async()=>{const r=await post('/api/minute/export_file',{folder:$('#mnDir').value,frm:$('#mnFrm').value,to:$('#mnTo').value});toast(r.ok?r.msg:r.error,r.ok);if(r.ok){clearTimeout(MXT);setTimeout(mnExpPoll,800)}};
+$('#mnOpen').onclick=async()=>{const r=await post('/api/open_folder',{});if(!r.ok)toast('폴더: '+r.error,false)};
 $('#btRun').onclick=()=>act('/api/job/backtest',{start:$('#btS').value,end:$('#btE').value});
 load();setInterval(()=>{if(!document.hidden&&TAB!=='live')load()},15000);
 setInterval(()=>{if(!document.hidden&&TAB==='data'&&ST&&(ST.data.collect.running||(ST.data.minute||{}).running))load()},3000);
