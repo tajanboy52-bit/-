@@ -1114,7 +1114,16 @@ def switch_mode(cfg, target, confirm=False):
 def loop(get_cfg, get_prices=lambda: {}, notify_hourly=None):
     time.sleep(10)
     last_sync, last_live, last_brief = 0.0, 0.0, 0.0
+    last_tick = time.time()
     while True:
+        gap = time.time() - last_tick
+        if gap > 300:                                                                    # 루프가 5분 넘게 멈춤 = PC가 잠들어 있었음 (절전 · 덮개 닫힘)
+            frm = datetime.fromtimestamp(last_tick).strftime('%m-%d %H:%M')
+            log(f'💤 PC가 잠들어 있었음 {frm} ~ {now():%H:%M} ({gap / 60:.0f}분) — 그동안 주문 · 수집 · 브리핑 못 함', 'error')
+            if is_trading_day(today()) and '08:00' <= now().strftime('%H:%M') <= '16:00':
+                alert(f'💤 PC가 {frm}부터 {gap / 60:.0f}분 동안 잠들어 있었습니다 — 장 시간 매매를 못 했을 수 있음.\n'
+                      f'절전 모드를 쓰지 말거나(전원 옵션 → 절전: 안 함), TK_AutoStart_On.bat으로 07:30 깨우기를 등록하세요', f'sleep{int(last_tick)}')
+        last_tick = time.time()
         try:
             cfg = get_cfg()
             d, hm = today(), now().strftime('%H:%M')

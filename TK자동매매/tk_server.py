@@ -1351,6 +1351,12 @@ def main():
 ║   지금 모드: {'🔴 실전' if db.mode() == 'real' else '🟢 모의'}                               ║
 ╚══════════════════════════════════════════════╝
 """, flush=True)
+    def _hello():                                                                # 켜질 때 한 번 알림 (아침에 깨어났는지 · 다시 켜졌는지 폰으로 확인)
+        time.sleep(20)
+        n = datetime.now()
+        telegram(f"🟢 TK자동매매 켜짐 {n:%m/%d %H:%M} · 자동주문 {'ON' if CFG.get('kis_on') else 'OFF'}"
+                 + (' · 오늘 거래일' if tr.is_trading_day(n.strftime('%Y%m%d')) else ' · 오늘 휴장'))
+    threading.Thread(target=_hello, daemon=True).start()
     db.log(f'{APP_NAME} {APP_VERSION} 시작 · 모드 {db.mode()} · 데이터 {db.DATA_DIR} · 비밀 값 {"DPAPI 암호화" if CF.protected() else "base64(윈도우 아님)"} · HTTPS 인증서 {SSL_MODE}')
     uvicorn.run(app, host='127.0.0.1', port=PORT, log_level='warning')
 
