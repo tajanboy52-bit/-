@@ -1,5 +1,5 @@
 """
-tk_server.py — 🏦 TK자동매매 시스템 · http://127.0.0.1:8086 · 한국투자증권 Open API (모의 → 실전)
+tk_server.py — 台炅 TK자동매매 시스템 · http://127.0.0.1:8086 · 한국투자증권 Open API (모의 → 실전)
 
 다른 앱 없이 혼자 돌아감: 자료 수집(KRX · KIS) → 신호 → 주문 → 체결 · 장부 → 리포트
 보안 (v8 점검에서 나온 문제를 막음)
@@ -1487,7 +1487,7 @@ def main():
                lambda: tr.is_trading_day() and '08:30' <= datetime.now().strftime('%H:%M') <= '15:35', on_notice, wanted_exp)
     print(f"""
 ╔══════════════════════════════════════════════╗
-║   🏦 TK자동매매 시스템 {APP_VERSION}                      ║
+║   台炅 TK자동매매 시스템 {APP_VERSION}                     ║
 ║   http://127.0.0.1:{PORT}   (이 PC에서만 접속)        ║
 ║   지금 모드: {'🔴 실전' if db.mode() == 'real' else '🟢 모의'}                               ║
 ╚══════════════════════════════════════════════╝
