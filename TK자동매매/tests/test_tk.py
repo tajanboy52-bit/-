@@ -584,6 +584,14 @@ _s1 = cli.post('/api/save', json={'kind': 'package'}, headers=_h).json()
 _s2 = cli.post('/api/save', json={'kind': 'journal', 'view': 'orders', 'mode': 'paper'}, headers=_h).json()
 _s3 = cli.post('/api/save', json={'kind': 'csv', 'name': 'tk_closed/../x', 'content': 'a,b\n1,2'}, headers=_h).json()
 _bad = cli.post('/api/save', json={'kind': 'nope'}, headers=_h).json()
+_pf, _pt = run_days[-5], run_days[-3]
+_s4 = cli.post('/api/save', json={'kind': 'package', 'frm': _pf[:4] + '-' + _pf[4:6] + '-' + _pf[6:], 'to': _pt}, headers=_h).json()
+_z4 = zipfile.ZipFile(_s4['path'])
+_od = [l_.split(',')[1] for l_ in _z4.read('paper/orders.csv').decode('utf-8-sig').splitlines()[1:]]
+_ad = [l_.split(',')[0] for l_ in _z4.read('paper/account_daily.csv').decode('utf-8-sig').splitlines()[1:]]
+_all_o = db.conn().execute('SELECT COUNT(*) FROM orders').fetchone()[0]
+check('📦 분석 패키지 기간 고르기: 그 기간 주문 · 매매일지만 · 파일 이름에 기간', _s4['ok'] and _od and all(_pf <= d_ <= _pt for d_ in _od + _ad) and len(_od) < _all_o
+      and f'{_pf}-{_pt}' in os.path.basename(_s4['path']), f"주문 {len(_od)}/{_all_o} · {os.path.basename(_s4['path'])}")
 check('💾 모든 내려받기 → 저장 폴더에 파일로: 분석 패키지 · 거래내역 CSV · 표 CSV · 이름에 경로 문자 막음', _e['ok'] and all(r_['ok'] and os.path.dirname(r_['path']) == os.path.normpath(_xd2)
       and os.path.exists(r_['path']) for r_ in (_s1, _s2, _s3)) and zipfile.is_zipfile(_s1['path']) and '/' not in os.path.basename(_s3['path'])
       and not _bad['ok'], ' · '.join(os.path.basename(r_['path']) for r_ in (_s1, _s2, _s3)))

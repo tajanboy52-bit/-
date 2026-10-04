@@ -314,7 +314,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
   <div class="card"><h2>⏱ 1분봉 수집 <small>장중 매수 · 매도 규칙을 검증하고 쓰기 위한 자료 · 거래일 16:20 오늘 분봉 자동 · 과거(최대 1년)는 평일 밤 18:30~07:00 · 주말에 자동 이어받기</small></h2>
     <div class="kpis" id="mnK" style="grid-template-columns:repeat(4,minmax(0,1fr))"></div>
     <div class="row"><button class="btn" id="mnProbe">🔌 분봉 조회 점검</button><button class="btn p" id="mnToday">오늘 분봉 받기</button><button class="btn" id="mnBf">과거 채우기 지금</button><button class="btn" id="mnStop">멈춤</button>
-      <input type="date" id="mnFrm"> ~ <input type="date" id="mnTo"></div>
+      <input type="date" id="mnFrm"> ~ <input type="date" id="mnTo"><span class="vtabs qr" data-f="#mnFrm" data-t="#mnTo"><button data-r="0">오늘</button><button data-r="7">1주</button><button data-r="14">2주</button><button data-r="31">1달</button><button data-r="92">3달</button><button data-r="-1">전체</button></span><span class="mut" id="mnRng"></span></div>
     <div class="row" style="margin-top:8px"><span class="mut">저장 폴더</span><input id="mnDir" style="flex:1;min-width:220px" placeholder="비우면 바탕화면\TK자료">
       <button class="btn" id="mnPick">📁 폴더 선택</button><button class="btn p" id="mnZip">📦 분봉 zip 저장</button><button class="btn" id="mnOpen">📂 폴더 열기</button></div>
     <div class="row" style="margin-top:6px"><label style="margin:0"><input type="checkbox" id="mnSplit" checked> 첨부용으로 나누기 — 파일 하나당</label><input id="mnPart" size="4" value="25"><span class="mut">MB 이하 (날짜 단위로 끊어서 조각마다 따로 열림)</span></div>
@@ -346,7 +346,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
     <div class="row" style="margin-top:12px">
       <select id="jrMode"><option value="">지금 계좌</option><option value="paper">🟢 모의</option><option value="real">🔴 실전</option><option value="all">모의 + 실전</option></select>
       <input type="date" id="jrFrm"> <span class="mut">~</span> <input type="date" id="jrTo">
-      <span class="vtabs" id="jrQuick"><button data-r="0">오늘</button><button data-r="7">1주</button><button data-r="31">1달</button><button data-r="92">3달</button><button data-r="-1">전체</button></span>
+      <span class="vtabs" id="jrQuick"><button data-r="0">오늘</button><button data-r="7">1주</button><button data-r="14">2주</button><button data-r="31">1달</button><button data-r="92">3달</button><button data-r="-1">전체</button></span>
       <input id="jrQ" placeholder="종목 · 코드 · 칸" size="12"><button class="btn p" id="jrGo">조회</button><button class="btn" id="jrCsv">⬇ CSV (엑셀)</button></div>
     <div class="kbar" id="jrSum" style="margin-top:12px"></div>
     <div class="tw" id="jrTbl" style="max-height:640px"></div></div>
@@ -356,7 +356,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 <section id="t-an" hidden>
   <div class="card"><h2>🔬 거래 분석 · 고도화 <small>쌓인 기록으로 무엇이 벌고 무엇이 깎아 먹는지 · 날마다 신호 계산 뒤 자동 갱신</small></h2>
     <div class="row"><label style="margin:0"><input type="checkbox" id="anP" checked> 🟢 모의</label><label style="margin:0"><input type="checkbox" id="anR" checked> 🔴 실전</label>
-      <input type="date" id="anFrm"> <span class="mut">~</span> <input type="date" id="anTo">
+      <input type="date" id="anFrm"> <span class="mut">~</span> <input type="date" id="anTo"><span class="vtabs qr" data-f="#anFrm" data-t="#anTo" data-go="an"><button data-r="0">오늘</button><button data-r="7">1주</button><button data-r="14">2주</button><button data-r="31">1달</button><button data-r="92">3달</button><button data-r="-1">전체</button></span>
       <button class="btn p" id="anGo">분석 실행</button><button class="btn" id="anPkg">📦 분석 패키지 (Claude에게 보내기)</button><button class="btn" id="anBf">과거 신호 후보 채우기</button></div>
     <div class="alert" style="margin-top:12px">규칙은 <b>자동으로 바뀌지 않습니다</b> — 후보를 근거 수치와 함께 보여 줄 뿐입니다. 바꿀 때는 🧪 백테스트(두 기간) → 모의 20거래일 → 실전 순서로. 📦 패키지를 Claude에게 보내면 기록을 바탕으로 고도화를 점검합니다.</div>
     <div class="mut" id="anMsg" style="font-size:13px"></div></div>
@@ -639,7 +639,7 @@ function data(s){const D=s.data,C=D.collect;if(!INV||Date.now()-INV_AT>60000)inv
   $('#dataK').innerHTML=kpi(md(D.last_bar),'마지막 일봉',D.n_days+'거래일 · '+(D.first_bar||'-')+'~','info')+kpi(md(D.last_flow),'마지막 수급','외국인 · 기관 · 연기금')+kpi((D.n_stocks||0).toLocaleString(),'종목','상장폐지 '+(D.n_delisted||0).toLocaleString())+
     kpi(D.last_month?D.last_month.slice(0,4)+'-'+D.last_month.slice(4):'-','월 자료',D.months+'개월')+kpi(md(D.etf_last),'ETF 일봉','229200 · 069500')+kpi(D.dq_bad?'⚠️ '+md(D.dq_bad):'OK','데이터 품질','',D.dq_bad?'warn':'good');
   $('#cBar').style.width=(C.running?C.pct:(C.last?100:0))+'%';$('#cMsg').innerHTML=(C.running?'⏳ ':'')+(C.msg||'')+(C.err?' · ⚠️ '+C.err:'')+(D.collect_msg?' · '+D.collect_msg:'')+(D.master_at?' · 마스터 '+D.master_at.slice(5,16):'')+'<br>'+tline(C,C.running?`진행 ${C.pct||0}%`:'');
-  const M=D.minute||{};$('#mnK').innerHTML=kpi((M.days||0)+'일','1분봉 날짜',(M.first||'-')+' ~ '+(M.last||'-'),'info')+kpi((M.tickers||0).toLocaleString(),'종목',`마지막 날 ${M.last_tickers||0}종목 · ${(M.last_bars||0).toLocaleString()}봉`)+
+  const M=D.minute||{};if(M.first){$('#mnFrm').min=$('#mnTo').min=ymd8(M.first);$('#mnFrm').max=$('#mnTo').max=ymd8(M.last)}if(!$('#mnRng').textContent)mnRng();$('#mnK').innerHTML=kpi((M.days||0)+'일','1분봉 날짜',(M.first||'-')+' ~ '+(M.last||'-'),'info')+kpi((M.tickers||0).toLocaleString(),'종목',`마지막 날 ${M.last_tickers||0}종목 · ${(M.last_bars||0).toLocaleString()}봉`)+
     kpi((M.mb||0)+'MB','용량','minute.db')+kpi(M.left!=null?M.left+'일':'-','과거 남은 날',M.today_done?'오늘 분봉 '+md(M.today_done):'',M.left?'warn':'good');
   $('#mnBar').style.width=(M.running?M.pct:(M.eta===0?100:M.pct||0))+'%';
   $('#mnMsg').innerHTML=(M.running?'⏳ ':'')+(M.msg||'')+(M.err?' · ⚠️ '+M.err:'')+'<br>'+tline(M,M.running?(M.days_n>1?`${M.day_i+1}/${M.days_n}일째 · `:'')+`종목 ${M.n||0}/${M.total||0}`+(M.rate?` · 분당 ${M.rate}종목`:''):'');
@@ -666,7 +666,13 @@ let JVIEW='orders',JDATA=null,JSORT=null;
 const PNLC=/손익|수익%|전일대비|등락%|평가%|대비%|갭%|역행%|순행%/;
 $('#jrViews').innerHTML=JV.map(([k,n])=>`<button data-v="${k}">${n}</button>`).join('');
 document.querySelectorAll('#jrViews button').forEach(b=>b.onclick=()=>{JVIEW=b.dataset.v;jr()});
-const ymd=d=>d.toISOString().slice(0,10);
+const ymd=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);   // 한국 시각 기준 날짜
+// 📅 기간 고르기: 빠른 버튼(오늘 · 1주 · 2주 · 1달 · 3달 · 전체) + 날짜 칸 아무 데나 누르면 달력
+document.querySelectorAll('.qr button').forEach(b=>b.onclick=()=>{const q=b.parentElement,r=+b.dataset.r,t=new Date(),f=$(q.dataset.f),e=$(q.dataset.t);
+  e.value=r<0?'':ymd(t);f.value=r<0?'':ymd(new Date(t-r*864e5));q.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));f.dispatchEvent(new Event('change'));if(q.dataset.go==='an')runAn()});
+document.querySelectorAll('input[type=date]').forEach(i=>i.addEventListener('click',()=>{try{i.showPicker()}catch(e){}}));
+function mnRng(){const f=$('#mnFrm').value,t=$('#mnTo').value;$('#mnRng').textContent=f||t?`${f||'처음'} ~ ${t||'끝'}만 저장`:'전체 기간 저장'}
+['#mnFrm','#mnTo'].forEach(s=>$(s).addEventListener('change',mnRng));
 document.querySelectorAll('#jrQuick button').forEach(b=>b.onclick=()=>{const r=+b.dataset.r,t=new Date();$('#jrTo').value=r<0?'':ymd(t);$('#jrFrm').value=r<0?'':ymd(new Date(t-r*864e5));jr()});
 function jq(){return new URLSearchParams({view:JVIEW,mode:$('#jrMode').value,frm:$('#jrFrm').value,to:$('#jrTo').value,q:$('#jrQ').value.trim()}).toString()}
 async function jr(){document.querySelectorAll('#jrViews button').forEach(b=>b.classList.toggle('on',b.dataset.v===JVIEW));$('#jrTbl').innerHTML='<div class="mut" style="padding:10px">불러오는 중…</div>';
@@ -728,7 +734,7 @@ $('#shRun').onclick=()=>{act('/api/job/shadow',{});setTimeout(shadow,1500)};
 async function runAn(cached){const modes=[];if($('#anP').checked)modes.push('paper');if($('#anR').checked)modes.push('real');$('#anMsg').textContent='분석 중…';
   const r=await post('/api/analysis',{modes,frm:$('#anFrm').value,to:$('#anTo').value,cached});if(!r.ok){$('#anMsg').textContent='';toast(r.error,false);return}AN=r.res;an()}
 $('#anGo').onclick=()=>runAn(false);
-$('#anPkg').onclick=()=>saveTo({kind:'package'},'📦 분석 패키지 만드는 중…');
+$('#anPkg').onclick=()=>saveTo({kind:'package',frm:$('#anFrm').value,to:$('#anTo').value},`📦 분석 패키지 만드는 중… (${$('#anFrm').value||$('#anTo').value?($('#anFrm').value||'처음')+' ~ '+($('#anTo').value||'끝'):'전체 기간'})`);
 $('#anBf').onclick=()=>{if(confirm('과거 신호 후보를 시장 자료로 계산해 채웁니다 (2023-10부터 · 몇 분). 분석의 순위별 사후 수익 · IC를 처음부터 볼 수 있습니다.'))act('/api/job/backfill',{})};
 // ── 설정 ──
 function sett(s){$('#setMode').textContent=s.mode==='real'?'🔴 실전':'🟢 모의';$('#bOn').textContent=s.kis_on?'자동주문 끄기':'자동주문 켜기';$('#bPause').textContent=(s.pause_buy||s.auto_pause)?'새 매수 재개':'새 매수 일시 중지';

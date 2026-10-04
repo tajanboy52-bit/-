@@ -1147,15 +1147,15 @@ async def api_tg_test(req: Request):
     return {'ok': ok, 'error': err}
 
 
-def build_package():
-    """점검 · 분석 패키지 — 모의 · 실전 기록 전체 + 분석 보고서 + 로그 (비밀 값 없음)"""
+def build_package(frm='', to=''):
+    """점검 · 분석 패키지 — 모의 · 실전 기록(기간 고르면 그 기간만) + 분석 보고서 + 로그 (비밀 값 없음)"""
     if True:
-        res = ANALYSIS['res'] or AN.analyze()
+        res = AN.analyze(frm=frm, to=to) if (frm or to) else (ANALYSIS['res'] or AN.analyze())
         data = AN.package(res, {'app': APP_NAME, 'version': APP_VERSION, 'mode': db.mode(), 'made': db.now_s(), 'alloc': tr.alloc(CFG),
-                                'cap': tr.cap(CFG), 'gate': tr.gate(CFG), 'data_last_bar': db.last_bar_day()})
+                                'cap': tr.cap(CFG), 'gate': tr.gate(CFG), 'data_last_bar': db.last_bar_day(), 'period': [frm, to]}, frm, to)
         buf = io.BytesIO(data)
         with zipfile.ZipFile(buf, 'a', zipfile.ZIP_DEFLATED) as z:
-            cur = db.mconn().execute('SELECT * FROM log ORDER BY id DESC LIMIT 20000')
+            cur = db.mconn().execute("SELECT * FROM log WHERE replace(substr(ts,1,10),'-','') BETWEEN ? AND ? ORDER BY id DESC LIMIT 20000", (frm or '0', to or '99999999'))
             s_ = io.StringIO()
             csv.writer(s_).writerows([[d_[0] for d_ in cur.description]] + cur.fetchall())
             z.writestr('log.csv', '\ufeff' + s_.getvalue())
@@ -1317,8 +1317,10 @@ async def api_save(req: Request):
     def f():
         import re as _re
         k, stamp = b.get('kind'), datetime.now().strftime('%Y%m%d_%H%M')
+        frm, to = str(b.get('frm') or '').replace('-', ''), str(b.get('to') or '').replace('-', '')
         if k == 'package':
-            data, name = build_package(), f'tk_record_{stamp}.zip'
+            data = build_package(frm, to)
+            name = f"tk_record_{(frm or 'all') + ('-' + to if to else '') if frm or to else 'all'}_{stamp}.zip"
         elif k == 'journal':
             v = str(b.get('view') or 'orders')
             m = b.get('mode') if b.get('mode') in ('paper', 'real', 'all') else db.mode()

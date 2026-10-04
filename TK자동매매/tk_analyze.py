@@ -460,15 +460,32 @@ PACKAGE_TABLES = ('lots', 'orders', 'order_events', 'fills', 'ws_execs', 'decisi
                   'sleeve_daily', 'signals', 'api_daily', 'days')
 
 
-def package(res=None, extra=None):
-    """분석 패키지 zip — 모의 · 실전 기록 전체(CSV) + 분석 보고서 + 신호 후보 + 백테스트 결과 · 비밀 값 없음 (계좌번호 · 키는 기록에 없음)"""
-    res = res or analyze()
+def _period_sql(x, t, frm, to):
+    """표마다 기간 조건 (날짜 칸 · 거래는 매수/청산/신호일 · 시각 칸) → (WHERE, 인자)"""
+    if not (frm or to):
+        return '', ()
+    f, e = frm or '0', to or '99999999'
+    cols = {r[1] for r in x.execute(f'PRAGMA table_info({t})')}
+    if t == 'lots':
+        return (" WHERE entry_date BETWEEN ? AND ? OR exit_date BETWEEN ? AND ? OR signal_date BETWEEN ? AND ?"
+                " OR (status IN ('보유','주문') AND COALESCE(entry_date, signal_date) <= ?)"), (f, e, f, e, f, e, e)
+    if 'date' in cols:
+        return ' WHERE date BETWEEN ? AND ?', (f, e)
+    if 'ts' in cols:
+        return " WHERE (CASE WHEN ts LIKE '____-%' THEN replace(substr(ts,1,10),'-','') ELSE substr(ts,1,8) END) BETWEEN ? AND ?", (f, e)
+    return '', ()
+
+
+def package(res=None, extra=None, frm='', to=''):
+    """분석 패키지 zip — 모의 · 실전 기록(CSV · frm~to 기간만 고를 수 있음) + 분석 보고서 + 신호 후보 + 백테스트 결과 · 비밀 값 없음 (계좌번호 · 키는 기록에 없음)"""
+    res = res or analyze(frm=frm, to=to)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
         for m in MODES:
             x = db.conn(m)
             for t in PACKAGE_TABLES:
-                cur = x.execute(f'SELECT * FROM {t}')
+                wh, args = _period_sql(x, t, frm, to)
+                cur = x.execute(f'SELECT * FROM {t}' + wh, args)
                 rows = cur.fetchall()
                 if not rows:
                     continue
@@ -477,7 +494,7 @@ def package(res=None, extra=None):
                 w.writerow([d[0] for d in cur.description])
                 w.writerows(rows)
                 z.writestr(f'{m}/{t}.csv', '﻿' + s.getvalue())
-        cur = db.mconn().execute('SELECT * FROM cands ORDER BY date, sleeve, rank')
+        cur = db.mconn().execute('SELECT * FROM cands WHERE date BETWEEN ? AND ? ORDER BY date, sleeve, rank', (frm or '0', to or '99999999'))
         s = io.StringIO()
         w = csv.writer(s)
         w.writerow([d[0] for d in cur.description])
@@ -489,7 +506,7 @@ def package(res=None, extra=None):
             p = os.path.join(db.DATA_DIR, f_)
             if os.path.exists(p):
                 z.write(p, f_)
-        z.writestr('README.txt', 'TK자동매매 분석 패키지\n'
+        z.writestr('README.txt', 'TK자동매매 분석 패키지' + (f' · 기간 {frm or "처음"} ~ {to or "끝"}' if frm or to else ' · 전체 기간') + '\n'
                    '- paper/ · real/ : 모의 · 실전 장부의 모든 표 (lots=거래 · orders=주문 · order_events=상태 이력 · fills=체결 조각 · decisions=판단 · '
                    'positions_daily=잔고 이력 · account_daily=매매일지 · broker_pnl=KIS 실제 손익 · api_daily=호출 통계)\n'
                    '- cands.csv : 날마다 신호 후보 상위 50 (거래 안 한 것 포함)\n- analysis.md : 분석 보고서 · 고도화 후보\n'
