@@ -122,6 +122,8 @@ main{max-width:1440px;margin:0 auto;padding:20px 24px 70px}
 details.tabhelp{margin:0 0 12px;border:1px solid var(--bd);border-radius:12px;background:rgba(255,255,255,.88);padding:9px 14px;font-size:13.5px}
 details.tabhelp summary{cursor:pointer;font-weight:800;list-style:none}details.tabhelp summary::-webkit-details-marker{display:none}details.tabhelp summary:after{content:' ▾';color:var(--t3)}details.tabhelp[open] summary:after{content:' ▴'}
 details.tabhelp ul{margin:8px 0 2px;padding-left:20px;line-height:1.7}
+.sg-plan{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr));gap:10px}.sg-c{border:1px solid var(--bd);border-top:3px solid var(--c);border-radius:12px;padding:11px 13px;background:#fff;font-size:14px}
+.sg-c.off{opacity:.6}.sg-h{display:flex;gap:7px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
 .sc-card{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1px solid var(--bd);border-radius:12px;margin:8px 0;background:#fff}.sc-card.off{opacity:.7}
 .sc-ring{width:74px;height:74px;flex-shrink:0}.sc-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.gb{color:#fff;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:800}
 .sc-t{font-size:13.5px;margin:4px 0 8px}.sc-p{display:grid;grid-template-columns:minmax(120px,1.2fr) 1fr 34px;gap:4px 8px;align-items:center;font-size:13px;margin:3px 0}
@@ -314,6 +316,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 </section>
 
 <section id="t-sig" hidden>
+  <div class="card"><h2>📋 칸별 다음 거래일 계획 <small>종목을 고르는 칸(LVH · REV · DV)은 아래 신호 표 · ETF 칸(ON · SW)은 정해진 ETF를 매일 회전</small></h2><div class="sg-plan" id="sigPlan"></div></div>
   <div class="card"><h2>최근 신호 <small id="sigSub"></small></h2><div class="tw" id="sig"></div></div>
   <div class="grid" id="rules" style="grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr))"></div>
 </section>
@@ -735,6 +738,15 @@ function skGoto(t){document.querySelector('#nav button[data-t=stk]').click();set
 async function skCancel(id){if(!confirm('수동매수 대기를 취소할까요?'))return;const r=await post('/api/stock/cancel',{lot_id:id});toast(r.ok?r.msg:r.error,r.ok);if(SKD)skOpen(SKD.info.ticker)}
 // ── 신호 ──
 function sig(s){$('#sigSub').textContent=s.signal_date?md(s.signal_date)+' 종가 기준 → 다음 거래일 08:50':'';
+  const e=s.equity&&s.equity.length?s.equity[s.equity.length-1]:null,base=e?Math.min(e.value,s.cap):s.cap,A=s.alloc,P=s.plan||{buys:[],sells:[]},nb=k=>P.buys.filter(b=>b.sleeve===k&&!b.skip).length,ns=k=>P.sells.filter(l=>l.sleeve===k).length;
+  const card=(k,on,head,body,foot)=>`<div class="sg-c ${on?'':'off'}" style="--c:${SC[k]}"><div class="sg-h"><span class="badge" style="background:${SC[k]}">${k}</span><b>${SN[k]}</b><span class="mut">${head}</span></div><div>${body}</div><div class="mut" style="font-size:12.5px;margin-top:4px">${foot}</div></div>`;
+  $('#sigPlan').innerHTML=[
+    card('LVH',A.LVH>0,`${A.LVH}% · ${s.slots.LVH}자리`,A.LVH>0?`매수 <b>${nb('LVH')}</b> · 매도 <b>${ns('LVH')}</b> (보유 10일 끝)`:'꺼짐','다음 거래일 08:50 시가 · 신호 표 상위 3'),
+    card('REV',A.REV>0,`${A.REV}% · ${s.slots.REV}자리`,A.REV>0?`매수 <b>${nb('REV')}</b> · 매도 <b>${ns('REV')}</b> (9일선 복귀 · 10일)`:'꺼짐','다음 거래일 08:50 시가 · 신호 표 상위 3'),
+    card('DV',A.DV>0,A.DV>0?`${A.DV}% · ${s.slots.DV}자리`:'0% · 꺼짐',A.DV>0?`매수 <b>${nb('DV')}</b> · 교체 매도 <b>${ns('DV')}</b>`:'지금 <b>꺼짐</b> — 회전형 설정에서 0%','켜면 매월 초 15종목 교체 (⚙️ 설정 → 칸 비율)'),
+    card('ON',A.ON>0,`${A.ON}%`,A.ON>0?`오늘 15:20 <b>KODEX 코스닥150</b> 약 <b>${man(base*A.ON/100)}</b> 종가 매수`:'꺼짐','→ 다음 거래일 08:50 장전 시가 매도 · 매일 반복'),
+    card('SW',s.cfg.sweep_on!==false,'나머지',s.cfg.sweep_on!==false?`오늘 15:20 남는 현금 → <b>KODEX 200</b> (평가액 ${s.cfg.sweep_reserve||5}%만 현금으로 남김)`:'꺼짐',(s.cfg.sweep_mode||'night')==='night'?'→ 다음 거래일 08:50 시가 매도 · 매일 회전':'지수 타이밍 방식 · 설정에서 바꿈'),
+    card('MAN',true,'직접',`보유 <b>${(s.lots||[]).filter(l=>l.sleeve==='MAN'&&l.status==='보유').length}</b> · 매도 예정 <b>${ns('MAN')}</b>`,'🔍 종목분석에서 ✋ 수동매수 · 고른 청산 규칙대로')].join('');
   $('#sig').innerHTML=tbl([{h:'칸',f:r=>sb(r.sleeve)},{h:'순위',r:1,f:r=>r.rank>100?'예비':r.rank},{h:'종목',f:r=>`<a href="#" onclick="skGoto('${r.ticker}');return false"><b>${r.name}</b></a> <span class="mut mono">${r.ticker}</span>`},{h:'점수 (100점)',r:1,f:r=>`<b>${Math.round(r.score*100)}</b> ${r.rank<100?`<span class="gb" style="background:${GC.S}">S 매수권</span>`:'<span class="gb" style="background:#94a3b8">예비</span>'}`},{h:'종가',r:1,f:r=>won(r.ref)},
     {h:'근거',f:r=>{const i=JSON.parse(r.info||'{}');return r.sleeve==='DV'?`배당 ${i.div}% · PBR ${i.pbr} · ${i.sector}`:(r.sleeve==='LVH'?`ATR ${(i.atrp*100).toFixed(1)}% · 52주 고점 ${pct(i.fromhi*100,1)} · 과열 ${i.heat}`:`RSI ${i.rsi?.toFixed(0)} · 외국인 ${i.fr20!=null?(i.fr20*100).toFixed(1)+'%':'-'} · 연기금 ${i.pen20!=null?(i.pen20*100).toFixed(1)+'%':'-'}`)}}],s.signals,'신호 없음 (장 마감 뒤 자료 수집 → 신호 계산)');
   const R=[['LVH','🏔 저변동고점',`후보풀(20일 평균 거래대금 30억+ · 1천~50만 원 · 이력 120일 · 당일 +20% 미만 · ETF/스팩/리츠/우선주/정지/관리/경고 제외)에서 ATR14/종가 낮음 · 250일 고점 근접 · 25일 과열 없음 세 백분위 평균 상위 3 → 다음날 시가 → 10거래일 보유 (회전형 · 원래 검증은 20일)`,'전종목(상장폐지 포함) 검증: 계좌 +34.0% / +22.4% · 최대낙폭 −5.8% / −7.6% · 변형 8/8 통과'],
