@@ -146,6 +146,9 @@ th:first-child{border-top-left-radius:9px}th:last-child{border-top-right-radius:
 tbody tr:hover td,tr:hover td{background:rgba(248,250,252,.9)}
 td.r,th.r{text-align:right}
 .tw{overflow:auto;max-height:560px;border-radius:9px}
+.al-t{width:100%;border-collapse:collapse;font-size:13.5px}.al-t th,.al-t td{padding:5px 8px;border-bottom:1px solid var(--bd);text-align:center}.al-t th:first-child,.al-t td:first-child{text-align:left}
+.al-t input{width:58px;text-align:right}.al-t td.usr{background:rgba(245,158,11,.12)}.al-t .dflt{display:block;font-size:11px;color:var(--mut)}.al-t th.now{box-shadow:inset 0 -3px 0 #34d399}.al-t th.now small{color:inherit;opacity:.85}
+.al-tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:800}.al-tag.sys{background:#e0f2fe;color:#075985}.al-tag.usr{background:#fef3c7;color:#92400e}
 .badge{display:inline-block;border-radius:6px;padding:0 7px;font-size:12px;font-weight:800;color:#fff;font-family:"JetBrains Mono",Consolas,monospace}
 .bA{background:var(--A)}.bB{background:var(--B)}.bZ{background:var(--Z)}.bH{background:var(--H)}
 /* 버튼 · 입력 */
@@ -466,7 +469,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
   <div class="grid g2">
     <div class="card"><h2>자동주문 <small id="setMode"></small></h2>
       <div class="row"><button class="btn p" id="bOn"></button><button class="btn" id="bPause"></button><button class="btn" id="bHalt">정지 해제</button><button class="btn danger" id="bEmg">⛔ 긴급 정지</button></div>
-      <label style="margin-top:14px">칸 비율 (%) — 합계 100 이하 · 다음 주문부터</label><div class="row" id="alloc"></div>
+      <label style="margin-top:14px">⚖️ 칸 비율 (%) — 모의 · 실전 따로 · 합계 100 이하 · 나머지는 💤 남는 현금 · 다음 주문부터</label><div class="tw"><table class="al-t" id="alloc"></table></div><div class="mut" id="alWhy" style="font-size:12.5px;margin-top:6px"></div>
       <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
         <div><label>운용 자금</label><select id="capMode" style="width:100%"><option value="auto">계좌 전체 (수익 따라 자동 · 복리)</option><option value="fixed">상한 고정</option></select>
           <input id="cap" style="width:100%;margin-top:6px" placeholder="상한 (원) — 상한 고정일 때만"></div><div><label>고점 대비 낙폭 → 매수 중지 (%)</label><input id="dd" style="width:100%"></div>
@@ -974,8 +977,23 @@ $('#anGo').onclick=()=>runAn(false);
 $('#anPkg').onclick=()=>saveTo({kind:'package',frm:$('#anFrm').value,to:$('#anTo').value},`📦 분석 패키지 만드는 중… (${$('#anFrm').value||$('#anTo').value?($('#anFrm').value||'처음')+' ~ '+($('#anTo').value||'끝'):'전체 기간'})`);
 $('#anBf').onclick=()=>{if(confirm('과거 신호 후보를 시장 자료로 계산해 채웁니다 (2023-10부터 · 몇 분). 분석의 순위별 사후 수익 · IC를 처음부터 볼 수 있습니다.'))act('/api/job/backfill',{})};
 // ── 설정 ──
+// ⚖️ 칸 비율 — 모드별 시스템 기본 · 유저값
+const AL_K=['LVH','REV','DV','ON'],AL_M=[['paper','🟢 모의'],['real','🔴 실전']];let AL_INFO=null,AL_DIRTY=false;
+function alRender(s){AL_INFO=s.alloc_info;if(!AL_INFO)return;if(AL_DIRTY&&$('#al_paper_LVH')){alMark();return}
+  $('#alloc').innerHTML=`<tr><th>칸</th>${AL_M.map(([m,n])=>`<th class="${s.mode===m?'now':''}">${n}${s.mode===m?' <small>(지금)</small>':''}</th>`).join('')}</tr>`+
+   AL_K.map(k=>`<tr><td>${sb(k)}</td>${AL_M.map(([m])=>`<td id="alc_${m}_${k}"><input class="alI" data-m="${m}" data-k="${k}" id="al_${m}_${k}" value="${AL_INFO[m].eff[k]}"><span class="dflt"></span></td>`).join('')}</tr>`).join('')+
+   `<tr><td>${sb('SW')} <span class="mut">나머지</span></td>${AL_M.map(([m])=>`<td id="alsw_${m}"></td>`).join('')}</tr>`+
+   `<tr><td>상태</td>${AL_M.map(([m])=>`<td><span id="altag_${m}"></span> <button class="btn" style="padding:2px 8px;font-size:12px" id="alrs_${m}" onclick="alReset('${m}')">기본값으로</button></td>`).join('')}</tr>`;
+  document.querySelectorAll('.alI').forEach(e=>e.oninput=()=>{AL_DIRTY=true;alMark()});alMark();
+  $('#alWhy').innerHTML=AL_M.map(([m,n])=>`<div><b>${n} 시스템 기본</b> ${AL_K.map(k=>k+' '+AL_INFO[m].sys[k]+'%').join(' · ')} — ${AL_INFO[m].why}</div>`).join('');}
+function alVals(m){const o={};AL_K.forEach(k=>o[k]=+($('#al_'+m+'_'+k)||{}).value||0);return o}
+function alMark(){if(!AL_INFO)return;AL_M.forEach(([m])=>{const v=alVals(m),sy=AL_INFO[m].sys;let usr=false;
+  AL_K.forEach(k=>{const d=v[k]!==+sy[k];usr=usr||d;const c=$('#alc_'+m+'_'+k);c.classList.toggle('usr',d);c.querySelector('.dflt').textContent=d?'기본 '+sy[k]:''});
+  const sum=AL_K.reduce((a,k)=>a+v[k],0);$('#alsw_'+m).innerHTML=sum>100?`<b style="color:#dc2626">합계 ${sum}% · 100 넘음</b>`:`${(100-sum).toFixed(0)}% <span class="mut">(합계 ${sum}%)</span>`;
+  $('#altag_'+m).innerHTML=usr?'<span class="al-tag usr">✏️ 유저값</span>':'<span class="al-tag sys">✅ 시스템 기본</span>';$('#alrs_'+m).hidden=!usr&&!AL_INFO[m].user})}
+function alReset(m){if(!AL_INFO)return;AL_DIRTY=false;AL_K.forEach(k=>$('#al_'+m+'_'+k).value=AL_INFO[m].sys[k]);alMark();act('/api/config',{alloc_reset:[m]},(m==='real'?'실전':'모의')+' 칸 비율 → 시스템 기본')}
 function sett(s){$('#setMode').textContent=s.mode==='real'?'🔴 실전':'🟢 모의';$('#bOn').textContent=s.kis_on?'자동주문 끄기':'자동주문 켜기';$('#bPause').textContent=(s.pause_buy||s.auto_pause)?'새 매수 재개':'새 매수 일시 중지';
-  $('#alloc').innerHTML=Object.entries(s.alloc).map(([k,v])=>`<span>${sb(k)} <input id="al_${k}" value="${v}" size="3"></span>`).join('');
+  alRender(s);
   $('#cap').value=s.cap_set;$('#capMode').value=s.cfg.cap_mode||'auto';$('#cap').disabled=$('#capMode').value!=='fixed';$('#dd').value=s.cfg.dd_limit;$('#dl').value=s.cfg.day_loss_limit;$('#ct').value=s.cfg.collect_time;$('#stt').value=s.cfg.signal_time;$('#mpd').value=s.cfg.min_paper_days;$('#hr').checked=!!s.cfg.hourly_report;$('#tgc').checked=s.cfg.tg_commands!==false;$('#rsv').checked=s.cfg.resv_on!==false;$('#dtF').checked=!!s.cfg.dart_filter;$('#feeP').value=s.cfg.fee_pct;$('#taxP').value=s.cfg.tax_pct;$('#swOn').checked=s.cfg.sweep_on!==false;$('#swMode').value=s.cfg.sweep_mode||'night';$('#swW').textContent=(()=>{const w=(s.cfg.sw_weight||'').split(' ');return w.length>2?`마지막 판단 ${md(w[0])} · 비중 ${Math.round(+w[1]*100)}%`:''})();$('#swRes').value=s.cfg.sweep_reserve;$('#gapS').value=s.cfg.gap_skip;$('#preT').value=s.cfg.preopen_time;$('#slL').value=s.slots.LVH;$('#slR').value=s.slots.REV;$('#slD').value=s.slots.DV;$('#skL').value=s.pick_skip.LVH;$('#skR').value=s.pick_skip.REV;$('#wso').checked=s.cfg.ws_on!==false;$('#inOn').checked=!!s.cfg.intraday_on;$('#inPct').value=s.cfg.intraday_pct??50;$('#inSl').value=s.cfg.intraday_slots??5;$('#inW').value=s.cfg.intraday_watch??25;
   $('#inRules').innerHTML=Object.entries(s.intraday.rules).map(([k,v])=>`<label style="margin:0"><input type="checkbox" class="inR" value="${k}" ${(s.cfg.intraday_rules||[]).includes(k)?'checked':''}> ${v.name} ${s.intraday.passed.includes(k)?'<b class="up">통과</b>':'<span class="mut">(미통과)</span>'}</label>`).join('');
   const A=s.cfg.accounts,fm=a=>a.app_key?`저장됨 · 키 ${a.app_key} · 계좌 ${a.account||'없음'}${a.hts_id?' · HTS ✓':''}`:'없음';$('#pNow').textContent=fm(A.paper);$('#rNow').textContent=fm(A.real);
@@ -1011,7 +1029,7 @@ $('#bOn').onclick=async()=>{if(!ST.kis_on&&ST.mode==='real'&&!confirm('🔴 실�
 $('#bPause').onclick=()=>act('/api/pause',{pause:!(ST.pause_buy||ST.auto_pause)});$('#bHalt').onclick=()=>act('/api/halt_clear',{});
 $('#bEmg').onclick=()=>{if(confirm('긴급 정지: 오늘 미체결 주문을 취소하고 자동주문을 끕니다. 보유 종목은 그대로.'))act('/api/emergency',{})};
 $('#capMode').onchange=()=>{$('#cap').disabled=$('#capMode').value!=='fixed'};
-$('#bSaveRisk').onclick=()=>{const al={};['LVH','REV','DV','ON'].forEach(k=>al[k]=+$('#al_'+k).value);act('/api/config',{alloc:al,cap_mode:$('#capMode').value,cap:$('#cap').value,dd_limit:$('#dd').value,day_loss_limit:$('#dl').value,collect_time:$('#ct').value,signal_time:$('#stt').value,min_paper_days:$('#mpd').value,hourly_report:$('#hr').checked,tg_commands:$('#tgc').checked,resv_on:$('#rsv').checked,dart_filter:$('#dtF').checked,ws_on:$('#wso').checked,fee_pct:$('#feeP').value,tax_pct:$('#taxP').value,slots:{LVH:$('#slL').value,REV:$('#slR').value,DV:$('#slD').value},pick_skip:{LVH:$('#skL').value,REV:$('#skR').value},sweep_on:$('#swOn').checked,sweep_mode:$('#swMode').value,sweep_reserve:$('#swRes').value,gap_skip:$('#gapS').value,preopen_time:$('#preT').value,intraday_on:$('#inOn').checked,intraday_rules:[...document.querySelectorAll('.inR:checked')].map(e=>e.value),intraday_pct:$('#inPct').value,intraday_slots:$('#inSl').value,intraday_watch:$('#inW').value},'저장 · 다음 주문부터')};
+$('#bSaveRisk').onclick=()=>{const al={};AL_M.forEach(([m])=>al[m]=alVals(m));AL_DIRTY=false;act('/api/config',{alloc_modes:al,cap_mode:$('#capMode').value,cap:$('#cap').value,dd_limit:$('#dd').value,day_loss_limit:$('#dl').value,collect_time:$('#ct').value,signal_time:$('#stt').value,min_paper_days:$('#mpd').value,hourly_report:$('#hr').checked,tg_commands:$('#tgc').checked,resv_on:$('#rsv').checked,dart_filter:$('#dtF').checked,ws_on:$('#wso').checked,fee_pct:$('#feeP').value,tax_pct:$('#taxP').value,slots:{LVH:$('#slL').value,REV:$('#slR').value,DV:$('#slD').value},pick_skip:{LVH:$('#skL').value,REV:$('#skR').value},sweep_on:$('#swOn').checked,sweep_mode:$('#swMode').value,sweep_reserve:$('#swRes').value,gap_skip:$('#gapS').value,preopen_time:$('#preT').value,intraday_on:$('#inOn').checked,intraday_rules:[...document.querySelectorAll('.inR:checked')].map(e=>e.value),intraday_pct:$('#inPct').value,intraday_slots:$('#inSl').value,intraday_watch:$('#inW').value},'저장 · 다음 주문부터')};
 $('#bSaveKeys').onclick=async()=>{const b={accounts:{paper:{},real:{}}};['app_key','app_secret','account','hts_id'].forEach(k=>{const p=$('#p_'+k).value.trim(),r=$('#r_'+k).value.trim();if(p)b.accounts.paper[k]=p;if(r)b.accounts.real[k]=r});
   ['krx_id','krx_pw','telegram_token','telegram_chat','dart_key'].forEach(k=>{const v=$('#'+k).value.trim();if(v)b[k]=v});const r=await act('/api/config',b,'저장 (암호화)');if(r.ok)document.querySelectorAll('#t-set input[type=password]').forEach(i=>i.value='')};
 $('#bTg').onclick=async()=>{await act('/api/tg_test',{},'보냄 — 텔레그램 확인');load()};

@@ -377,7 +377,7 @@ def _state():
                      'collect': {**col.STATE, **_eta(col.STATE)}, 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250)),
                      'dart': {**DART.status(int(CFG.get('dart_days') or 250)), 'key': bool(CFG.get('dart_key')), 'on': CFG.get('dart_on', True), 'filter': bool(CFG.get('dart_filter'))}},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
-            'schedule': SCHEDULE, 'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'cap_mode': 'fixed' if (CFG.get('caps') or {}).get(db.mode()) or CFG.get('cap_mode') == 'fixed' else 'auto', 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
+            'schedule': SCHEDULE, 'alloc': al, 'alloc_info': {m: {'sys': tr.ALLOC_SYS[m], 'user': tr.alloc_user(CFG, m), 'eff': tr.alloc(CFG, m), 'why': tr.ALLOC_WHY[m]} for m in tr.ALLOC_SYS}, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'cap_mode': 'fixed' if (CFG.get('caps') or {}).get(db.mode()) or CFG.get('cap_mode') == 'fixed' else 'auto', 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
             'cfg': {'accounts': acc, 'krx_id': CF.mask(CFG.get('krx_id')), 'telegram': bool(CFG.get('telegram_token')), 'secrets': secret_status(),
                     'protected': CF.protected(), **{k: CFG.get(k) for k in ('dd_limit', 'day_loss_limit', 'hourly_report', 'collect_time', 'signal_time',
@@ -757,12 +757,23 @@ async def api_config(req: Request):
                     db.gmeta_set('dart_try', '0')
                 else:
                     db.gmeta_set('tg_check', '')
-        if 'alloc' in b:
-            a = {k: float(b['alloc'][k]) for k in tr.DEFAULT_ALLOC}
+        al_in = b.get('alloc_modes') or ({db.mode(): b['alloc']} if 'alloc' in b else {})
+        for m, raw in al_in.items():                      # 모드별 칸 비율 — 시스템 기본과 같으면 유저값 지움(기본을 따라감)
+            if m not in tr.ALLOC_SYS:
+                continue
+            a = {k: float(raw[k]) for k in tr.DEFAULT_ALLOC}
             if any(v < 0 or v > 80 for v in a.values()) or sum(a.values()) > 100:
                 raise ValueError('칸마다 0~80% · 합계 100% 이하')
-            CFG['alloc'] = a
-            db.log('칸 비율: ' + ' · '.join(f'{k} {v:g}%' for k, v in a.items()) + ' (다음 주문부터)')
+            sysd = {k: float(v) for k, v in tr.ALLOC_SYS[m].items()}
+            u = None if a == sysd else a
+            CFG.setdefault('alloc_user', {})
+            if (CFG['alloc_user'] or {}).get(m) != u:
+                CFG['alloc_user'] = {**(CFG['alloc_user'] or {}), m: u}
+                db.log(f"칸 비율 ({'실전' if m == 'real' else '모의'}): " + ' · '.join(f'{k} {v:g}%' for k, v in a.items()) + (' · 유저값' if u else ' · 시스템 기본') + ' (다음 주문부터)')
+        for m in (b.get('alloc_reset') or []):
+            if m in tr.ALLOC_SYS:
+                CFG['alloc_user'] = {**(CFG.get('alloc_user') or {}), m: None}
+                db.log(f"칸 비율 ({'실전' if m == 'real' else '모의'}): 시스템 기본으로 되돌림 · " + ' · '.join(f'{k} {v:g}%' for k, v in tr.ALLOC_SYS[m].items()))
         if b.get('cap_mode') in ('auto', 'fixed'):
             CFG['cap_mode'] = b['cap_mode']
         for k, lo, hi in (('cap', 1_000_000, 2_000_000_000), ('dd_limit', 5, 50), ('day_loss_limit', 1, 20), ('min_paper_days', 20, 250)):

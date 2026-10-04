@@ -117,7 +117,7 @@ x = db.conn()
 live = {(r['sleeve'], r['ticker'], r['entry_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND entry_date IS NOT NULL")}
 live_x = {(r['sleeve'], r['ticker'], r['entry_date'], r['exit_date']) for r in x.execute("SELECT * FROM lots WHERE sleeve IN ('LVH','REV') AND status='청산'")}
 _sw = db.etf_bars('069500')
-res = B.simulate(D, days[-n - 1], run_days[-1], {'LVH': .40, 'REV': .25, 'DV': .0, 'ON': .35}, gap_skip=0.05, sweep_etf=(_sw['close'], _sw['open']),
+res = B.simulate(D, days[-n - 1], run_days[-1], {k: v / 100 for k, v in tr.alloc(cfg).items()}, gap_skip=0.05, sweep_etf=(_sw['close'], _sw['open']),
                  sw_signal=S.sw_weight(_sw['close'], 'night'), sw_overnight=True)
 bt = {(t[0], t[1], t[2]) for t in res['trades'] if t[0] in ('LVH', 'REV')} | {(l['s'], l['t'], l['d']) for l in res['open_lots'] if l['s'] in ('LVH', 'REV')}
 bt_x = {(t[0], t[1], t[2], t[3]) for t in res['trades'] if t[0] in ('LVH', 'REV')}
@@ -234,7 +234,7 @@ cfg['caps'] = {'paper': None, 'real': 5_000_000}
 tr.switch_mode(cfg, 'real', True)
 check('모드: 실전 → 자동주문 · 설정 그대로 · 계좌 · 한도 · 장부만 바뀜',
       db.mode() == 'real' and cfg['kis_on'] and db.conn().execute('SELECT COUNT(*) FROM lots').fetchone()[0] == 0 and tr.cap(cfg) == 5_000_000
-      and tr.client(cfg).cano == '87654321' and tr.alloc(cfg) == tr.alloc({**cfg, 'mode': 'paper'}),
+      and tr.client(cfg).cano == '87654321' and tr.alloc(cfg) == tr.ALLOC_SYS['real'] and tr.alloc({**cfg, 'mode': 'paper'}) == tr.ALLOC_SYS['paper'],
       f'실전 장부 lots {db.conn().execute("SELECT COUNT(*) FROM lots").fetchone()[0]} · 한도 {tr.cap(cfg):,} · 계좌 {tr.client(cfg).masked_account}')
 tr.switch_mode(cfg, 'paper')
 check('모드: 모의로 돌아오면 모의 장부 · 모의 계좌 그대로', db.mode() == 'paper' and db.conn().execute('SELECT COUNT(*) FROM lots').fetchone()[0] == len(
@@ -584,6 +584,17 @@ _sc = cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN}).json()['cfg']['sec
 _js = json.dumps(_sc, ensure_ascii=False)
 check('⚙️ 저장 확인: KRX · 텔레그램 저장 여부(가린 값) · KRX 연결 테스트 결과 · 비밀 값은 화면에 안 나감', _kt['n'] > 0 and _sc['krx']['pw'] and _sc['krx']['id'].endswith('01')
       and _sc['krx']['check']['ok'] and 'krxuser' not in _js and '"pw"' in _js and _sc['tg']['check'] is None, f"{_sc['krx']['id']} · {_sc['krx']['check']}")
+_hd = {'X-TK-Token': SV.TOKEN}
+_ai0 = cli.get('/api/state', headers=_hd).json()['alloc_info']
+_r1 = cli.post('/api/config', json={'alloc_modes': {'paper': {'LVH': 30, 'REV': 20, 'DV': 20, 'ON': 30}, 'real': dict(SV.tr.ALLOC_SYS['real'])}}, headers=_hd).json()
+_ai1 = cli.get('/api/state', headers=_hd).json()['alloc_info']
+_r2 = cli.post('/api/config', json={'alloc_modes': {'paper': {'LVH': 60, 'REV': 30, 'DV': 20, 'ON': 30}}}, headers=_hd).json()
+_r3 = cli.post('/api/config', json={'alloc_reset': ['paper']}, headers=_hd).json()
+_ai3 = cli.get('/api/state', headers=_hd).json()['alloc_info']
+check('⚖️ 칸 비율: 모드별 시스템 기본(모의 DV 켬 · 실전 백테스트 최고) · 바꾸면 유저값 · 기본과 같으면 기본 · 합계 100 넘으면 거부 · 되돌리기',
+      _ai0['paper']['user'] is None and _ai0['paper']['eff']['DV'] > 0 and _ai0['real']['eff']['DV'] == 0
+      and _ai1['paper']['user'] == {'LVH': 30, 'REV': 20, 'DV': 20, 'ON': 30} and _ai1['real']['user'] is None
+      and not _r2['ok'] and _r3['ok'] and _ai3['paper']['user'] is None and _ai3['paper']['eff'] == _ai0['paper']['eff'], f"{_ai1['paper']} · {_r2.get('error')}")
 _SVtc, _SVcf = SV.tr.client, SV.tr.configured
 SV.tr.client = lambda c, m=None: kc
 SV.tr.configured = lambda c, m=None: True

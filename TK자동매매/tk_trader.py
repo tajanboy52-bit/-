@@ -35,7 +35,13 @@ HOLIDAYS = {'20261005', '20261009', '20261225', '20261231',
             '20270101', '20270208', '20270209', '20270301', '20270503', '20270505', '20270513', '20270719', '20270816',
             '20270914', '20270915', '20270916', '20271004', '20271011', '20271227', '20271231'}
 SLOTS = {'LVH': 40, 'REV': 30, 'DV': 15}
-DEFAULT_ALLOC = {'LVH': 40, 'REV': 25, 'DV': 0, 'ON': 35}         # 회전형: 배당·가치(장기 보유) 0 · 밤사이 35% (설계서 14장)
+# 칸 비율 시스템 기본값 — 모드별 (설계서 20장) · 유저가 바꾸면 cfg['alloc_user'][모드]가 우선
+#  실전: 백테스트 최고 조합 (회전형 · 설계서 14장) · 모의: 모든 칸을 실제로 돌려 성적을 모으는 시험 조합 (DV도 켬)
+ALLOC_SYS = {'real': {'LVH': 40, 'REV': 25, 'DV': 0, 'ON': 35},
+             'paper': {'LVH': 40, 'REV': 25, 'DV': 15, 'ON': 20}}
+ALLOC_WHY = {'real': '백테스트 최고 조합 (연 +37.9% · 낙폭 −12.3% · 샤프 1.74) — DV는 장기 보유라 회전형에서 뺌',
+             'paper': '모든 칸을 실제로 돌려 칸별 성적을 모음 — LVH · REV는 실전과 같은 종목당 크기(성적을 실전에 그대로 옮길 수 있게) · DV 15종목 × 1% · 밤사이는 20%로 줄여도 건당 수익률 시험은 같음'}
+DEFAULT_ALLOC = ALLOC_SYS['real']                                   # 칸 이름 · 순서 기준
 COSTS = {'LVH': 0.25, 'REV': 0.25, 'DV': 0.25, 'ON': 0.05}        # 손익 표시용 왕복 비용 추정 %
 KIND = {'entry': '매수', 'hold20': '보유 기간 끝(LVH 10일)', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_buy': '밤사이 매수(종가)',
         'on_sell': '밤사이 매도(시가)', 'manual': '수동', 'delist': '거래 끊김 정리', 'sw_buy': '남는 현금 → KODEX 200', 'sw_sell': 'KODEX 200 → 현금',
@@ -234,9 +240,20 @@ def sweep_buy(cfg, kc, d):
     send(cfg, kc, 'buy', 'sw_buy', lid, 'SW', S.SW_TICKER, S.SW_NAME, q, sig_ref=px)
 
 
-def alloc(cfg):
-    a = dict(DEFAULT_ALLOC)
-    a.update({k: float(v) for k, v in (cfg.get('alloc') or {}).items() if k in a})
+def _amode(cfg, mode=None):
+    m = mode or cfg.get('mode') or db.mode()
+    return m if m in ALLOC_SYS else 'paper'
+
+
+def alloc_user(cfg, mode=None):
+    """이 모드에서 유저가 직접 바꾼 칸 비율 (없으면 None → 시스템 기본)"""
+    u = (cfg.get('alloc_user') or {}).get(_amode(cfg, mode))
+    return {k: float(u[k]) for k in DEFAULT_ALLOC if k in u} if u else None
+
+
+def alloc(cfg, mode=None):
+    a = {k: float(v) for k, v in ALLOC_SYS[_amode(cfg, mode)].items()}
+    a.update(alloc_user(cfg, mode) or {})
     return a
 
 

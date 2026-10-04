@@ -17,7 +17,7 @@ import tk_db as db
 CONFIG_FILE = os.path.join(db.DATA_DIR, 'tk_config.json')
 ACCOUNT_KEYS = ('app_key', 'app_secret', 'account', 'hts_id')
 GLOBAL_SECRETS = ('krx_id', 'krx_pw', 'telegram_token', 'telegram_chat', 'dart_key')
-DEFAULT = {'mode': 'paper', 'kis_on': False, 'cap': 10_000_000, 'cap_mode': 'auto', 'alloc': {'LVH': 40, 'REV': 25, 'DV': 0, 'ON': 35},
+DEFAULT = {'mode': 'paper', 'kis_on': False, 'cap': 10_000_000, 'cap_mode': 'auto', 'alloc_user': {'paper': None, 'real': None},
            'accounts': {'paper': {}, 'real': {}}, 'ws_on': True, 'dd_limit': 15, 'day_loss_limit': 4, 'pause_buy': False,
            'hourly_report': True, 'collect_time': '15:50', 'signal_time': '18:40', 'real_ramp': [30, 60, 100], 'real_ramp_days': 20,
            'real_ramp_on': False, 'caps': {'paper': None, 'real': None}, 'fee_pct': 0.0140527, 'tax_pct': 0.20, 'min_paper_days': 60,
@@ -79,7 +79,10 @@ def load():
         if os.path.exists(p):
             try:
                 raw = json.load(open(p, encoding='utf-8-sig'))
-                c.update({k: v for k, v in raw.items() if k != 'accounts'})
+                c.update({k: v for k, v in raw.items() if k not in ('accounts', 'alloc')})
+                old = raw.get('alloc')                       # 예전 설정(모드 공통 'alloc') → 예전 기본값과 다르면 유저값으로 옮김
+                if 'alloc_user' not in raw and old and {k: float(v) for k, v in old.items()} != {'LVH': 40.0, 'REV': 25.0, 'DV': 0.0, 'ON': 35.0}:
+                    c['alloc_user'] = {'paper': dict(old), 'real': dict(old)}
                 for m in ('paper', 'real'):
                     c['accounts'][m] = {k: dec(v) for k, v in (raw.get('accounts', {}).get(m) or {}).items()}
                 for k in GLOBAL_SECRETS:
