@@ -48,6 +48,7 @@ import tk_minute as mn
 import tk_brief as BR
 import tk_dart as DART
 import tk_export as XP
+import tk_stock as SK
 import tk_intraday as IL
 import tk_shadow as SH
 import tk_signals as S
@@ -512,7 +513,7 @@ MODULES = [('tk_server.py', '서버 · 화면 API · 일정(수집 · 신호 · 
            ('tk_ws.py', '웹소켓 — 실시간 체결가 · 체결 통보(AES 해독) · 재접속'), ('tk_collect.py', '자료 수집 — KRX 전종목 · 수급 · ETF · 월 재무 · 가져오기'),
            ('tk_minute.py', '⏱ 1분봉 수집기 — 날짜별 대상 · 이어받기 · zip'), ('tk_intraday.py', '⏱ 장중 연구실(규칙 4개 · 대조군 · 판정) · 장중 칸(기본 꺼짐)'),
            ('tk_shadow.py', '👥 그림자 운용 — 실험 설정을 가상으로 나란히'), ('tk_dart.py', '📰 DART 공시 — 수집 · 악재 분류 · 효과 연구 · 매수 거르기(기본 꺼짐)'),
-           ('tk_brief.py', '📱 텔레그램 브리핑 (10시 · 13시 · 장마감)'), ('tk_export.py', '📦 모든 데이터 한 번에 저장 (기간 · 항목 · 조각)'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
+           ('tk_brief.py', '📱 텔레그램 브리핑 (10시 · 13시 · 장마감)'), ('tk_export.py', '📦 모든 데이터 한 번에 저장 (기간 · 항목 · 조각)'), ('tk_stock.py', '🔍 종목분석 엔진 — 판단 · 전략 · 과거 성적 · 차트 (우리 규칙)'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
            ('tk_analyze.py', '거래내역 조회 · 분석 · 고도화 후보 · 분석 패키지'), ('tk_db.py', '저장소 — 시장 DB · 모드별 장부 · 수정주가 · 백업'),
            ('tk_config.py', '설정 · 비밀 값 DPAPI 암호화'), ('tk_app.html', '화면 (우량주 앱 테마 7가지)')]
 RESEARCH = [
@@ -1419,6 +1420,22 @@ async def api_export_all(req: Request):
 async def api_export_all_state():
     last = db.gmeta_get('last_export_to') or ''
     return {'ok': True, **{k: v for k, v in XP.STATE.items()}, 'parts': XP.PARTS, 'last_to': last, 'folder': CFG.get('export_dir') or default_dir()}
+
+
+@app.get('/api/stock/search')
+async def api_stock_search(q: str = ''):
+    return {'ok': True, 'rows': await asyncio.to_thread(SK.search, q[:20])}
+
+
+@app.get('/api/stock/{ticker}')
+async def api_stock(ticker: str, days: int = 500):
+    """🔍 종목분석 (우리 엔진)"""
+    def f():
+        return {'ok': True, **SK.analyze(ticker[:6], CFG, max(60, min(int(days or 500), 2000)))}
+    try:
+        return await asyncio.to_thread(f)
+    except Exception as e:
+        return JSONResponse({'ok': False, 'error': CF.clean(e)}, 400)
 
 
 @app.post('/api/save')

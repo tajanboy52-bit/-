@@ -952,9 +952,12 @@ def signal_job(cfg, d, progress=None):
              for k, (t, nm, sec, sc, dv, pb) in enumerate(rank[:50] if al.get('DV', 0) > 0 and rank else [], start=1)]
     # ③ LVH · REV 상위 3 (후보 상위 50은 분석용으로 따로 기록)
     pk = picks(cfg)
+    allsc = []
     for s, fn in (('LVH', S.lvh_scores), ('REV', S.rev_scores)):
         skip, top = pk[s]
         sc = fn(F, d)
+        ordr = S.top_n(sc.dropna(), set(), len(sc))
+        allsc += [(d, s, t, k, len(ordr), float(sc[t])) for k, t in enumerate(ordr, start=1)]     # 🔍 종목분석용: 후보풀 전체 순위
         for k, t in enumerate(S.top_n(sc.dropna(), set(), 50), start=1):
             cands.append((s, t, k, float(sc[t]), float(C.at[d, t]), feat_info(F, d, t)))
         if al.get(s, 0) <= 0:
@@ -968,6 +971,14 @@ def signal_job(cfg, d, progress=None):
     x.execute('INSERT OR REPLACE INTO days VALUES (?,?,?)', (d, db.now_s(), f"{len(rows)} 신호 · 수급 {F['flow_src'] or '없음'}"))
     x.commit()
     J.save_cands(d, cands)
+    try:
+        m_ = db.mconn()
+        m_.execute('CREATE TABLE IF NOT EXISTS scores (date TEXT, sleeve TEXT, ticker TEXT, rank INTEGER, n INTEGER, score REAL, PRIMARY KEY (date, sleeve, ticker))')
+        m_.execute('DELETE FROM scores WHERE date=? OR date < ?', (d, days[max(0, len(days) - 30)]))
+        m_.executemany('INSERT OR REPLACE INTO scores VALUES (?,?,?,?,?,?)', allsc)
+        m_.commit()
+    except Exception as e:
+        log(f'전체 순위 저장 실패: {CF.clean(e)[:100]}', 'warn')
     db.meta_set('last_signal_date', d)
     for m in ('paper', 'real'):                                                      # 청산 거래 사후 계산 (오늘 일봉까지 들어왔으므로)
         try:

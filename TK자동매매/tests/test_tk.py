@@ -668,6 +668,20 @@ check('📦 모든 데이터 한 번에: 9개 항목 · 조각 나눔 · 조각�
       and b'DARTSECRETKEY123' not in _blob and b'TGSECRET' not in _blob and b'y' * 20 not in _blob and b'12345678-01' not in _blob
       and len(_xp2) == 1 and not any(n_.startswith(('minute/', 'research/')) for n_ in _n2) and db.gmeta_get('last_export_to') == run_days[-1].replace('-', ''),
       f"{len(_xp)}조각 · {sum(os.path.getsize(p_) for p_ in _xp) / 1e6:.1f}MB · 파일 {len(_names)}개")
+_sd = db.meta_get('last_signal_date')
+_pk = db.conn().execute("SELECT ticker FROM signals WHERE date=? AND sleeve='LVH' AND rank<100 ORDER BY rank", (_sd,)).fetchone()[0]
+_sr = cli.get('/api/stock/search?q=' + _pk[:4], headers={'X-TK-Token': SV.TOKEN}).json()
+_sa = cli.get(f'/api/stock/{_pk}', headers={'X-TK-Token': SV.TOKEN}).json()
+_heldt = {r_[0] for m_ in ('paper', 'real') for r_ in db.conn(m_).execute("SELECT ticker FROM lots WHERE status IN ('보유','주문')")}
+_far = [r_[0] for r_ in db.mconn().execute("SELECT ticker FROM scores WHERE date=? AND sleeve='LVH' ORDER BY rank DESC", (_sd,)) if r_[0] not in _heldt][0]
+_sb = cli.get(f'/api/stock/{_far}', headers={'X-TK-Token': SV.TOKEN}).json()
+_se = cli.get('/api/stock/999999', headers={'X-TK-Token': SV.TOKEN}).json()
+_ch = _sa.get('chart', {})
+check('🔍 종목분석: 검색 · 오늘 매수 예정 종목 = 매수 판정(실제 신호와 같음) · 후보풀 전체 순위 · 전략(목표·기대·주의) · 과거 성적 · 차트 · 없는 종목 오류',
+      _sr['ok'] and any(x_['ticker'] == _pk for x_ in _sr['rows']) and _sa['ok'] and _sa['level'] in ('buy', 'hold') and _sa['ranks'].get('LVH', {}).get('rank', 99) <= 3
+      and _sa['plan']['target'] and _sa['plan']['caution'] and len(_ch['d']) == len(_ch['c']) == len(_ch['e9']) > 100 and 'LVH' in _sa['hist']
+      and _sb['ok'] and _sb['level'] in ('none', 'watch') and _sb['ranks']['LVH']['rank'] >= _sb['ranks']['LVH']['n'] - 5 and not _se['ok'] and '일봉이 없음' in _se['error'],
+      f"{_sa['info']['name']}: {_sa['verdict']} · 목표 {_sa['plan']['target_pct']}% / {_sb['verdict'][:34]}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──
