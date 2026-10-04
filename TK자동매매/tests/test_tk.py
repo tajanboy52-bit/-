@@ -486,6 +486,58 @@ tr.brief_step(_cfg_off, kc, _d, '13:40', _nt)                             # 늦�
 check('📱 브리핑: 자동주문 꺼져 있어도 10시 · 13시에 보냄 · 실패하면 다시 · 하루 한 번 · 늦게 켜져도 보냄', _n0 == 0 and len(_sent) == 2
       and _sent[0].startswith('☀️') and '자동주문 꺼짐' in _sent[0] and _sent[1].startswith('🕐'), f'{len(_sent)}건')
 
+# ── 2-4d. 📰 DART 공시 ──
+import tk_dart as DT
+_dd = run_days[-6:]
+_ctk = [r_[0] for r_ in db.mconn().execute("SELECT ticker FROM cands WHERE date=? AND sleeve='LVH' ORDER BY rank LIMIT 3", (_dd[0],))]
+_calls = []
+def _fake_fetch(key, d, kind, page=1):
+    _calls.append((d, kind, page))
+    if key != 'KEY':
+        return {'status': '010', 'message': '등록되지 않은 키'}
+    if d not in _dd:
+        return {'status': '013', 'message': '조회된 데이타가 없습니다.'}
+    rows = []
+    if kind == 'B' and d == _dd[0]:
+        rows = [{'corp_code': '1', 'corp_name': '가짜A', 'stock_code': _ctk[0], 'corp_cls': 'K', 'report_nm': '주요사항보고서(유상증자결정)', 'rcept_no': f'{d}000001', 'flr_nm': '가짜A', 'rcept_dt': d, 'rm': ''},
+                {'corp_code': '2', 'corp_name': '가짜B', 'stock_code': _ctk[1], 'corp_cls': 'Y', 'report_nm': '주요사항보고서(전환사채권발행결정)', 'rcept_no': f'{d}000002', 'flr_nm': '가짜B', 'rcept_dt': d, 'rm': ''},
+                {'corp_code': '3', 'corp_name': '비상장', 'stock_code': '', 'corp_cls': 'E', 'report_nm': '주요사항보고서(유상증자결정)', 'rcept_no': f'{d}000003', 'flr_nm': 'x', 'rcept_dt': d, 'rm': ''}]
+    if kind == 'I' and d == _dd[0]:
+        rows = [{'corp_code': '4', 'corp_name': '가짜C', 'stock_code': _ctk[2], 'corp_cls': 'Y', 'report_nm': '자기주식취득결정', 'rcept_no': f'{d}000004', 'flr_nm': '가짜C', 'rcept_dt': d, 'rm': '유'}]
+    if kind == 'C' and page == 1 and d == _dd[1]:
+        return {'status': '000', 'total_page': 2, 'total_count': 101, 'list': [{'corp_code': '5', 'corp_name': '가짜D', 'stock_code': '000010', 'corp_cls': 'K', 'report_nm': '증권신고서(지분증권)', 'rcept_no': f'{d}9{i:05d}', 'flr_nm': 'x', 'rcept_dt': d, 'rm': ''} for i in range(100)]}
+    if kind == 'C' and page == 2 and d == _dd[1]:
+        rows = [{'corp_code': '5', 'corp_name': '가짜D', 'stock_code': '000010', 'corp_cls': 'K', 'report_nm': '[기재정정]증권신고서', 'rcept_no': f'{d}999999', 'flr_nm': 'x', 'rcept_dt': d, 'rm': ''}]
+    return {'status': '000' if rows else '013', 'total_page': 1, 'total_count': len(rows), 'list': rows}
+DT.fetch = _fake_fetch
+_bad_key = None
+try:
+    DT.test_key('NOPE')
+except RuntimeError as e:
+    _bad_key = str(e)
+_real_now = DT.datetime
+_n1 = DT.run('KEY', n_days=6)
+_ds = DT.status(6)
+_tags = dict(DT.conn().execute('SELECT ticker, tag FROM dart WHERE date=?', (_dd[0],)).fetchall())
+_c0 = len(_calls)
+_n2 = DT.run('KEY', n_days=6)
+check('📰 DART 수집: 날짜마다 B · I · C · 여러 쪽 · 상장사만 · 악재/호재 분류 · 받은 날 건너뜀 · 잘못된 키 오류', _bad_key and '010' in _bad_key and _n1 >= 6
+      and _tags.get(_ctk[0]) == '유상증자' and _tags.get(_ctk[1]) == 'CB' and _tags.get(_ctk[2]) == '자사주취득' and '' not in _tags
+      and DT.conn().execute('SELECT COUNT(*) FROM dart WHERE date=?', (_dd[1],)).fetchone()[0] == 101 and _ds['bad'] >= 2
+      and len([c_ for c_ in _calls[_c0:] if c_[0] != DT.datetime.now().strftime('%Y%m%d')]) == 0, f"{_ds['days']}일 · {_ds['rows']}건 · 악재 {_ds['bad']} · 두 번째 호출 {len(_calls) - _c0}")
+_br = DT.bad_recent(_ctk[0], _dd[3], 5)
+_cfgd = {**cfg, 'dart_filter': True}
+_sig_rows = [dict(r_) for r_ in db.conn().execute("SELECT * FROM signals WHERE date=? AND sleeve='LVH' AND rank<100", (db.meta_get('last_signal_date'),))]
+DT.conn().execute("INSERT OR REPLACE INTO dart VALUES (?,?,?,?,?,?,?,?,?,?,?)", ('T1', db.meta_get('last_signal_date'), _sig_rows[0]['ticker'], 'x', 'K', 'B', '주요사항보고서(감자결정)', 'x', '', '감자', 1))
+DT.conn().commit()
+_pl_off = tr.plan(cfg, None, None, db.meta_get('last_signal_date'))
+_pl_on = tr.plan(_cfgd, None, None, db.meta_get('last_signal_date'))
+_sk = [b_ for b_ in _pl_on['buys'] + _pl_on['defer'] if b_['ticker'] == _sig_rows[0]['ticker']]
+check('📰 매수 거르기: 기본 꺼짐 · 켜면 직전 5거래일 악재 공시 종목은 안 삼 (이유 표시)', _br and _br[0][1] == '유상증자' and _sk and _sk[0]['skip'].startswith('악재 공시: 감자')
+      and not any(b_['skip'].startswith('악재') for b_ in _pl_off['buys'] + _pl_off['defer']), _sk[0]['skip'] if _sk else '')
+_st_ = DT.study(5, 5)
+check('📰 악재 공시 효과 연구: 후보 중 악재 있음 vs 없음 수익 비교표', _st_['n_days'] >= 6 and any(r_['tag'] == '없음' for r_ in _st_['rows']), str(_st_['rows'][:3]))
+
 # ── 2-5. 👥 그림자 운용 ──
 import tk_shadow as SHD
 db.gmeta_set('shadow_start', run_days[-10])
@@ -596,8 +648,12 @@ check('💾 모든 내려받기 → 저장 폴더에 파일로: 분석 패키지
       and os.path.exists(r_['path']) for r_ in (_s1, _s2, _s3)) and zipfile.is_zipfile(_s1['path']) and '/' not in os.path.basename(_s3['path'])
       and not _bad['ok'], ' · '.join(os.path.basename(r_['path']) for r_ in (_s1, _s2, _s3)))
 _cn = {c_['name'].split()[0]: c_['st'] for c_ in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN}).json()['conn']}
-check('머리글 연결 표시: KIS · KRX · 텔레그램 · 실시간 (연결 · 끊김/미설정 · 대기)', set(_cn) == {'KIS', 'KRX', '텔레그램', '실시간'} and _cn['KRX'] == 'ok'
+check('머리글 연결 표시: KIS · KRX · 텔레그램 · DART · 실시간 (연결 · 끊김/미설정 · 대기)', set(_cn) == {'KIS', 'KRX', '텔레그램', 'DART', '실시간'} and _cn['KRX'] == 'ok'
       and _cn['텔레그램'] == 'bad' and all(v_ in ('ok', 'bad', 'idle') for v_ in _cn.values()), str(_cn))
+_s5 = cli.post('/api/save', json={'kind': 'dart'}, headers={'X-TK-Token': SV.TOKEN}).json()
+_dj = cli.get('/api/dart', headers={'X-TK-Token': SV.TOKEN}).json()
+check('📰 DART 화면 API · 공시 CSV 저장 · 패키지에 dart.csv', _s5['ok'] and '가짜A' in open(_s5['path'], encoding='utf-8-sig').read() and _dj['ok'] and _dj['recent']
+      and 'dart.csv' in zipfile.ZipFile(_s1['path']).namelist(), os.path.basename(_s5['path']))
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

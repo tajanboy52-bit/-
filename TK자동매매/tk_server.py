@@ -46,6 +46,7 @@ import tk_journal as J
 import tk_kis
 import tk_minute as mn
 import tk_brief as BR
+import tk_dart as DART
 import tk_intraday as IL
 import tk_shadow as SH
 import tk_signals as S
@@ -109,7 +110,8 @@ def secret_status():
         p = v.split(' ', 3)
         return {'at': ' '.join(p[:2]), 'ok': len(p) > 2 and p[2] == 'ok', 'msg': p[3] if len(p) > 3 else ''} if v else None
     return {'krx': {'id': CF.mask(CFG.get('krx_id'), 2), 'pw': bool(CFG.get('krx_pw')), 'check': chk('krx_check')},
-            'tg': {'token': CF.mask(CFG.get('telegram_token')), 'chat': CF.mask(CFG.get('telegram_chat'), 3), 'check': chk('tg_check')}}
+            'tg': {'token': CF.mask(CFG.get('telegram_token')), 'chat': CF.mask(CFG.get('telegram_chat'), 3), 'check': chk('tg_check')},
+            'dart': {'key': CF.mask(CFG.get('dart_key')), 'check': chk('dart_check')}}
 
 
 def krx_test():
@@ -255,6 +257,11 @@ def scheduler():
                     db.log(f"장부 백업 {', '.join(db.backup())}")
                 except Exception as e:
                     db.log(f'장부 백업 실패: {CF.clean(e)}', 'warn')
+            if CFG.get('dart_on', True) and CFG.get('dart_key') and not DART.STATE['running'] and not col.STATE['running'] \
+                    and time.time() - float(db.gmeta_get('dart_try') or 0) > 3 * 3600 and (hm >= '18:05' or not tr.is_trading_day(d) or hm < '07:00'):   # 📰 DART: 저녁 오늘 공시 + 과거 이어받기
+                if DART.todo_days(int(CFG.get('dart_days') or 250)):
+                    db.gmeta_set('dart_try', time.time())
+                    threading.Thread(target=lambda: DART.run(CFG.get('dart_key'), int(CFG.get('dart_days') or 250)), daemon=True).start()
             if CFG.get('minute_on', True) and not mn.STATE['running'] and not col.STATE['running']:      # ⏱ 1분봉 수집
                 if tr.is_trading_day(d) and hm >= '16:20' and mn.meta_get('today_done') != d and (db.last_bar_day() >= d or hm >= '17:30'):
                     threading.Thread(target=minute_run, args=('today',), daemon=True).start()
@@ -359,7 +366,8 @@ def _state():
                      'months': mc.execute("SELECT COUNT(*) FROM done WHERE kind='month'").fetchone()[0],
                      'last_month': mc.execute("SELECT MAX(key) FROM done WHERE kind='month'").fetchone()[0],
                      'etf_last': mc.execute('SELECT MAX(date) FROM etf').fetchone()[0], 'master_at': db.gmeta_get('master_at'),
-                     'collect': {**col.STATE, **_eta(col.STATE)}, 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250))},
+                     'collect': {**col.STATE, **_eta(col.STATE)}, 'collect_msg': JOB['collect_msg'], 'minute': mn.status(int(CFG.get('minute_days') or 250)),
+                     'dart': {**DART.status(int(CFG.get('dart_days') or 250)), 'key': bool(CFG.get('dart_key')), 'on': CFG.get('dart_on', True), 'filter': bool(CFG.get('dart_filter'))}},
             'job': dict(JOB), 'trader': dict(tr.STATE), 'ws': {**rtws.status(), 'enabled': CFG.get('ws_on', True)},
             'schedule': SCHEDULE, 'alloc': al, 'cap': tr.cap(CFG), 'cap_set': CFG.get('cap'), 'cap_mode': 'fixed' if (CFG.get('caps') or {}).get(db.mode()) or CFG.get('cap_mode') == 'fixed' else 'auto', 'ramp': tr.ramp(CFG), 'slots': tr.slots(CFG), 'pick_skip': {k: v[0] for k, v in tr.picks(CFG).items()}, 'backtest': bt,
             'gate': tr.gate(CFG), 'journal': _journal_counts(),
@@ -369,7 +377,7 @@ def _state():
                                                                                'real_ramp_on', 'caps', 'cap', 'cap_mode', 'fee_pct', 'tax_pct',
                                                                                'sweep_on', 'sweep_mode', 'sweep_reserve', 'gap_skip', 'preopen_time',
                                                                                'tg_commands', 'resv_on', 'guard_per_min', 'guard_per_day',
-                                                                               'intraday_on', 'intraday_rules', 'intraday_pct', 'intraday_slots', 'intraday_watch')},
+                                                                               'intraday_on', 'intraday_rules', 'intraday_pct', 'intraday_slots', 'intraday_watch', 'dart_on', 'dart_filter')},
                     'sw_weight': db.meta_get('sw_weight')},
             'intraday': {'passed': sorted(IL.passed()), 'rules': IL.RULES, 'watch': IL.LIVE['watch'], 'signals': IL.LIVE['signals'][:10], 'last': IL.LIVE['last'],
                          'lab': dict(IL.STATE)},
@@ -392,7 +400,7 @@ def conn_status():
         else:
             out.append({'name': 'KIS ' + ('실전' if m == 'real' else '모의'), 'st': 'idle', 'tip': f'{acc} · 설정됨 · 최근 1시간 호출 없음 (장 시간 · 🔌 연결 테스트로 확인)'})
     sc = secret_status()
-    for key, nm, saved in (('krx', 'KRX', sc['krx']['id'] and sc['krx']['pw']), ('tg', '텔레그램', sc['tg']['token'] and sc['tg']['chat'])):
+    for key, nm, saved in (('krx', 'KRX', sc['krx']['id'] and sc['krx']['pw']), ('tg', '텔레그램', sc['tg']['token'] and sc['tg']['chat']), ('dart', 'DART', sc['dart']['key'])):
         c = sc[key]['check']
         if not saved:
             out.append({'name': nm, 'st': 'bad', 'tip': '저장 안 됨 (⚙️ 설정)'})
@@ -464,6 +472,10 @@ def data_inventory(force=False):
     ms = mn.status(int(CFG.get('minute_days') or 250))
     mb = mn.conn().execute('SELECT COUNT(*) FROM bars').fetchone()[0]
     add('분석', '1분봉', ms['first'], ms['last'], ms['days'], ms['tickers'], mb, '봉', fresh_need=last_td, note=f"{ms['mb']}MB · 과거 남은 날 {ms['left']}")
+    ds = DART.status(int(CFG.get('dart_days') or 250))
+    dt_ = DART.conn().execute('SELECT COUNT(DISTINCT ticker) FROM dart').fetchone()[0]
+    add('분석', 'DART 공시 (주요사항 · 거래소 · 발행)', ds['first'], ds['last'], ds['days'], dt_, ds['rows'], '건', fresh_need=last_td,
+        note=f"악재 {ds['bad']}건 · 과거 남은 날 {ds['left']}" + ('' if CFG.get('dart_key') else ' · 인증키 없음'))
     for mode in ('paper', 'real'):
         x = db.conn(mode)
         ko = '모의' if mode == 'paper' else '실전'
@@ -498,7 +510,8 @@ MODULES = [('tk_server.py', '서버 · 화면 API · 일정(수집 · 신호 · 
            ('tk_backtest.py', '백테스트 — 실전과 같은 규칙 · 비용 · 두 기간 판정'), ('tk_kis.py', '한국투자증권 REST — 주문 · 잔고 · 체결 · 시세 · 예상체결가 · 1분봉'),
            ('tk_ws.py', '웹소켓 — 실시간 체결가 · 체결 통보(AES 해독) · 재접속'), ('tk_collect.py', '자료 수집 — KRX 전종목 · 수급 · ETF · 월 재무 · 가져오기'),
            ('tk_minute.py', '⏱ 1분봉 수집기 — 날짜별 대상 · 이어받기 · zip'), ('tk_intraday.py', '⏱ 장중 연구실(규칙 4개 · 대조군 · 판정) · 장중 칸(기본 꺼짐)'),
-           ('tk_shadow.py', '👥 그림자 운용 — 실험 설정을 가상으로 나란히'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
+           ('tk_shadow.py', '👥 그림자 운용 — 실험 설정을 가상으로 나란히'), ('tk_dart.py', '📰 DART 공시 — 수집 · 악재 분류 · 효과 연구 · 매수 거르기(기본 꺼짐)'),
+           ('tk_brief.py', '📱 텔레그램 브리핑 (10시 · 13시 · 장마감)'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
            ('tk_analyze.py', '거래내역 조회 · 분석 · 고도화 후보 · 분석 패키지'), ('tk_db.py', '저장소 — 시장 DB · 모드별 장부 · 수정주가 · 백업'),
            ('tk_config.py', '설정 · 비밀 값 DPAPI 암호화'), ('tk_app.html', '화면 (우량주 앱 테마 7가지)')]
 RESEARCH = [
@@ -511,13 +524,14 @@ RESEARCH = [
     ('2026-10-01', '회전형 전환: 밤사이 35% · LVH 10일 · DV 0%', '채택 (연 +37.9% · 낙폭 −12.3% · 샤프 1.74)', '설계서 14장'),
     ('2026-10-01', '⏱ 1분봉 수집기 → 장중 규칙 검증 준비', '수집 중 (몇 달 뒤 검증)', '설계서 15장'),
     ('2026-10-01', '타사 API 비교: 예약주문 · 텔레그램 명령 · 그림자 운용 · 예상체결 웹소켓 · 주문 안전장치', '추가', '설계서 16장'),
-    ('2026-10-01', '⏱ 장중 연구실 · 장중 칸(낮에 노는 돈 · 기본 꺼짐) — 기존 규칙에 더하기', '분봉 쌓이는 대로 판정 (40일 · 60건부터)', '설계서 17장')]
+    ('2026-10-01', '⏱ 장중 연구실 · 장중 칸(낮에 노는 돈 · 기본 꺼짐) — 기존 규칙에 더하기', '분봉 쌓이는 대로 판정 (40일 · 60건부터)', '설계서 17장'),
+    ('2026-10-04', '📰 DART 악재 공시 거르기 (유상증자 · CB · BW · 감자 · 횡령배임 · 상장폐지 …)', '수집 · 효과 연구 중 (매수 거르기 기본 꺼짐)', '설계서 18장')]
 SCHEDULE = [('07:30', '작업 스케줄러가 PC 깨워 실행 (절전 해제)'), ('06:00~08:40', '어젯밤 놓친 자료 수집 · 신호 계산 따라잡기'), ('07:40', 'KIS 종목 마스터 (정지 · 관리 · 경고)'),
             ('08:05', '휴장일 확인'), ('08:20', '장전 점검 — 연결 · 잔고 · 모르는 종목 · 신호 날짜 (주문 없음)'),
             ('08:50', '장전: 밤사이 ETF · KODEX 200 · 보유 끝 종목 시가 매도 → 예상체결가로 갭 확인 → 새 매수 (시가)'),
             ('09:02', '현금이 모자라 미룬 매수 · 장전 거절 재시도'), ('09:05~15:15', '⏱ 장중 칸 (켰을 때만 · 통과한 규칙만 · 15:15 모두 정리)'), ('09:01~15:30', '체결 반영(60초 · 체결 통보 즉시) · 실시간 평가 · 하루 손실 안전장치'), ('10:00 · 13:00', '📱 텔레그램 오전 브리핑(작동 상태 · 아침 매매) · 중간 브리핑'),
             ('15:10', '밤사이 칸 매수 자금 확인'), ('15:20', '🌙 KODEX 코스닥150 + 💤 KODEX 200 종가 매수 (밤사이)'), ('15:45', '잔고 대조 · 매매일지 · 잔고 이력 · 계좌 안전장치'),
-            ('15:50', '📥 KRX 자료 수집 (실패하면 30분마다 · 22시까지)'), ('16:20', '⏱ 오늘 1분봉'), ('16:40', '💾 장부 백업'), ('18:15', '수급 확정치'),
+            ('15:50', '📥 KRX 자료 수집 (실패하면 30분마다 · 22시까지)'), ('16:20', '⏱ 오늘 1분봉'), ('18:05', '📰 DART 오늘 공시 + 과거 이어받기'), ('16:40', '💾 장부 백업'), ('18:15', '수급 확정치'),
             ('18:40', '🎯 신호 계산 → 거래 분석 → 📅 다음 날 매도 예약(실전) → 📱 장마감 브리핑(오늘 결과 · 내일 계획) → 👥 그림자 운용 → ⏱ 장중 연구실'), ('18:30~07:00', '⏱ 과거 1분봉 채우기 (주말도)'), ('항상', 'PC 잠들지 않게 유지 (앱이 켜져 있는 동안 · 화면만 꺼짐)')]
 
 
@@ -729,6 +743,9 @@ async def api_config(req: Request):
                 if k.startswith('krx'):                                          # 새 KRX 계정 → 다음 수집 때 새로 로그인 · 확인 기록 지움
                     col.STOCK[0] = None
                     db.gmeta_set('krx_check', '')
+                elif k == 'dart_key':
+                    db.gmeta_set('dart_check', '')
+                    db.gmeta_set('dart_try', '0')
                 else:
                     db.gmeta_set('tg_check', '')
         if 'alloc' in b:
@@ -767,7 +784,7 @@ async def api_config(req: Request):
             if not ('08:31' <= t <= '08:55' and len(t) == 5):
                 raise ValueError('장전 주문 시각 08:31~08:55')
             CFG['preopen_time'] = t
-        for k in ('ws_on', 'hourly_report', 'real_ramp_on', 'sweep_on', 'tg_commands', 'resv_on', 'intraday_on'):
+        for k in ('ws_on', 'hourly_report', 'real_ramp_on', 'sweep_on', 'tg_commands', 'resv_on', 'intraday_on', 'dart_on', 'dart_filter'):
             if k in b:
                 CFG[k] = bool(b[k])
         if 'intraday_rules' in b:                                                # 장중 칸 규칙 (연구실 '통과'한 것만 실제로 씀)
@@ -1194,6 +1211,7 @@ def build_package(frm='', to=''):
             s_ = io.StringIO()
             csv.writer(s_).writerows([[d_[0] for d_ in cur.description]] + cur.fetchall())
             z.writestr('log.csv', '\ufeff' + s_.getvalue())
+            z.writestr('dart.csv', DART.export_csv(frm or '0', to or '99999999'))
         return buf.getvalue()
 
 
@@ -1343,6 +1361,41 @@ async def api_minute_export_state():
     return {'ok': True, **mn.EXPORT, 'default': default_dir(), 'dir': CFG.get('export_dir') or ''}
 
 
+@app.get('/api/dart')
+async def api_dart(frm: str = '', to: str = ''):
+    def f():
+        return {'ok': True, 'st': DART.status(int(CFG.get('dart_days') or 250)), 'recent': DART.recent(40), 'tags': DART.BAD_TAGS,
+                'study': DART.study(int(CFG.get('dart_lookback') or 5), 5, (frm or '0').replace('-', ''), (to or '99999999').replace('-', ''))}
+    return await asyncio.to_thread(f)
+
+
+@app.post('/api/job/dart')
+async def api_job_dart(req: Request):
+    """DART: run(오늘 + 과거 이어받기) · today(오늘만) · stop · test(인증키 확인)"""
+    b = await req.json()
+    k = b.get('kind') or 'run'
+    key = CFG.get('dart_key')
+    if k == 'stop':
+        DART.STATE['stop'] = True
+        return {'ok': True, 'msg': '멈추는 중 (지금 날짜까지 받고 멈춤)'}
+    if not key:
+        return {'ok': False, 'error': 'DART 인증키 없음 → ⚙️ 설정에 저장 (opendart.fss.or.kr 무료 신청)'}
+    if k == 'test':
+        def t():
+            try:
+                r = DART.test_key(key)
+                db.gmeta_set('dart_check', f"{datetime.now():%m-%d %H:%M} ok 오늘 주요사항보고 {r['n']}건")
+                return {'msg': f"✅ DART 연결 · 오늘 주요사항보고 {r['n']}건"}
+            except Exception as e:
+                db.gmeta_set('dart_check', f'{datetime.now():%m-%d %H:%M} fail {CF.clean(e)[:120]}')
+                raise
+        return await _ok(t)()
+    if DART.STATE['running']:
+        return {'ok': False, 'error': '이미 수집 중'}
+    threading.Thread(target=lambda: DART.run(key, int(CFG.get('dart_days') or 250), only_today=(k == 'today')), daemon=True).start()
+    return {'ok': True, 'msg': 'DART 공시 수집 시작' + (' (오늘만)' if k == 'today' else ' (오늘 + 과거 이어받기)')}
+
+
 @app.post('/api/save')
 async def api_save(req: Request):
     """내려받기 대신 저장 폴더(⚙️ 설정 · 분봉 카드와 같은 폴더)에 파일로 바로 저장 → 저장 경로를 돌려줌
@@ -1361,6 +1414,9 @@ async def api_save(req: Request):
             m = b.get('mode') if b.get('mode') in ('paper', 'real', 'all') else db.mode()
             data = AN.journal_csv(v, m, b.get('frm') or '', b.get('to') or '', str(b.get('q') or '')[:40]).encode('utf-8')
             name = f'tk_{v}_{m}_{stamp}.csv'
+        elif k == 'dart':
+            data = DART.export_csv(frm or '0', to or '99999999').encode('utf-8')
+            name = f"tk_dart_{(frm or 'all') + ('-' + to if to else '') if frm or to else 'all'}_{stamp}.csv"
         elif k == 'csv':
             txt = str(b.get('content') or '')
             if len(txt) > 30_000_000:
@@ -1484,7 +1540,7 @@ def keep_awake():
             hm = n.strftime('%H:%M')
             need = CFG.get('keep_awake', 'always') == 'always' \
                 or (tr.is_trading_day(n.strftime('%Y%m%d')) and '06:00' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf'] \
-                or mn.STATE['running'] or SH.STATE['running'] or IL.STATE['running']
+                or mn.STATE['running'] or SH.STATE['running'] or IL.STATE['running'] or DART.STATE['running']
             if need != on:
                 ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if need else 0))
                 db.log(('PC 잠들지 않게 유지' + (' (항상 · 앱이 켜져 있는 동안)' if CFG.get('keep_awake', 'always') == 'always' else '')) if need

@@ -16,14 +16,14 @@ import tk_db as db
 
 CONFIG_FILE = os.path.join(db.DATA_DIR, 'tk_config.json')
 ACCOUNT_KEYS = ('app_key', 'app_secret', 'account', 'hts_id')
-GLOBAL_SECRETS = ('krx_id', 'krx_pw', 'telegram_token', 'telegram_chat')
+GLOBAL_SECRETS = ('krx_id', 'krx_pw', 'telegram_token', 'telegram_chat', 'dart_key')
 DEFAULT = {'mode': 'paper', 'kis_on': False, 'cap': 10_000_000, 'cap_mode': 'auto', 'alloc': {'LVH': 40, 'REV': 25, 'DV': 0, 'ON': 35},
            'accounts': {'paper': {}, 'real': {}}, 'ws_on': True, 'dd_limit': 15, 'day_loss_limit': 4, 'pause_buy': False,
            'hourly_report': True, 'collect_time': '15:50', 'signal_time': '18:40', 'real_ramp': [30, 60, 100], 'real_ramp_days': 20,
            'real_ramp_on': False, 'caps': {'paper': None, 'real': None}, 'fee_pct': 0.0140527, 'tax_pct': 0.20, 'min_paper_days': 60,
            'sweep_on': True, 'sweep_mode': 'night', 'sweep_reserve': 5, 'gap_skip': 5, 'preopen_time': '08:50',
            'minute_on': True, 'minute_top': 200, 'minute_days': 250, 'resv_on': True, 'guard_per_min': 60, 'guard_per_day': 400, 'tg_commands': True, 'shadow_on': True,
-           'intraday_lab': True, 'keep_awake': 'always', 'intraday_on': False, 'intraday_rules': [], 'intraday_pct': 50, 'intraday_slots': 5, 'intraday_watch': 25}
+           'intraday_lab': True, 'dart_on': True, 'dart_days': 250, 'dart_filter': False, 'dart_lookback': 5, 'keep_awake': 'always', 'intraday_on': False, 'intraday_rules': [], 'intraday_pct': 50, 'intraday_slots': 5, 'intraday_watch': 25}
 
 
 # ── DPAPI ──

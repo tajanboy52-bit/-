@@ -125,7 +125,9 @@
 | `tk_minute.py` | ⏱ 1분봉 수집기 — 날짜별 대상 · KIS 분봉 조회 · 이어받기 · zip 내보내기 · 단타 앱 자료 가져오기 |
 | `tk_shadow.py` | 👥 그림자 운용 — 실험 설정 가상 동시 운용 |
 | `tk_intraday.py` | ⏱ 장중 연구실(1분봉 · 규칙 4개 · 대조군 · 판정) · 장중 칸 IN(기본 꺼짐 · 통과 규칙만) |
+| `tk_dart.py` | 📰 DART 공시 수집 · 악재 분류 · 효과 연구 · 매수 거르기(기본 꺼짐) |
+| `tk_brief.py` | 📱 텔레그램 브리핑 (10시 · 13시 · 장마감) |
 | `tk_analyze.py` | 거래내역 조회 · 분석 · 고도화 후보 · 분석 패키지 · 과거 후보 채우기 |
 | `tk_config.py` | 설정 · DPAPI 암호화 |
 | `tk_server.py` · `tk_app.html` | 서버(보안) · 화면 |
-| `tests/test_tk.py` | 종합 시험 75항목 (가짜 KRX · 가짜 KIS · 가짜 KIS 서버) |
+| `tests/test_tk.py` | 종합 시험 89항목 (가짜 KRX · 가짜 KIS · 가짜 KIS 서버) |

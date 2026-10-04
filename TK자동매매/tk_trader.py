@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 import tk_config as CF
+import tk_dart as DART
 import tk_db as db
 import tk_intraday as IL
 import tk_journal as J
@@ -494,7 +495,10 @@ def plan(cfg, equity, cash, sig_date):
             o = {'sleeve': s, 'ticker': r['ticker'], 'name': r['name'], 'ref': r['ref'] or 0, 'rank': r['rank'], 'score': r['score'],
                  'info': r['info'], 'qty': 0, 'amt': 0, 'skip': ''}
             q = S.shares(size, o['ref'] * 1.02, 10 ** 15)                    # 시가 갭 여유 2%
-            if r['ticker'] in held:
+            bd = DART.bad_recent(r['ticker'], sig_date, int(cfg.get('dart_lookback') or 5)) if cfg.get('dart_filter') and s in ('LVH', 'REV') else []
+            if bd:
+                o['skip'] = f'악재 공시: {bd[0][1]} ({bd[0][0][4:6]}/{bd[0][0][6:]})'
+            elif r['ticker'] in held:
                 o['skip'] = '이 칸이 이미 보유'
             elif free <= 0:
                 o['skip'] = f'{s} {SLOTS[s]}자리 다 참'
