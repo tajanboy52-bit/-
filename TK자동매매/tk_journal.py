@@ -76,7 +76,11 @@ _api = {}
 _api_lock = threading.Lock()
 
 
+API_LAST = {}                                      # {env: (time.time(), 오류 문구)} — 화면 연결 표시용 (마지막 KIS 호출)
+
+
 def api_hit(env, tr, ms, err=''):
+    API_LAST[env] = (__import__('time').time(), str(err)[:120] if err else '')
     k = (env, datetime.now().strftime('%Y%m%d'), tr)
     with _api_lock:
         a = _api.setdefault(k, [0, 0, 0.0, ''])

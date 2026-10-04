@@ -59,6 +59,24 @@ header{background:var(--hdr-grad);color:#fff;padding:16px 26px;display:flex;alig
 .logo-mark.logo-hanja{font-family:'Noto Serif KR','Batang','Malgun Gothic',serif;font-size:17px;font-weight:800;letter-spacing:-.5px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)}
 .logo-mark{width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);display:grid;place-items:center;font-size:23px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
 header h1{margin:0;font-size:22px;letter-spacing:-.4px;font-weight:var(--w8)}
+/* 머리글: 왼쪽 연결 표시 · 가운데 로고+이름 · 오른쪽 상태 */
+header.hd3{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding:14px 22px}
+.brand{display:flex;align-items:center;gap:13px;justify-self:center}
+.brand-logo{flex-shrink:0;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
+.brand-t{text-align:left}
+header.hd3 h1{font-size:29px;font-weight:900;letter-spacing:-.8px;line-height:1.1;text-shadow:0 2px 8px rgba(0,0,0,.35);font-family:'Pretendard','Malgun Gothic','Apple SD Gothic Neo',sans-serif}
+header.hd3 h1 .tk{font-weight:900;letter-spacing:0;margin-right:2px;filter:drop-shadow(0 1px 1px rgba(0,0,0,.4))}
+header.hd3 .sub{font-size:12.5px;margin-top:4px;color:rgba(255,255,255,.85)}
+.hd-r{display:flex;align-items:center;gap:8px;justify-self:end}
+.hd-r .chips{margin-left:0;justify-content:flex-end}
+.conn{display:flex;gap:6px;flex-wrap:wrap;justify-self:start;align-items:center}
+.cn{display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.24);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:800;white-space:nowrap;cursor:help}
+.cn i{width:9px;height:9px;border-radius:50%;background:#cbd5e1;flex-shrink:0}
+.cn.ok i{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.25),0 0 8px #22c55e}
+.cn.bad{background:rgba(127,29,29,.55);border-color:rgba(252,165,165,.55)}.cn.bad i{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.25)}
+.cn.idle{opacity:.85}
+@media (max-width:1100px){header.hd3{grid-template-columns:1fr}.brand{order:1}.conn{order:2;justify-self:center;justify-content:center}.hd-r{order:3;justify-self:center}.hd-r .chips{justify-content:center}}
+@media (max-width:640px){header.hd3 h1{font-size:22px}.brand-logo{width:46px;height:46px}.cn{font-size:11.5px;padding:4px 9px}}
 header h1 .tk{background:linear-gradient(180deg,#fff1c7 0%,#f2c96b 55%,#d6a444 100%);-webkit-background-clip:text;background-clip:text;color:transparent;letter-spacing:.2px}
 header .sub{display:block;color:rgba(255,255,255,.82);font-size:12.5px;font-weight:var(--w6);margin-top:2px}
 .chips{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
@@ -211,12 +229,21 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 </head>
 <body class="mode-paper">
 <div class="hdr">
-  <header>
-    <div class="logo-mark logo-hanja">台炅</div>
-    <div><h1><span class="tk">TK</span>자동매매 시스템</h1><span class="sub">한국투자증권 Open API · 회전형 자동매매 · 모의 ↔ 실전 같은 시스템</span></div>
-    <div class="chips" id="chips"></div>
+  <header class="hd3">
+    <div class="conn" id="conn" title="연결 상태 — 초록 연결 · 빨강 끊김/미설정 · 회색 대기"></div>
+    <div class="brand"><svg class="brand-logo" viewBox="0 0 64 64" width="58" height="58" aria-label="台炅">
+      <defs><linearGradient id="lgGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6d5"/><stop offset=".5" stop-color="#f3cd72"/><stop offset="1" stop-color="#c38b2a"/></linearGradient>
+        <linearGradient id="lgBg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#081a2c"/><stop offset="1" stop-color="#0f3d47"/></linearGradient>
+        <filter id="lgSh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity=".45"/></filter></defs>
+      <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#lgBg)" stroke="url(#lgGold)" stroke-width="2.4"/>
+      <g opacity=".55"><rect x="11" y="47" width="4" height="7" rx="1" fill="#34d399"/><rect x="19" y="44" width="4" height="10" rx="1" fill="#f87171"/><rect x="27" y="45" width="4" height="9" rx="1" fill="#34d399"/>
+        <rect x="35" y="41" width="4" height="13" rx="1" fill="#34d399"/><rect x="43" y="38" width="4" height="16" rx="1" fill="#34d399"/><rect x="51" y="34" width="4" height="20" rx="1" fill="#34d399"/></g>
+      <polyline points="9,49 21,45 29,47 37,41 45,37 55,30" fill="none" stroke="url(#lgGold)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="32" y="34" text-anchor="middle" font-family="'Noto Serif KR','Batang','BatangChe',serif" font-weight="900" font-size="21" letter-spacing="-1" fill="url(#lgGold)" filter="url(#lgSh)">台炅</text></svg>
+      <div class="brand-t"><h1><span class="tk">TK</span>자동매매 시스템</h1><span class="sub">한국투자증권 Open API · 회전형 자동매매 · 모의 ↔ 실전 같은 시스템</span></div></div>
+    <div class="hd-r"><div class="chips" id="chips"></div>
     <div style="position:relative"><button class="th-btn" id="thBtn" title="화면 테마">🎨</button>
-      <div class="th-pop" id="thPop"><div class="th-grid"></div><div class="tx-row"><span class="tx-l">글씨</span><div class="tx-seg"><button data-x="normal">보통</button><button data-x="bold">굵게</button><button data-x="bolder">더 굵게</button></div></div></div></div>
+      <div class="th-pop" id="thPop"><div class="th-grid"></div><div class="tx-row"><span class="tx-l">글씨</span><div class="tx-seg"><button data-x="normal">보통</button><button data-x="bold">굵게</button><button data-x="bolder">더 굵게</button></div></div></div></div></div>
   </header>
   <div class="modebar"><span class="dot"></span><span id="modeTxt">모의투자</span><span style="margin-left:auto;font-weight:600;opacity:.9" id="modeSub"></span>
     <span class="mseg" title="계좌 전환 — 시스템은 그대로, 계좌 설정만 바뀜"><button data-m="paper" onclick="setMode('paper')">🟢 모의</button><button data-m="real" onclick="setMode('real')">🔴 실전</button></span></div>
@@ -318,6 +345,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
     <div class="row" style="margin-top:8px"><span class="mut">저장 폴더</span><input id="mnDir" style="flex:1;min-width:220px" placeholder="비우면 바탕화면\TK자료">
       <button class="btn" id="mnPick">📁 폴더 선택</button><button class="btn p" id="mnZip">📦 분봉 zip 저장</button><button class="btn" id="mnOpen">📂 폴더 열기</button></div>
     <div class="row" style="margin-top:6px"><label style="margin:0"><input type="checkbox" id="mnSplit" checked> 첨부용으로 나누기 — 파일 하나당</label><input id="mnPart" size="4" value="25"><span class="mut">MB 이하 (날짜 단위로 끊어서 조각마다 따로 열림)</span></div>
+    <div class="bar" id="mnXWrap" style="margin-top:6px;display:none"><i id="mnXBar" style="width:0%"></i></div>
     <div class="mut" id="mnExp" style="font-size:12.5px;margin-top:4px">기간을 비우면 전체 · 하루치는 약 2~4MB · 251일 전체는 1GB 안팎 (Claude에게 보낼 때는 최근 몇 주만 고르세요)</div>
     <div style="margin-top:12px"><div class="bar"><i id="mnBar" style="width:0%"></i></div></div>
     <div class="mut" id="mnMsg" style="margin-top:8px;font-size:13.5px"></div>
@@ -467,7 +495,8 @@ function header(s){document.body.className=s.mode==='real'?'mode-real':'mode-pap
   const c=[];c.push(`<span class="chip ${s.kis_on?'live':'idle'}">자동주문 ${s.kis_on?'ON':'OFF'}</span>`);
   if(s.halt)c.push('<span class="chip warn">⛔ 정지</span>');if(s.auto_pause||s.pause_buy)c.push('<span class="chip warn">⏸ 매수 중지</span>');if(s.block_new)c.push('<span class="chip warn">⚠️ 매수 차단</span>');
   c.push(`<span class="chip ghost">일봉 ${md(s.data.last_bar)} · 수급 ${md(s.data.last_flow)}</span>`);
-  c.push(`<span class="chip ghost">📡 ${s.ws.connected?'실시간 '+s.ws.subs.length:(s.ws.enabled?'대기':'끔')}</span>`);c.push(`<span class="chip ghost">${s.version}</span>`);$('#chips').innerHTML=c.join('')}
+  c.push(`<span class="chip ghost">📡 ${s.ws.connected?'실시간 '+s.ws.subs.length:(s.ws.enabled?'대기':'끔')}</span>`);c.push(`<span class="chip ghost">${s.version}</span>`);$('#chips').innerHTML=c.join('');
+  $('#conn').innerHTML=(s.conn||[]).map(x=>`<span class="cn ${x.st}" title="${x.name}: ${x.tip.replace(/"/g,'&quot;')}"><i></i>${x.name}${x.st==='bad'?' ✕':''}</span>`).join('')}
 function kpi(v,l,s='',c=''){return `<div class="kpi ${c}"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:''}</div>`}
 // ── 대시보드 ──
 function dash(s){const e=s.equity,a=[];
@@ -786,6 +815,7 @@ $('#mnToday').onclick=()=>act('/api/job/minute',{kind:'today'});$('#mnStop').onc
 $('#mnBf').onclick=()=>{if(confirm('과거 1분봉 채우기를 지금 시작합니다 (장중이면 주문 조회와 호출 한도를 나눠 씀 — 평소엔 밤에 자동)'))act('/api/job/minute',{kind:'backfill'})};
 let MXT=null;
 async function mnExpPoll(){const r=await get('/api/minute/export_state');if(!$('#mnDir').value){$('#mnDir').value=r.dir||'';$('#mnDir').placeholder='비우면 '+r.default}
+  $('#mnXWrap').style.display=r.running||r.path?'block':'none';$('#mnXBar').style.width=(r.running?r.pct:(r.path&&!r.err?100:0))+'%';
   if(r.running){$('#mnExp').innerHTML=`⏳ 저장 중 ${r.pct}% · ${r.msg} · ${r.mb}MB<br><span class="mono">${r.path}</span>`;MXT=setTimeout(mnExpPoll,1500);return}
   if(r.err)$('#mnExp').innerHTML=`❌ 저장 실패: ${r.err}`;else if(r.path)$('#mnExp').innerHTML=`✅ 저장됨 (${r.mb}MB · ${r.msg})<br><b class="mono">${r.path}</b>`+((r.paths||[]).length>1?`<br>${r.paths.map(p=>p.split(/[\\/]/).pop()).join('<br>')}`:'')}
 $('#mnPick').onclick=async()=>{toast('폴더 선택 창을 띄웁니다 (작업 표시줄에 숨어 있을 수 있음)');const r=await post('/api/pick_folder',{start:$('#mnDir').value});if(r.ok&&r.path)$('#mnDir').value=r.path;else if(!r.ok)toast(r.error,false)};

@@ -595,6 +595,9 @@ check('📦 분석 패키지 기간 고르기: 그 기간 주문 · 매매일지
 check('💾 모든 내려받기 → 저장 폴더에 파일로: 분석 패키지 · 거래내역 CSV · 표 CSV · 이름에 경로 문자 막음', _e['ok'] and all(r_['ok'] and os.path.dirname(r_['path']) == os.path.normpath(_xd2)
       and os.path.exists(r_['path']) for r_ in (_s1, _s2, _s3)) and zipfile.is_zipfile(_s1['path']) and '/' not in os.path.basename(_s3['path'])
       and not _bad['ok'], ' · '.join(os.path.basename(r_['path']) for r_ in (_s1, _s2, _s3)))
+_cn = {c_['name'].split()[0]: c_['st'] for c_ in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN}).json()['conn']}
+check('머리글 연결 표시: KIS · KRX · 텔레그램 · 실시간 (연결 · 끊김/미설정 · 대기)', set(_cn) == {'KIS', 'KRX', '텔레그램', '실시간'} and _cn['KRX'] == 'ok'
+      and _cn['텔레그램'] == 'bad' and all(v_ in ('ok', 'bad', 'idle') for v_ in _cn.values()), str(_cn))
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

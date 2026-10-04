@@ -344,7 +344,7 @@ def _state():
     mc = db.mconn()
     acc = {m: {k: CF.mask(CF.acct(CFG, m).get(k)) for k in CF.ACCOUNT_KEYS} for m in ('paper', 'real')}
     return {'app': APP_NAME, 'version': APP_VERSION, 'now': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'mode': db.mode(),
-            'trading_day': tr.is_trading_day(d), 'kis_on': bool(CFG.get('kis_on')), 'configured': tr.configured(CFG),
+            'trading_day': tr.is_trading_day(d), 'kis_on': bool(CFG.get('kis_on')), 'configured': tr.configured(CFG), 'conn': conn_status(),
             'halt': tr.halted(), 'auto_pause': db.meta_get('auto_pause'), 'pause_buy': bool(CFG.get('pause_buy')), 'block_new': db.meta_get('block_new'),
             'equity': lastq, 'start_value': float(db.meta_get('start_value') or 0), 'curve': [[r['date'], r['value']] for r in eq],
             'intraday': [[r[0][8:], r[1]] for r in x.execute('SELECT ts, value FROM intraday WHERE ts>=? ORDER BY ts', (d,))],
@@ -374,6 +374,41 @@ def _state():
             'intraday': {'passed': sorted(IL.passed()), 'rules': IL.RULES, 'watch': IL.LIVE['watch'], 'signals': IL.LIVE['signals'][:10], 'last': IL.LIVE['last'],
                          'lab': dict(IL.STATE)},
             'log': [dict(r) for r in mc.execute('SELECT * FROM log ORDER BY id DESC LIMIT 300')]}
+
+
+def conn_status():
+    """헤더 왼쪽 연결 표시: KIS(지금 모드) · KRX · 텔레그램 · 실시간 → [{name, st: ok|bad|idle, tip}]"""
+    out = []
+    m = db.mode()
+    a = CF.acct(CFG, m)
+    if not tr.configured(CFG):
+        out.append({'name': 'KIS ' + ('실전' if m == 'real' else '모의'), 'st': 'bad', 'tip': '앱키 · 시크릿 · 계좌 미설정 (⚙️ 설정)'})
+    else:
+        last = J.API_LAST.get(m)
+        acc = CF.mask(a.get('account'))
+        if last and time.time() - last[0] < 3600:
+            out.append({'name': 'KIS ' + ('실전' if m == 'real' else '모의'), 'st': 'bad' if last[1] else 'ok',
+                        'tip': f"{acc} · 마지막 호출 {datetime.fromtimestamp(last[0]):%H:%M}" + (f' · 오류: {last[1]}' if last[1] else ' 정상')})
+        else:
+            out.append({'name': 'KIS ' + ('실전' if m == 'real' else '모의'), 'st': 'idle', 'tip': f'{acc} · 설정됨 · 최근 1시간 호출 없음 (장 시간 · 🔌 연결 테스트로 확인)'})
+    sc = secret_status()
+    for key, nm, saved in (('krx', 'KRX', sc['krx']['id'] and sc['krx']['pw']), ('tg', '텔레그램', sc['tg']['token'] and sc['tg']['chat'])):
+        c = sc[key]['check']
+        if not saved:
+            out.append({'name': nm, 'st': 'bad', 'tip': '저장 안 됨 (⚙️ 설정)'})
+        elif c:
+            out.append({'name': nm, 'st': 'ok' if c['ok'] else 'bad', 'tip': f"{c['at']} {'정상' if c['ok'] else '실패'} · {c['msg']}"})
+        else:
+            out.append({'name': nm, 'st': 'idle', 'tip': '저장됨 · 아직 확인 안 함 (⚙️ 설정에서 테스트)'})
+    w = rtws.STATE
+    if not CFG.get('ws_on', True):
+        out.append({'name': '실시간', 'st': 'idle', 'tip': '웹소켓 꺼짐 (⚙️ 설정)'})
+    elif w.get('connected'):
+        out.append({'name': '실시간', 'st': 'ok', 'tip': f"웹소켓 연결 · {len(w.get('subs') or [])}종목 · 체결통보 {'켜짐' if w.get('notice') else '없음'}"})
+    else:
+        out.append({'name': '실시간', 'st': 'bad' if w.get('err') and tr.is_trading_day() and '09:00' <= datetime.now().strftime('%H:%M') <= '15:30' else 'idle',
+                    'tip': '장 시간(08:30~15:35)에만 연결' + (f" · 마지막 오류 {w.get('err')[:80]}" if w.get('err') else '')})
+    return out
 
 
 def _eta(st):
