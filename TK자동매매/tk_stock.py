@@ -154,16 +154,24 @@ def analyze(t, cfg=None, chart_days=500):
         bad5 = []
     held = []
     for mode in ('paper', 'real'):
-        for l in db.conn(mode).execute("SELECT * FROM lots WHERE ticker=? AND status IN ('보유','주문')", (t,)):
+        for l in db.conn(mode).execute("SELECT * FROM lots WHERE ticker=? AND status IN ('보유','주문','대기')", (t,)):
             l = dict(l)
-            held.append({'mode': mode, 'sleeve': l['sleeve'], 'qty': l['qty'], 'entry_px': l['entry_px'], 'entry_date': l['entry_date'], 'days': l['days'],
-                         'sell_flag': l['sell_flag'], 'ret': _num((c / l['entry_px'] - 1) * 100) if l['entry_px'] else None})
+            try:
+                inf = json.loads(l['entry_info'] or '{}')
+            except ValueError:
+                inf = {}
+            held.append({'mode': mode, 'sleeve': l['sleeve'], 'qty': l['qty'] or inf.get('qty'), 'entry_px': l['entry_px'], 'entry_date': l['entry_date'], 'days': l['days'],
+                         'sell_flag': l['sell_flag'], 'ret': _num((c / l['entry_px'] - 1) * 100) if l['entry_px'] else None, 'status': l['status'], 'id': l['id'],
+                         'rule': inf.get('exit_rule') if l['sleeve'] == 'MAN' else l['sleeve']})
     # ── 판정
     verdict, level, notes = '', 'none', []
     picked = {s_: rk for s_, rk in sig.items() if rk < 100 and al.get(s_, 0) > 0}
-    if held:
+    if held and held[0]['status'] == '대기':
         h = held[0]
-        verdict, level = f"보유 중 · {h['sleeve']} {h['qty']}주 · 매수가 {h['entry_px'] or 0:,.0f}원 ({h['ret'] or 0:+.2f}%)", 'hold'
+        verdict, level = f"✋ 수동매수 대기 · {h['qty']}주 → 다음 장전 08:50 시가", 'hold'
+    elif held:
+        h = held[0]
+        verdict, level = f"보유 중 · {'✋ 수동매수' if h['sleeve'] == 'MAN' else h['sleeve']} {h['qty']}주 · {'주문 중' if h['status'] == '주문' else '매수가 ' + format(h['entry_px'] or 0, ',.0f') + '원 (' + format(h['ret'] or 0, '+.2f') + '%)'}", 'hold'
         if h['sell_flag']:
             notes.append('다음 장전 08:50 매도 예정')
     elif picked:

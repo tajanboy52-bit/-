@@ -682,6 +682,32 @@ check('🔍 종목분석: 검색 · 오늘 매수 예정 종목 = 매수 판정(
       and _sa['plan']['target'] and _sa['plan']['caution'] and len(_ch['d']) == len(_ch['c']) == len(_ch['e9']) > 100 and 'LVH' in _sa['hist']
       and _sb['ok'] and _sb['level'] in ('none', 'watch') and _sb['ranks']['LVH']['rank'] >= _sb['ranks']['LVH']['n'] - 5 and not _se['ok'] and '일봉이 없음' in _se['error'],
       f"{_sa['info']['name']}: {_sa['verdict']} · 목표 {_sa['plan']['target_pct']}% / {_sb['verdict'][:34]}")
+_SVtc, _SVcf = SV.tr.client, SV.tr.configured
+SV.tr.client = lambda c, m=None: kc
+SV.tr.configured = lambda c, m=None: True
+SV.CFG['kis_on'] = True
+SV.tr.db.meta_set('halt', ''); SV.tr.db.meta_set('auto_pause', ''); SV.tr.db.meta_set('block_new', ''); SV.CFG['pause_buy'] = False
+_mt = [t_ for t_ in D['P']['close'].columns if t_ not in _heldt and float(D['P']['close'].at[kc.d, t_] or 0) > 0][3:6]
+_b1 = cli.post('/api/stock/buy', json={'ticker': _mt[0], 'amt': 300000, 'rule': 'LVH'}, headers={'X-TK-Token': SV.TOKEN}).json()
+_b2 = cli.post('/api/stock/buy', json={'ticker': _mt[1], 'qty': 2, 'rule': 'none'}, headers={'X-TK-Token': SV.TOKEN}).json()
+_b3 = cli.post('/api/stock/buy', json={'ticker': _mt[2], 'qty': 1, 'rule': 'REV'}, headers={'X-TK-Token': SV.TOKEN}).json()
+_bx = cli.post('/api/stock/buy', json={'ticker': _mt[2], 'amt': 10 ** 10, 'rule': 'REV'}, headers={'X-TK-Token': SV.TOKEN}).json()
+_c3 = cli.post('/api/stock/cancel', json={'lot_id': _b3.get('lot_id')}, headers={'X-TK-Token': SV.TOKEN}).json()
+_sq = cli.get(f'/api/stock/{_mt[0]}', headers={'X-TK-Token': SV.TOKEN}).json()
+clock['hm'] = '08:50'
+tr.man_queue_send({**SV.CFG, 'guard_per_min': 10 ** 9, 'guard_per_day': 10 ** 9}, kc, kc.d)
+kc.settle('open'); tr.sync(kc, kc.d)
+_ml = {r_['ticker']: dict(r_) for r_ in db.conn().execute("SELECT * FROM lots WHERE sleeve='MAN' AND ticker IN (?,?,?)", tuple(_mt))}
+_okq = all(b_['ok'] for b_ in (_b1, _b2, _b3)) and (_b1['queued'] or True) and not _bx['ok'] and '한도' in _bx['error'] and _c3['ok']
+_d12 = [x_ for x_ in db.trading_days('0', kc.d) if x_ <= kc.d][-12]
+db.conn().execute("UPDATE lots SET entry_date=? WHERE sleeve='MAN' AND ticker IN (?,?)", (_d12, _mt[0], _mt[1])); db.conn().commit()
+tr.signal_job(SV.CFG, kc.d)
+_f1 = db.conn().execute("SELECT sell_flag, sell_reason FROM lots WHERE id=?", (_ml[_mt[0]]['id'],)).fetchone()
+_f2 = db.conn().execute("SELECT sell_flag FROM lots WHERE id=?", (_ml[_mt[1]]['id'],)).fetchone()
+SV.tr.client, SV.tr.configured = _SVtc, _SVcf
+check('✋ 종목분석 수동매수: 주문(장 밖이면 장전 대기) · 15% 한도 · 대기 취소 · 장전 시가 체결 · 칸 MAN · 청산 규칙(10일 → 매도 표시 · 직접 매도는 그대로)',
+      _okq and _sq['level'] == 'hold' and _ml[_mt[0]]['status'] == '보유' and _ml[_mt[1]]['status'] == '보유' and _ml[_mt[2]]['status'] == '취소'
+      and tuple(_f1) == (1, 'hold20') and _f2[0] == 0, f"{_b1['msg'][:40]} · {_sq['verdict'][:30]} · {tuple(_f1)}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──

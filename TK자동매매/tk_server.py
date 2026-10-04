@@ -318,6 +318,12 @@ def _state():
     for s, m in S.SLEEVES.items():
         ls = [l for l in lots if l['sleeve'] == s and l['status'] == '보유']
         cl = list(x.execute("SELECT pnl, ret FROM lots WHERE sleeve=? AND status='청산'", (s,)))
+        if s == 'MAN':                                                              # ✋ 수동매수: 비율 없음 · 고른 청산 규칙
+            v_ = sum(l['qty'] * l['px'] for l in ls)
+            sleeves.append({'key': s, **m, 'pct': None, 'limit': v_ or 1, 'value': v_, 'npos': len(ls), 'slots': None, 'on': True, 'mode': '종목분석에서 직접',
+                            'eval': sum(l['eval'] for l in ls), 'realized': sum(r[0] or 0 for r in cl), 'closed': len(cl),
+                            'win': sum(1 for r in cl if (r[0] or 0) > 0) / len(cl) * 100 if cl else None, 'avg': sum(r[1] or 0 for r in cl) / len(cl) if cl else None})
+            continue
         if s == 'IN':                                                               # 장중 칸: 낮에 노는 돈 · 그날 정리
             sleeves.append({'key': s, **m, 'pct': None, 'limit': sum(l['qty'] * l['px'] for l in ls) or 1, 'value': sum(l['qty'] * l['px'] for l in ls), 'npos': len(ls),
                             'slots': int(CFG.get('intraday_slots') or 5), 'on': bool(CFG.get('intraday_on')), 'mode': ', '.join(IL.rules_on(CFG)[0]) or '통과 규칙 없음',
@@ -1436,6 +1442,83 @@ async def api_stock(ticker: str, days: int = 500):
         return await asyncio.to_thread(f)
     except Exception as e:
         return JSONResponse({'ok': False, 'error': CF.clean(e)}, 400)
+
+
+RULES_KO = {'LVH': '🏔 저변동고점 방식 — 10거래일 뒤 시가 매도', 'REV': '🔄 반전·수급 방식 — 종가가 9일선 위로 올라선 다음 날 시가 · 늦어도 10거래일', 'none': '직접 매도 (자동 매도 안 함)'}
+
+
+def stock_buy(b):
+    """✋ 종목분석에서 수동매수 — 장중이면 지금 주문 · 장 밖이면 다음 장전 08:50 시가로 대기 · 청산은 고른 규칙대로 자동"""
+    tk = str(b.get('ticker') or '').strip().zfill(6)
+    rule = b.get('rule') if b.get('rule') in RULES_KO else 'none'
+    if not tr.configured(CFG):
+        raise ValueError(f"{'실전' if db.mode() == 'real' else '모의'} 계좌 설정이 없음 (⚙️ 설정)")
+    if not tr.can_order(CFG):
+        raise ValueError('자동주문이 꺼져 있거나 정지 상태 (⚙️ 설정에서 켜기)')
+    if tr.buy_paused(CFG) or db.meta_get('block_new'):
+        raise ValueError('새 매수 중지 · 차단 상태 — 대시보드 경고 확인')
+    if db.mode() == 'real' and b.get('confirm') != '실전매수':
+        raise ValueError('실전 계좌 — 확인 필요')
+    st = db.stocks().get(tk) or {}
+    if st.get('halt'):
+        raise ValueError('거래정지 종목')
+    kc = tr.client(CFG)
+    d = tr.today()
+    hm = datetime.now().strftime('%H:%M')
+    live = tr.is_trading_day(d) and '09:00' <= hm < '15:20'
+    try:
+        p = kc.price(tk)
+        ref, nm = float(p['price'] or 0), (p['raw'].get('hts_kor_isnm') or st.get('name') or tk).strip()
+    except Exception:
+        r_ = db.mconn().execute('SELECT close FROM bars WHERE ticker=? ORDER BY date DESC LIMIT 1', (tk,)).fetchone()
+        ref, nm = float(r_[0]) if r_ else 0.0, st.get('name') or tk
+    if ref <= 0:
+        raise ValueError('가격을 알 수 없음')
+    price = float(b.get('price') or 0)
+    qty = int(b.get('qty') or 0) or int(float(b.get('amt') or 0) // ((price or ref) * 1.003))
+    if qty <= 0:
+        raise ValueError('수량 또는 금액을 넣으세요 (1주 이상)')
+    base = tr.cap(CFG)
+    if (price or ref) * qty > base * 0.15:
+        raise ValueError(f'1회 한도(운용 자금의 15% = {base * 0.15:,.0f}원) 초과 — {(price or ref) * qty:,.0f}원')
+    info = {'exit_rule': rule, 'manual': True, 'from': '종목분석', 'qty': qty, 'limit': price or None}
+    with tr._lock:
+        lid = tr.new_lot('MAN', tk, nm, '', d, {'ref': ref, 'info': json.dumps(info, ensure_ascii=False)})
+        x = db.conn()
+        if not live:
+            x.execute("UPDATE lots SET status='대기' WHERE id=?", (lid,))
+            x.commit()
+            db.log(f"✋ 수동매수 대기: {nm} {qty}주 → 다음 장전 08:50 시가 · 청산 {RULES_KO[rule]}", 'warn')
+            return {'msg': f'{nm} {qty}주 — 장 밖이라 다음 거래일 08:50 장전 시가로 주문 대기 · 청산: {RULES_KO[rule]}', 'queued': True, 'lot_id': lid}
+        J.decision(x, d, d, {'sleeve': 'MAN', 'ticker': tk, 'name': nm, 'ref': ref, 'qty': qty, 'amt': qty * ref}, 'buy', '✋ 수동매수 (종목분석)')
+        x.commit()
+        oid = tr.send(CFG, kc, 'buy', 'man_buy', lid, 'MAN', tk, nm, qty, '00' if price else '01', price, sig_ref=ref)
+    if not oid:
+        raise RuntimeError('주문 실패 — 로그 확인')
+    return {'msg': f"{nm} {qty}주 {'지정가 ' + format(int(price), ',') + '원' if price else '시장가'} 매수 주문 · 청산: {RULES_KO[rule]}", 'queued': False, 'lot_id': lid}
+
+
+@app.post('/api/stock/buy')
+async def api_stock_buy(req: Request):
+    b = await req.json()
+    return await _ok(lambda: stock_buy(b))()
+
+
+@app.post('/api/stock/cancel')
+async def api_stock_cancel(req: Request):
+    """수동매수 대기 취소 (아직 주문 전인 것만)"""
+    b = await req.json()
+
+    def f():
+        x = db.conn()
+        r_ = x.execute("SELECT name FROM lots WHERE id=? AND sleeve='MAN' AND status='대기'", (int(b.get('lot_id') or 0),)).fetchone()
+        if not r_:
+            raise ValueError('대기 중인 수동매수가 아님 (이미 주문됨)')
+        x.execute("UPDATE lots SET status='취소', updated=? WHERE id=?", (db.now_s(), int(b['lot_id'])))
+        x.commit()
+        db.log(f'✋ 수동매수 대기 취소: {r_[0]}')
+        return f'{r_[0]} 수동매수 대기 취소'
+    return await _ok(f)()
 
 
 @app.post('/api/save')

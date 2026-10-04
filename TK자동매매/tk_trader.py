@@ -39,7 +39,7 @@ DEFAULT_ALLOC = {'LVH': 40, 'REV': 25, 'DV': 0, 'ON': 35}         # 회전형: �
 COSTS = {'LVH': 0.25, 'REV': 0.25, 'DV': 0.25, 'ON': 0.05}        # 손익 표시용 왕복 비용 추정 %
 KIND = {'entry': '매수', 'hold20': '보유 기간 끝(LVH 10일)', 'ema9': '9EMA 복귀', 'hold10': '10일 만료', 'dv_rebal': '배당·가치 교체', 'on_buy': '밤사이 매수(종가)',
         'on_sell': '밤사이 매도(시가)', 'manual': '수동', 'delist': '거래 끊김 정리', 'sw_buy': '남는 현금 → KODEX 200', 'sw_sell': 'KODEX 200 → 현금',
-        'in_buy': '장중 매수', 'in_tp': '장중 익절', 'in_sl': '장중 손절', 'in_close': '장중 15:15 정리'}
+        'man_buy': '✋ 수동매수', 'in_buy': '장중 매수', 'in_tp': '장중 익절', 'in_sl': '장중 손절', 'in_close': '장중 15:15 정리'}
 STATE = {'running': False, 'last_sync': '', 'last_err': ''}
 _lock = threading.Lock()
 NOTIFY = None                     # tk_server가 텔레그램 함수를 넣어 줌
@@ -615,6 +615,7 @@ def preopen(cfg, kc, d):
         send(cfg, kc, 'buy', 'entry', lid, o['sleeve'], o['ticker'], o['name'], o['qty'], sig_ref=o['ref'])
         if halted():
             return
+    man_queue_send(cfg, kc, d)
     db.meta_set(f'defer_{d}', json.dumps([{k: o.get(k) for k in ('sleeve', 'ticker', 'name', 'qty', 'ref', 'rank', 'score', 'info')} for o in pl['defer']],
                                          ensure_ascii=False))
     if pl['defer']:
@@ -622,6 +623,20 @@ def preopen(cfg, kc, d):
         if sweep_on(cfg) and (cfg.get('sweep_mode') or 'night') != 'night':        # 모자란 만큼 KODEX 200을 시가에 팔아 09:02 매수 자금으로
             sells = sum((l['last_px'] or 0) * l['qty'] for l in pl['sells'])
             sweep_sell(cfg, kc, d, sum(o['amt'] for o in pl['defer']) * 1.03 - sells * 0.99, '09:02 미룬 매수 자금')
+
+
+def man_queue_send(cfg, kc, d):
+    """✋ 장 밖에서 넣은 수동매수(대기) → 장전 시가 시장가 주문"""
+    x = db.conn()
+    for l in [dict(r) for r in x.execute("SELECT * FROM lots WHERE sleeve='MAN' AND status='대기'")]:
+        info = json.loads(l['entry_info'] or '{}')
+        x.execute("UPDATE lots SET status='주문', signal_date=?, updated=? WHERE id=?", (d, db.now_s(), l['id']))
+        J.decision(x, d, d, {'sleeve': 'MAN', 'ticker': l['ticker'], 'name': l['name'], 'ref': l['sig_ref'], 'qty': info.get('qty'), 'amt': (info.get('qty') or 0) * (l['sig_ref'] or 0)},
+                   'buy', '✋ 수동매수 (대기 → 장전 시가)')
+        x.commit()
+        send(cfg, kc, 'buy', 'man_buy', l['id'], 'MAN', l['ticker'], l['name'], int(info.get('qty') or 0), sig_ref=l['sig_ref'])
+        if halted():
+            return
 
 
 def resv_supported(kc):
@@ -739,6 +754,8 @@ def late_open(cfg, kc, d):
         for o in pl['buys'] + pl['defer']:
             J.decision(x, d, sd, o, 'skip', 'PC가 늦게 켜져 장전 매수를 놓침')
         x.commit()
+    if not halted() and not buy_paused(cfg):                                          # ✋ 사용자가 직접 넣은 수동매수 대기는 늦게라도 지금
+        man_queue_send(cfg, kc, d)
 
 
 def deferred(cfg, kc, d):
@@ -912,6 +929,17 @@ def signal_job(cfg, d, progress=None):
         last = col.loc[:d].dropna()
         lp = float(last.iloc[-1]) if len(last) else l['last_px']
         flag, why = l['sell_flag'], l['sell_reason']
+        rule = l['sleeve']
+        if l['sleeve'] == 'MAN':                                                     # ✋ 수동매수: 고른 청산 규칙대로 (none이면 자동 매도 안 함)
+            try:
+                rule = json.loads(l['entry_info'] or '{}').get('exit_rule') or 'none'
+            except ValueError:
+                rule = 'none'
+        if not flag and rule in ('LVH', 'REV') and l['sleeve'] == 'MAN':
+            if rule == 'LVH' and nd >= S.LVH['hold']:
+                flag, why = 1, 'hold20'
+            elif rule == 'REV' and nd >= 1 and (S.rev_exit(F, d, t) or nd >= S.REV['hold']):
+                flag, why = 1, ('ema9' if S.rev_exit(F, d, t) else 'hold10')
         if not flag:
             if l['sleeve'] == 'LVH' and nd >= S.LVH['hold']:
                 flag, why = 1, 'hold20'

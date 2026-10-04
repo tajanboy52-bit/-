@@ -43,6 +43,7 @@ SLEEVES = {
     'ON': {'name': '밤사이 ETF', 'icon': '🌙', 'color': '#1d4ed8'},
     'SW': {'name': '남는 현금 → KODEX 200', 'icon': '💤', 'color': '#64748b'},
     'IN': {'name': '장중 (낮에 노는 돈)', 'icon': '⏱', 'color': '#be123c'},
+    'MAN': {'name': '수동매수', 'icon': '✋', 'color': '#94a3b8'},
 }
 
 

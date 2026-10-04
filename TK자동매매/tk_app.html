@@ -117,6 +117,7 @@ main{max-width:1440px;margin:0 auto;padding:20px 24px 70px}
 .sk-bar{height:8px;border-radius:5px;background:#e2e8f0;overflow:hidden}.sk-bar i{display:block;height:100%;background:var(--accent)}
 .sk-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.sk-tools label{margin:0;font-size:13px}
 #skChart{position:relative}#skTip{position:absolute;pointer-events:none;background:rgba(15,23,42,.94);color:#fff;border-radius:10px;padding:8px 11px;font-size:12.5px;line-height:1.55;display:none;z-index:5;min-width:170px}
+.sk-buy{margin-top:12px;padding:12px 14px;border:1px dashed var(--accent);border-radius:12px;background:rgba(240,253,250,.6)}
 .kpi.click{cursor:pointer}.kpi.click:hover{border-color:var(--accent)}
 /* 모델 카드 */
 .mc{border:1px solid var(--card-bd);border-radius:13px;padding:15px 16px;border-top:4px solid var(--c);background:var(--card);
@@ -502,7 +503,7 @@ const won=v=>v==null||isNaN(v)?'-':Math.round(v).toLocaleString('ko-KR');const m
 const pct=(v,d=2)=>v==null||isNaN(v)?'-':(v>0?'+':'')+v.toFixed(d)+'%';const cls=v=>v>0?'up':(v<0?'dn':'');const sw=v=>`<span class="${cls(v)}">${v>0?'+':''}${won(v)}</span>`;
 const md=d=>d?d.slice(4,6)+'/'+d.slice(6,8):'-';
 const KIND={sw_buy:'KODEX 200 매수(종가)',sw_sell:'KODEX 200 매도',entry:'매수',hold20:'보유 기간 끝(10일)',ema9:'9EMA 복귀',hold10:'10일 만료',dv_rebal:'배당·가치 교체',on_buy:'밤사이 매수',on_sell:'밤사이 매도',manual:'수동',delist:'거래 끊김'};
-const SC={LVH:'#0f766e',REV:'#7c3aed',DV:'#b45309',ON:'#1d4ed8',SW:'#64748b',MAN:'#94a3b8'},SN={LVH:'🏔 저변동고점',REV:'🔄 반전·수급',DV:'🏛 배당·가치',ON:'🌙 밤사이',SW:'💤 남는 현금',MAN:'✋ 수동'};
+const SC={LVH:'#0f766e',REV:'#7c3aed',DV:'#b45309',ON:'#1d4ed8',SW:'#64748b',MAN:'#94a3b8'},SN={LVH:'🏔 저변동고점',REV:'🔄 반전·수급',DV:'🏛 배당·가치',ON:'🌙 밤사이',SW:'💤 남는 현금',MAN:'✋ 수동매수'};
 const sb=k=>`<span class="badge" style="background:${SC[k]||'#94a3b8'}">${k}</span>`;
 function toast(m,ok=true){const t=$('#toast');t.textContent=m;t.style.background=ok?'#111827':'#b91c1c';t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',2800)}
 async function get(u){const r=await fetch(u,{headers:{'X-TK-Token':TK}});return r.json()}
@@ -616,7 +617,12 @@ function skDraw(){const r=SKD,I=r.info,P=r.plan,w=v=>v==null?'-':won(v),pc=(v,d=
   const hs=(s)=>{const a=r.hist[s];const row=(lab,x)=>x.n?`<tr><td>${lab}</td><td class="r">${x.n}</td><td class="r">${x.win}%</td><td class="r">${pc(x.avg)}</td><td class="r">${pc(x.med)}</td><td class="r">${pc(x.worst,1)} ~ ${pc(x.best,1)}</td></tr>`:`<tr><td>${lab}</td><td class="r mut" colspan="5">기록 없음</td></tr>`;return row(`${SN[s]} 상위 3 (실제 매수급)`,a.top3)+row(`${SN[s]} 상위 50 (후보권)`,a.top50)};
   $('#skOut').innerHTML=`<div class="card"><div class="sk-hd"><span class="nm">${I.name}</span><span class="mut mono" style="font-size:15px">${I.ticker} · ${I.market||''}${I.sector?' · '+I.sector:''}</span>
       <span class="px" style="margin-left:auto">${w(I.close)}원</span><span style="font-size:17px;font-weight:800">${pc(I.chg)}</span><span class="mut">${md(I.date)} 종가</span></div>
-    <div class="sk-v ${r.level}">${em} ${r.verdict}</div>${r.notes.length?`<div style="margin-top:8px;font-size:14px">${r.notes.map(x=>'· '+x).join('<br>')}</div>`:''}</div>
+    <div class="sk-v ${r.level}">${em} ${r.verdict}</div>${r.notes.length?`<div style="margin-top:8px;font-size:14px">${r.notes.map(x=>'· '+x).join('<br>')}</div>`:''}
+    ${r.held.filter(h=>h.status==='대기').map(h=>`<div class="row" style="margin-top:8px"><span>✋ 대기 중인 수동매수 ${h.qty}주</span><button class="btn sm" onclick="skCancel(${h.id})">대기 취소</button></div>`).join('')}
+    ${r.level==='out'&&I.flags.includes('거래정지')?'':`<div class="sk-buy"><b>✋ 수동매수</b> <span class="mut" style="font-size:12.5px">${ST&&ST.mode==='real'?'🔴 실전 계좌':'🟢 모의 계좌'} · 장중이면 바로 · 장 밖이면 다음 장전 08:50 시가 · 장부에 '✋ 수동매수' 칸으로</span>
+      <div class="row" style="margin-top:8px"><span>금액</span><input id="skAmt" size="10" placeholder="예: 500000"><span class="mut">또는 수량</span><input id="skQty" size="5" placeholder="주"><span class="mut">가격</span><input id="skPx" size="8" placeholder="빈칸=시장가">
+        <span>청산</span><select id="skRule"><option value="LVH" ${P.sleeve==='LVH'?'selected':''}>🏔 10거래일 뒤 시가 매도</option><option value="REV" ${P.sleeve==='REV'?'selected':''}>🔄 9일선 복귀 · 늦어도 10일</option><option value="none">직접 매도 (자동 매도 안 함)</option></select>
+        <button class="btn p" id="skBuy">✋ 수동매수 주문</button></div><div class="mut" style="font-size:12px;margin-top:4px">1회 한도 운용 자금의 15% · 시스템 매수와 같은 현금을 씀 · 자동주문 켜져 있어야 함 · 청산 규칙은 매일 저녁 신호 계산 때 확인 → 다음 장전 시가 매도</div></div>`}</div>
   <div class="card"><div class="sk-tools"><b style="font-size:16px">📈 차트</b><span class="vtabs" id="skRng">${[[66,'3달'],[125,'6달'],[250,'1년'],[500,'2년'],[2000,'전체']].map(([n,l])=>`<button data-n="${n}" class="${SKR===n?'on':''}">${l}</button>`).join('')}</span>
       <label><input type="checkbox" class="skO" value="e9" checked> 9일선</label><label><input type="checkbox" class="skO" value="e20" checked> 20일선</label><label><input type="checkbox" class="skO" value="e60" checked> 60일선</label>
       <label><input type="checkbox" class="skO" value="sig" checked> 신호</label><label><input type="checkbox" class="skO" value="trd" checked> 매매</label><label><input type="checkbox" class="skO" value="dart" checked> 공시</label><label><input type="checkbox" class="skO" value="plan" checked> 전략선</label>
@@ -641,6 +647,10 @@ function skDraw(){const r=SKD,I=r.info,P=r.plan,w=v=>v==null?'-':won(v),pc=(v,d=
       <span>상태</span><b>${I.flags.length?I.flags.join(' · '):'정상'}</b></div>
       <h2 style="margin-top:14px">📰 공시 <small>최근 60건 · DART</small></h2><div style="max-height:220px;overflow:auto;font-size:13px">${r.dart.length?r.dart.map(x=>`<div style="padding:3px 0">${md(x.date)} <span class="pill" style="padding:2px 8px;${x.bad?'background:#fee2e2;color:#991b1b':''}">${x.tag}</span> ${x.report_nm}</div>`).join(''):'<span class="mut">공시 자료 없음 (DART 인증키 · 수집 확인)</span>'}</div></div>
   </div>`;
+  const bb=$('#skBuy');if(bb)bb.onclick=async()=>{const amt=$('#skAmt').value.replace(/,/g,''),qty=$('#skQty').value,px=$('#skPx').value.replace(/,/g,''),rule=$('#skRule').value,real=ST&&ST.mode==='real';
+    const est=qty?(+qty)*(+px||I.close):(+amt);if(!est){toast('금액 또는 수량을 넣으세요',false);return}
+    if(!confirm(`${real?'🔴 실전 계좌 — 실제 돈으로 주문합니다\n\n':''}${I.name} 약 ${won(est)}원 ${px?'지정가 '+won(+px):'시장가'} 수동매수\n청산: ${$('#skRule').selectedOptions[0].text}\n\n주문할까요?`))return;
+    const r2=await post('/api/stock/buy',{ticker:I.ticker,amt,qty,price:px,rule,confirm:real?'실전매수':''});toast(r2.ok?r2.msg:r2.error,r2.ok);if(r2.ok)setTimeout(()=>skOpen(I.ticker),800)};
   document.querySelectorAll('#skRng button').forEach(b=>b.onclick=()=>{SKR=+b.dataset.n;document.querySelectorAll('#skRng button').forEach(x=>x.classList.toggle('on',x===b));skChart()});
   document.querySelectorAll('.skO').forEach(c=>c.onchange=skChart);skChart()}
 function skChart(){const r=SKD,C=r.chart,n=C.d.length,k0=Math.max(0,n-SKR),idx=[...Array(n-k0).keys()].map(i=>i+k0),on=v=>{const e=document.querySelector(`.skO[value="${v}"]`);return!e||e.checked};
@@ -673,6 +683,7 @@ function skChart(){const r=SKD,C=r.chart,n=C.d.length,k0=Math.max(0,n-SKR),idx=[
     tip.innerHTML=`<b>${C.d[i].slice(0,4)}-${C.d[i].slice(4,6)}-${C.d[i].slice(6)}</b><br>시 ${won(C.o[i])} · 고 ${won(C.h[i])}<br>저 ${won(C.l[i])} · 종 <b>${won(C.c[i])}</b>${pv?` (${pct((C.c[i]/pv-1)*100)})`:''}<br>거래량 ${won(C.v[i])}<br>9·20·60일선 ${won(C.e9[i])} · ${won(C.e20[i])} · ${won(C.e60[i])}`+(fv[i]!=null?`<br>외국인 ${fv[i]}억 · 기관 ${fi[i]??'-'}억`:'')+ms.map(q=>`<br>▲ ${q.sleeve} ${q.rank}위 신호`).join('')+ds.map(q=>`<br>⚑ ${q.tag}: ${q.report_nm}`).join('');
     tip.style.display='block';const tx=(e.clientX-b.left);tip.style.left=(tx>b.width-200?tx-190:tx+14)+'px';tip.style.top='10px'};svg.onmouseleave=()=>{tip.style.display='none';$('#skX').setAttribute('opacity',0)}}
 window.addEventListener('resize',()=>{if(SKD&&TAB==='stk')skChart()});
+async function skCancel(id){if(!confirm('수동매수 대기를 취소할까요?'))return;const r=await post('/api/stock/cancel',{lot_id:id});toast(r.ok?r.msg:r.error,r.ok);if(SKD)skOpen(SKD.info.ticker)}
 // ── 신호 ──
 function sig(s){$('#sigSub').textContent=s.signal_date?md(s.signal_date)+' 종가 기준 → 다음 거래일 08:50':'';
   $('#sig').innerHTML=tbl([{h:'칸',f:r=>sb(r.sleeve)},{h:'순위',r:1,f:r=>r.rank>100?'예비':r.rank},{h:'종목',f:r=>`<b>${r.name}</b> <span class="mut mono">${r.ticker}</span>`},{h:'점수',r:1,f:r=>r.score.toFixed(3)},{h:'종가',r:1,f:r=>won(r.ref)},
