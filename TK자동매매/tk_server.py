@@ -1288,8 +1288,11 @@ async def api_minute_export_file(req: Request):
         CF.save(CFG)
     name = f"tk_minute_{frm if frm != '0' else 'all'}_{to if to != '99999999' else datetime.now().strftime('%Y%m%d')}.zip"
     path = os.path.join(folder, name)
-    mn.EXPORT.update(running=True, err='', path=path, pct=0, msg='준비')                     # 상태를 먼저 '저장 중'으로 (화면이 바로 따라오게)
-    threading.Thread(target=lambda: _quiet(mn.export_file, path, frm, to), daemon=True).start()
+    part = float(b.get('part_mb') or 0)
+    if part and not 1 <= part <= 2000:
+        return {'ok': False, 'error': '나눌 크기 1~2000MB'}
+    mn.EXPORT.update(running=True, err='', path=path, paths=[], pct=0, msg='준비')            # 상태를 먼저 '저장 중'으로 (화면이 바로 따라오게)
+    threading.Thread(target=lambda: _quiet(mn.export_file, path, frm, to, part), daemon=True).start()
     return {'ok': True, 'msg': f'저장 시작 → {path}', 'path': path}
 
 

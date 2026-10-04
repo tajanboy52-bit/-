@@ -569,6 +569,14 @@ _zf = zipfile.ZipFile(_xr['path'])
 check('📦 분봉 zip: 고른 폴더(없으면 만듦)에 파일로 바로 저장 · 진행률 · 저장 위치 기억', _xr['ok'] and os.path.exists(_xr['path']) and not _xs['err'] and _xs['pct'] == 100
       and any(n_.startswith('bars/') for n_ in _zf.namelist()) and 'universe.csv' in _zf.namelist() and SV.CFG.get('export_dir') == os.path.normpath(_xd)
       and not os.path.exists(_xr['path'] + '.part'), f"{os.path.basename(_xr['path'])} · {_xs['mb']}MB · {_xs['msg']}")
+_xr2 = cli.post('/api/minute/export_file', json={'folder': _xd, 'frm': '', 'to': '', 'part_mb': 0.5}, headers={'X-TK-Token': SV.TOKEN}).json()   # 범위 밖 → 거절
+_ps = MN.export_file(os.path.join(_xd, 'split_test.zip'), part_mb=0.0001)                          # 아주 작게 → 하루씩 조각
+_xs2 = dict(MN.EXPORT)
+_ps = _xs2['paths']
+_okp = all(zipfile.is_zipfile(p_) and 'universe.csv' in zipfile.ZipFile(p_).namelist() and any(n_.startswith('bars/') for n_ in zipfile.ZipFile(p_).namelist()) for p_ in _ps)
+_alld = sorted(n_ for p_ in _ps for n_ in zipfile.ZipFile(p_).namelist() if n_.startswith('bars/'))
+check('📦 분봉 zip 첨부용 나누기: 날짜 단위 조각 · 조각마다 따로 열림 · 날짜 빠짐/겹침 없음 · 크기 범위 확인', not _xr2['ok'] and len(_ps) >= 2 and _okp and len(_alld) == len(set(_alld)) == _xs2['days']
+      and all('_p0' in os.path.basename(p_) for p_ in _ps), ' · '.join(f"{os.path.basename(p_)} {os.path.getsize(p_) / 1e6:.1f}MB" for p_ in _ps))
 _h = {'X-TK-Token': SV.TOKEN}
 _xd2 = os.path.join(db.DATA_DIR, '저장 폴더2')
 _e = cli.post('/api/export_dir', json={'folder': _xd2}, headers=_h).json()

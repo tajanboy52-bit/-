@@ -317,6 +317,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
       <input type="date" id="mnFrm"> ~ <input type="date" id="mnTo"></div>
     <div class="row" style="margin-top:8px"><span class="mut">저장 폴더</span><input id="mnDir" style="flex:1;min-width:220px" placeholder="비우면 바탕화면\TK자료">
       <button class="btn" id="mnPick">📁 폴더 선택</button><button class="btn p" id="mnZip">📦 분봉 zip 저장</button><button class="btn" id="mnOpen">📂 폴더 열기</button></div>
+    <div class="row" style="margin-top:6px"><label style="margin:0"><input type="checkbox" id="mnSplit" checked> 첨부용으로 나누기 — 파일 하나당</label><input id="mnPart" size="4" value="25"><span class="mut">MB 이하 (날짜 단위로 끊어서 조각마다 따로 열림)</span></div>
     <div class="mut" id="mnExp" style="font-size:12.5px;margin-top:4px">기간을 비우면 전체 · 하루치는 약 2~4MB · 251일 전체는 1GB 안팎 (Claude에게 보낼 때는 최근 몇 주만 고르세요)</div>
     <div style="margin-top:12px"><div class="bar"><i id="mnBar" style="width:0%"></i></div></div>
     <div class="mut" id="mnMsg" style="margin-top:8px;font-size:13.5px"></div>
@@ -780,9 +781,9 @@ $('#mnBf').onclick=()=>{if(confirm('과거 1분봉 채우기를 지금 시작합
 let MXT=null;
 async function mnExpPoll(){const r=await get('/api/minute/export_state');if(!$('#mnDir').value){$('#mnDir').value=r.dir||'';$('#mnDir').placeholder='비우면 '+r.default}
   if(r.running){$('#mnExp').innerHTML=`⏳ 저장 중 ${r.pct}% · ${r.msg} · ${r.mb}MB<br><span class="mono">${r.path}</span>`;MXT=setTimeout(mnExpPoll,1500);return}
-  if(r.err)$('#mnExp').innerHTML=`❌ 저장 실패: ${r.err}`;else if(r.path)$('#mnExp').innerHTML=`✅ 저장됨 (${r.mb}MB · ${r.msg})<br><b class="mono">${r.path}</b>`}
+  if(r.err)$('#mnExp').innerHTML=`❌ 저장 실패: ${r.err}`;else if(r.path)$('#mnExp').innerHTML=`✅ 저장됨 (${r.mb}MB · ${r.msg})<br><b class="mono">${r.path}</b>`+((r.paths||[]).length>1?`<br>${r.paths.map(p=>p.split(/[\\/]/).pop()).join('<br>')}`:'')}
 $('#mnPick').onclick=async()=>{toast('폴더 선택 창을 띄웁니다 (작업 표시줄에 숨어 있을 수 있음)');const r=await post('/api/pick_folder',{start:$('#mnDir').value});if(r.ok&&r.path)$('#mnDir').value=r.path;else if(!r.ok)toast(r.error,false)};
-$('#mnZip').onclick=async()=>{const r=await post('/api/minute/export_file',{folder:$('#mnDir').value,frm:$('#mnFrm').value,to:$('#mnTo').value});toast(r.ok?r.msg:r.error,r.ok);if(r.ok){clearTimeout(MXT);setTimeout(mnExpPoll,800)}};
+$('#mnZip').onclick=async()=>{const r=await post('/api/minute/export_file',{folder:$('#mnDir').value,frm:$('#mnFrm').value,to:$('#mnTo').value,part_mb:$('#mnSplit').checked?+$('#mnPart').value||25:0});toast(r.ok?r.msg:r.error,r.ok);if(r.ok){clearTimeout(MXT);setTimeout(mnExpPoll,800)}};
 $('#mnOpen').onclick=async()=>{const r=await post('/api/open_folder',{});if(!r.ok)toast('폴더: '+r.error,false)};
 $('#btRun').onclick=()=>act('/api/job/backtest',{start:$('#btS').value,end:$('#btE').value});
 load();setInterval(()=>{if(!document.hidden&&TAB!=='live')load()},15000);
