@@ -985,7 +985,11 @@ def signal_job(cfg, d, progress=None):
         skip, top = pk[s]
         sc = fn(F, d)
         ordr = S.top_n(sc.dropna(), set(), len(sc))
-        allsc += [(d, s, t, k, len(ordr), float(sc[t])) for k, t in enumerate(ordr, start=1)]     # 🔍 종목분석용: 후보풀 전체 순위
+        try:
+            parts = S.score_parts(F, d, s)
+        except Exception:
+            parts = {}
+        allsc += [(d, s, t, k, len(ordr), float(sc[t]), json.dumps({kk: round(v, 4) for kk, v in parts.get(t, {}).items()})) for k, t in enumerate(ordr, start=1)]   # 🔍 후보풀 전체 순위 · 요소 점수
         for k, t in enumerate(S.top_n(sc.dropna(), set(), 50), start=1):
             cands.append((s, t, k, float(sc[t]), float(C.at[d, t]), feat_info(F, d, t)))
         if al.get(s, 0) <= 0:
@@ -1001,9 +1005,11 @@ def signal_job(cfg, d, progress=None):
     J.save_cands(d, cands)
     try:
         m_ = db.mconn()
-        m_.execute('CREATE TABLE IF NOT EXISTS scores (date TEXT, sleeve TEXT, ticker TEXT, rank INTEGER, n INTEGER, score REAL, PRIMARY KEY (date, sleeve, ticker))')
+        m_.execute('CREATE TABLE IF NOT EXISTS scores (date TEXT, sleeve TEXT, ticker TEXT, rank INTEGER, n INTEGER, score REAL, parts TEXT, PRIMARY KEY (date, sleeve, ticker))')
+        if 'parts' not in {r_[1] for r_ in m_.execute('PRAGMA table_info(scores)')}:
+            m_.execute('ALTER TABLE scores ADD COLUMN parts TEXT')
         m_.execute('DELETE FROM scores WHERE date=? OR date < ?', (d, days[max(0, len(days) - 30)]))
-        m_.executemany('INSERT OR REPLACE INTO scores VALUES (?,?,?,?,?,?)', allsc)
+        m_.executemany('INSERT OR REPLACE INTO scores (date, sleeve, ticker, rank, n, score, parts) VALUES (?,?,?,?,?,?,?)', allsc)
         m_.commit()
     except Exception as e:
         log(f'전체 순위 저장 실패: {CF.clean(e)[:100]}', 'warn')

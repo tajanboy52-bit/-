@@ -149,6 +149,47 @@ def rev_scores(F, d, ok=None):
     return sc.sort_index()
 
 
+PARTS = {'LVH': [('atr', '변동폭 낮음', 1 / 3), ('hi', '52주 고점 근접', 1 / 3), ('heat', '조용한 상승', 1 / 3)],
+         'REV': [('rsi', '과매도 (RSI)', 1 / 6), ('drop', '최근 5일 낙폭', 1 / 6), ('fr', '외국인 매수', 1 / 3), ('pen', '연기금·기관 매도', 1 / 3)]}
+
+
+def score_parts(F, d, sleeve):
+    """점수를 만드는 요소별 백분위 (0~1 · 1이 가장 유리) → {종목: {요소: 값}} — lvh_scores · rev_scores와 같은 계산 (가중 평균 = 점수)"""
+    ok = F['pool'].loc[d]
+    if sleeve == 'LVH':
+        tk = ok[ok].index
+        a, h, t = F['atrp'].loc[d, tk], F['fromhi'].loc[d, tk], F['heat'].loc[d, tk]
+        m = a.notna() & h.notna() & t.notna()
+        tk = tk[m.values]
+        if len(tk) == 0:
+            return {}
+        pa, ph, pt = _pct(-a[tk], 'average'), _pct(h[tk], 'average'), _pct(-t[tk], 'average')
+        return {x: {'atr': float(pa[x]), 'hi': float(ph[x]), 'heat': float(pt[x])} for x in tk}
+    tk = ok[ok & (F['nhist'].loc[d] >= 60)].index
+    rsi = F['rsi14'].loc[d, tk]
+    raw = rsi.dropna().index
+    if len(raw) == 0:
+        return {}
+    p_rev = _pct(-rsi[raw], 'min')
+    fr, pn = F['fr20'].loc[d, raw], F['pen20'].loc[d, raw]
+    both = fr.notna() & pn.notna()
+    fr, pn = fr.where(both), pn.where(both)
+    p_fr = _pct(fr, 'min').reindex(raw).fillna(0.5)
+    p_in = _pct(-pn, 'min').reindex(raw).fillna(0.5)
+    dr = F['drop5'].loc[d, tk].dropna()
+    r_drop = _pct(dr.sort_index(), 'first')
+    use = raw.intersection(r_drop.index)
+    return {x: {'rsi': float(p_rev[x]), 'drop': float(r_drop[x]), 'fr': float(p_fr[x]), 'pen': float(p_in[x])} for x in use}
+
+
+def grade(rank, n, buy_n=3):
+    """순위 → (등급, 설명) — S 매수권 · A 상위 5% · B 15% · C 40% · D 그 아래"""
+    top = rank / max(1, n) * 100
+    if rank <= buy_n:
+        return 'S', '매수권'
+    return ('A', '최상위') if top <= 5 else ('B', '상위') if top <= 15 else ('C', '중위') if top <= 40 else ('D', '하위')
+
+
 def shares(size, px, cash, fee=0.00125):
     """종목당 금액 size로 살 주식 수 — 1주도 안 되면 가격이 종목당 금액의 1.5배 이하일 때만 1주 (1,000만 원 계좌에서 비싼 종목을 통째로 놓치지 않게)"""
     if not (px and px > 0):

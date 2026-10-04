@@ -20,6 +20,14 @@ HOLD = 10
 ETF_NAMES = {S.ON_TICKER: S.ON_NAME, S.SW_TICKER: S.SW_NAME}
 
 
+def cfg_picks(cfg):
+    import tk_trader as tr
+    try:
+        return tr.picks(cfg or {})
+    except Exception:
+        return {'LVH': (0, 3), 'REV': (0, 3)}
+
+
 def search(q, limit=20):
     """이름 · 코드 일부 → [{ticker, name, market, listed}] — 상장 · 이름 앞부분 일치 먼저"""
     q = (q or '').strip()
@@ -137,8 +145,17 @@ def analyze(t, cfg=None, chart_days=500):
     sd = db.meta_get('last_signal_date') or last
     ranks = {}
     try:
-        for s_, rk, n, sc in m.execute('SELECT sleeve, rank, n, score FROM scores WHERE date=? AND ticker=?', (sd, t)):
-            ranks[s_] = {'rank': rk, 'n': n, 'score': round(sc, 3), 'pct': round((1 - (rk - 1) / max(1, n - 1)) * 100, 1)}
+        cols = {r_[1] for r_ in m.execute('PRAGMA table_info(scores)')}
+        for row in m.execute(f"SELECT sleeve, rank, n, score, {'parts' if 'parts' in cols else 'NULL'} FROM scores WHERE date=? AND ticker=?", (sd, t)):
+            s_, rk, n, sc, pj = row
+            g, gl = S.grade(rk, n, (cfg_picks(cfg).get(s_) or (0, 3))[1])
+            try:
+                pr = json.loads(pj or '{}')
+            except ValueError:
+                pr = {}
+            ranks[s_] = {'rank': rk, 'n': n, 'score': round(sc, 3), 'score100': int(round(sc * 100)), 'top': round(rk / max(1, n) * 100, 1),
+                         'per100': max(1, int(math.ceil(rk / max(1, n) * 100))), 'grade': g, 'grade_ko': gl,
+                         'parts': [{'key': k, 'name': nm, 'w': round(w * 100), 'score100': int(round(pr[k] * 100))} for k, nm, w in S.PARTS[s_] if k in pr]}
     except Exception:
         pass
     sig = {r_[0]: r_[1] for r_ in db.conn().execute("SELECT sleeve, rank FROM signals WHERE date=? AND ticker=?", (sd, t))}
@@ -179,10 +196,11 @@ def analyze(t, cfg=None, chart_days=500):
         verdict, level = f"매수 예정 · {S.SLEEVES[s_]['name']} {picked[s_]}위 → 다음 거래일 08:50 시가", 'buy'
     elif any(v['rank'] <= pk.get(s_, (0, 3))[0] + 10 for s_, v in ranks.items() if s_ in ('LVH', 'REV')):
         s_ = min(ranks, key=lambda k: ranks[k]['rank'])
-        verdict, level = f"관심 · {S.SLEEVES[s_]['name']} {ranks[s_]['rank']}위 (매수는 상위 {pk.get(s_, (0, 3))[1]}개) — 자리가 비거나 순위가 오르면 매수", 'watch'
+        verdict, level = f"관심 · {S.SLEEVES[s_]['name']} {ranks[s_]['score100']}점 · {ranks[s_]['rank']}등 (매수는 상위 {pk.get(s_, (0, 3))[1]}개) — 자리가 비거나 순위가 오르면 매수", 'watch'
     elif ranks:
         s_ = min(ranks, key=lambda k: ranks[k]['rank'])
-        verdict, level = f"매수 대상 아님 · 후보풀 안 · {S.SLEEVES[s_]['name']} {ranks[s_]['rank']}/{ranks[s_]['n']}위 (상위 {ranks[s_]['pct']}%)", 'none'
+        x_ = ranks[s_]
+        verdict, level = f"매수 대상 아님 · {S.SLEEVES[s_]['name']} {x_['score100']}점 · {x_['grade']}등급 · {x_['n']}종목 중 {x_['rank']}등 (상위 {x_['top']}%)", 'none'
     elif pool_ok:
         verdict, level = '후보풀 통과 · 오늘 순위 정보 없음', 'none'
         notes.append('저녁 신호 계산(18:40) 뒤부터 전체 순위가 나옵니다 — 📥 데이터 탭 🎯 신호 지금 계산으로 바로 만들 수 있음')

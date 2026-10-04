@@ -117,6 +117,10 @@ main{max-width:1440px;margin:0 auto;padding:20px 24px 70px}
 .sk-bar{height:8px;border-radius:5px;background:#e2e8f0;overflow:hidden}.sk-bar i{display:block;height:100%;background:var(--accent)}
 .sk-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.sk-tools label{margin:0;font-size:13px}
 #skChart{position:relative}#skTip{position:absolute;pointer-events:none;background:rgba(15,23,42,.94);color:#fff;border-radius:10px;padding:8px 11px;font-size:12.5px;line-height:1.55;display:none;z-index:5;min-width:170px}
+.sc-card{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1px solid var(--bd);border-radius:12px;margin:8px 0;background:#fff}.sc-card.off{opacity:.7}
+.sc-ring{width:74px;height:74px;flex-shrink:0}.sc-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.gb{color:#fff;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:800}
+.sc-t{font-size:13.5px;margin:4px 0 8px}.sc-p{display:grid;grid-template-columns:minmax(120px,1.2fr) 1fr 34px;gap:4px 8px;align-items:center;font-size:13px;margin:3px 0}
+.sc-p i.mut{font-style:normal;font-size:11px}.sc-p b{text-align:right}.sc-raw{grid-column:1/-1;font-size:11.5px;margin-top:-3px}
 .sk-buy{margin-top:12px;padding:12px 14px;border:1px dashed var(--accent);border-radius:12px;background:rgba(240,253,250,.6)}
 .kpi.click{cursor:pointer}.kpi.click:hover{border-color:var(--accent)}
 /* 모델 카드 */
@@ -503,6 +507,7 @@ const won=v=>v==null||isNaN(v)?'-':Math.round(v).toLocaleString('ko-KR');const m
 const pct=(v,d=2)=>v==null||isNaN(v)?'-':(v>0?'+':'')+v.toFixed(d)+'%';const cls=v=>v>0?'up':(v<0?'dn':'');const sw=v=>`<span class="${cls(v)}">${v>0?'+':''}${won(v)}</span>`;
 const md=d=>d?d.slice(4,6)+'/'+d.slice(6,8):'-';
 const KIND={sw_buy:'KODEX 200 매수(종가)',sw_sell:'KODEX 200 매도',entry:'매수',hold20:'보유 기간 끝(10일)',ema9:'9EMA 복귀',hold10:'10일 만료',dv_rebal:'배당·가치 교체',on_buy:'밤사이 매수',on_sell:'밤사이 매도',manual:'수동',delist:'거래 끊김'};
+const GC={S:'#7c3aed',A:'#16a34a',B:'#0d9488',C:'#64748b',D:'#cbd5e1'};
 const SC={LVH:'#0f766e',REV:'#7c3aed',DV:'#b45309',ON:'#1d4ed8',SW:'#64748b',MAN:'#94a3b8'},SN={LVH:'🏔 저변동고점',REV:'🔄 반전·수급',DV:'🏛 배당·가치',ON:'🌙 밤사이',SW:'💤 남는 현금',MAN:'✋ 수동매수'};
 const sb=k=>`<span class="badge" style="background:${SC[k]||'#94a3b8'}">${k}</span>`;
 function toast(m,ok=true){const t=$('#toast');t.textContent=m;t.style.background=ok?'#111827':'#b91c1c';t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',2800)}
@@ -612,7 +617,12 @@ async function skOpen(t){$('#skAc').style.display='none';$('#skOut').innerHTML='
   const r=await get('/api/stock/'+t+'?days=2000');if(r.ok===false){$('#skOut').innerHTML=`<div class="card">❌ ${r.error}</div>`;return}SKD=r;
   const h=skHist().filter(x=>x.t!==t);h.unshift({t,n:r.info.name});try{localStorage.setItem('tk_sk_hist',JSON.stringify(h.slice(0,8)))}catch(e){}$('#skQ').value=r.info.name;skQuick();skDraw()}
 function skDraw(){const r=SKD,I=r.info,P=r.plan,w=v=>v==null?'-':won(v),pc=(v,d=2)=>v==null?'-':`<span class="${cls(v)}">${pct(v,d)}</span>`,em={buy:'✅',watch:'👀',hold:'💼',none:'⏸',out:'⛔'}[r.level];
-  const rk=s=>{const x=r.ranks[s];return x?`<div style="margin:6px 0 10px"><div style="display:flex;justify-content:space-between"><b>${SN[s]}</b><span>${x.rank} / ${x.n}위 · 점수 ${x.score} · 상위 ${x.pct}%${r.picked[s]?' · <b style="color:#15803d">매수 예정</b>':''}</span></div><div class="sk-bar"><i style="width:${x.pct}%;background:${SC[s]}"></i></div></div>`:`<div class="mut" style="margin:6px 0">${SN[s]}: 순위 없음 (후보풀 밖 · 재료 부족)</div>`};
+  const RAW={atr:I.atrp!=null?`ATR ${I.atrp}%`:'',hi:I.from_hi!=null?`고점 대비 ${I.from_hi}%`:'',heat:I.heat!=null?`거래 열기 ${I.heat}`:'',rsi:I.rsi!=null?`RSI ${I.rsi}`:'',drop:I.r5!=null?`5일 ${pct(I.r5)}`:'',fr:I.fr20!=null?`20일 강도 ${I.fr20}%`:'',pen:I.pen20!=null?`20일 강도 ${I.pen20}%`:''};
+  const rk=s=>{const x=r.ranks[s];if(!x)return `<div class="sc-card off"><div class="sc-h"><b>${SN[s]}</b><span class="mut">순위 없음 (후보풀 밖 · 재료 부족)</span></div></div>`;
+    const ring=`<svg viewBox="0 0 36 36" class="sc-ring"><circle cx="18" cy="18" r="15.5" fill="none" stroke="#e2e8f0" stroke-width="4"/><circle cx="18" cy="18" r="15.5" fill="none" stroke="${GC[x.grade]}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${x.score100*0.974} 100" transform="rotate(-90 18 18)"/><text x="18" y="21.5" text-anchor="middle" font-size="11" font-weight="900" fill="#0f172a">${x.score100}</text></svg>`;
+    return `<div class="sc-card">${ring}<div style="flex:1;min-width:0"><div class="sc-h"><b>${SN[s]}</b><span class="gb" style="background:${GC[x.grade]}">${x.grade} · ${x.grade_ko}</span>${r.picked[s]?'<b style="color:#15803d">매수 예정</b>':''}</div>
+      <div class="sc-t"><b>${x.score100}점</b> / 100 · 후보 <b>${x.n}</b>종목 중 <b>${x.rank}등</b> · 상위 <b>${x.top}%</b> <span class="mut">(100종목이면 ${x.per100}등)</span></div>
+      ${x.parts.map(p=>`<div class="sc-p"><span>${p.name} <i class="mut">비중 ${p.w}%</i></span><div class="sk-bar"><i style="width:${p.score100}%;background:${p.score100>=70?'#16a34a':p.score100>=40?'#f59e0b':'#e11d48'}"></i></div><b>${p.score100}</b><span class="mut sc-raw">${RAW[p.key]||''}</span></div>`).join('')}</div></div>`};
   const F=r.feat,fx=[['ATR% (하루 변동폭)',F.atrp,'%','낮을수록 LVH ↑'],['52주 고점 대비',F.from_hi,'%','고점에 가까울수록 LVH ↑'],['거래 열기 (25일)',F.heat,'','낮을수록 LVH ↑ (조용한 상승)'],['RSI 14',F.rsi,'','낮을수록 REV ↑ (과매도)'],['외국인 20일 강도',F.fr20,'%','높을수록 REV ↑'],['연기금/기관 20일 강도',F.pen20,'%','낮을수록 REV ↑']];
   const hs=(s)=>{const a=r.hist[s];const row=(lab,x)=>x.n?`<tr><td>${lab}</td><td class="r">${x.n}</td><td class="r">${x.win}%</td><td class="r">${pc(x.avg)}</td><td class="r">${pc(x.med)}</td><td class="r">${pc(x.worst,1)} ~ ${pc(x.best,1)}</td></tr>`:`<tr><td>${lab}</td><td class="r mut" colspan="5">기록 없음</td></tr>`;return row(`${SN[s]} 상위 3 (실제 매수급)`,a.top3)+row(`${SN[s]} 상위 50 (후보권)`,a.top50)};
   $('#skOut').innerHTML=`<div class="card"><div class="sk-hd"><span class="nm">${I.name}</span><span class="mut mono" style="font-size:15px">${I.ticker} · ${I.market||''}${I.sector?' · '+I.sector:''}</span>
@@ -633,9 +643,9 @@ function skDraw(){const r=SKD,I=r.info,P=r.plan,w=v=>v==null?'-':won(v),pc=(v,d=
         <span>갭 필터</span><b>${P.gap_max?`시가가 ${w(P.gap_max)}원(+5%) 넘으면 안 삼`:'꺼짐'}</b><span>보유 · 매도</span><b>${P.hold}</b>
         <span>하루 변동폭 (ATR)</span><b>${w(P.atr1)}원 (${I.atrp??'-'}%)</b><span>손절</span><b>${P.stop}</b><span>왕복 비용</span><b>약 ${P.cost_pct}%</b></div>
       <div class="sk-pr"><div class="t"><span class="mut">목표 (상위 25%)</span><b>${w(P.target)}</b>${pc(P.target_pct)}</div><div class="e"><span class="mut">기대 (중앙값)</span><b>${w(P.expect)}</b>${pc(P.expect_pct)}</div><div class="c"><span class="mut">주의 (하위 25%)</span><b>${w(P.caution)}</b>${pc(P.caution_pct)}</div></div></div>
-    <div class="card"><h2>🧭 우리 시스템 점수 <small>${md(r.signal_date)} 신호 기준 · 후보풀 ${r.pool_ok?'<b style="color:#15803d">통과</b>':'<b style="color:#dc2626">밖</b>'}</small></h2>${rk('LVH')}${rk('REV')}
+    <div class="card"><h2>🧭 우리 시스템 점수 <small>${md(r.signal_date)} 신호 기준 · 100점 만점 · 후보풀 ${r.pool_ok?'<b style="color:#15803d">통과</b>':'<b style="color:#dc2626">밖</b>'}</small></h2>${rk('LVH')}${rk('REV')}
       ${r.pool_why.length?`<div class="alert" style="margin:8px 0">후보풀 밖 이유: ${r.pool_why.join(' · ')}</div>`:''}
-      <div class="tw"><table style="font-size:13.5px"><tbody>${fx.map(([l,v,u,d])=>`<tr><td>${l}<div class="mut" style="font-size:11.5px">${d}</div></td><td class="r"><b>${v==null?'-':v+u}</b></td></tr>`).join('')}</tbody></table></div></div>
+      <div class="mut" style="font-size:12px;margin-top:6px;line-height:1.6">· <b>점수</b> = 요소 점수의 비중 평균 (요소마다 후보 전체와 비교해 가장 유리하면 100 · 가장 불리하면 0)<br>· <b>등급</b> S 매수권(매일 상위 3) · A 상위 5% · B 15% · C 40% · D 그 아래 · 실제 매수는 점수 순서대로 상위 3개</div></div>
     <div class="card"><h2>📊 과거 성적 <small>이 종목에 우리 규칙 · 다음 날 시가 매수 → 규칙대로 매도 · 비용 전</small></h2>
       <div class="tw"><table style="font-size:13px"><thead><tr><th></th><th class="r">횟수</th><th class="r">승률</th><th class="r">평균</th><th class="r">중앙</th><th class="r">최악~최고</th></tr></thead><tbody>${hs('LVH')}${hs('REV')}
         ${r.dist.n?`<tr><td>모든 날 10일 보유 (최근 2년)</td><td class="r">${r.dist.n}</td><td class="r">${r.dist.win}%</td><td class="r">${pc(r.dist.avg)}</td><td class="r">${pc(r.dist.med)}</td><td class="r">${pc(r.dist.p25,1)} ~ ${pc(r.dist.p75,1)} <span class="mut">(25~75%)</span></td></tr>`:''}</tbody></table></div>
@@ -683,10 +693,11 @@ function skChart(){const r=SKD,C=r.chart,n=C.d.length,k0=Math.max(0,n-SKR),idx=[
     tip.innerHTML=`<b>${C.d[i].slice(0,4)}-${C.d[i].slice(4,6)}-${C.d[i].slice(6)}</b><br>시 ${won(C.o[i])} · 고 ${won(C.h[i])}<br>저 ${won(C.l[i])} · 종 <b>${won(C.c[i])}</b>${pv?` (${pct((C.c[i]/pv-1)*100)})`:''}<br>거래량 ${won(C.v[i])}<br>9·20·60일선 ${won(C.e9[i])} · ${won(C.e20[i])} · ${won(C.e60[i])}`+(fv[i]!=null?`<br>외국인 ${fv[i]}억 · 기관 ${fi[i]??'-'}억`:'')+ms.map(q=>`<br>▲ ${q.sleeve} ${q.rank}위 신호`).join('')+ds.map(q=>`<br>⚑ ${q.tag}: ${q.report_nm}`).join('');
     tip.style.display='block';const tx=(e.clientX-b.left);tip.style.left=(tx>b.width-200?tx-190:tx+14)+'px';tip.style.top='10px'};svg.onmouseleave=()=>{tip.style.display='none';$('#skX').setAttribute('opacity',0)}}
 window.addEventListener('resize',()=>{if(SKD&&TAB==='stk')skChart()});
+function skGoto(t){document.querySelector('#nav button[data-t=stk]').click();setTimeout(()=>skOpen(t),50)}
 async function skCancel(id){if(!confirm('수동매수 대기를 취소할까요?'))return;const r=await post('/api/stock/cancel',{lot_id:id});toast(r.ok?r.msg:r.error,r.ok);if(SKD)skOpen(SKD.info.ticker)}
 // ── 신호 ──
 function sig(s){$('#sigSub').textContent=s.signal_date?md(s.signal_date)+' 종가 기준 → 다음 거래일 08:50':'';
-  $('#sig').innerHTML=tbl([{h:'칸',f:r=>sb(r.sleeve)},{h:'순위',r:1,f:r=>r.rank>100?'예비':r.rank},{h:'종목',f:r=>`<b>${r.name}</b> <span class="mut mono">${r.ticker}</span>`},{h:'점수',r:1,f:r=>r.score.toFixed(3)},{h:'종가',r:1,f:r=>won(r.ref)},
+  $('#sig').innerHTML=tbl([{h:'칸',f:r=>sb(r.sleeve)},{h:'순위',r:1,f:r=>r.rank>100?'예비':r.rank},{h:'종목',f:r=>`<a href="#" onclick="skGoto('${r.ticker}');return false"><b>${r.name}</b></a> <span class="mut mono">${r.ticker}</span>`},{h:'점수 (100점)',r:1,f:r=>`<b>${Math.round(r.score*100)}</b> ${r.rank<100?`<span class="gb" style="background:${GC.S}">S 매수권</span>`:'<span class="gb" style="background:#94a3b8">예비</span>'}`},{h:'종가',r:1,f:r=>won(r.ref)},
     {h:'근거',f:r=>{const i=JSON.parse(r.info||'{}');return r.sleeve==='DV'?`배당 ${i.div}% · PBR ${i.pbr} · ${i.sector}`:(r.sleeve==='LVH'?`ATR ${(i.atrp*100).toFixed(1)}% · 52주 고점 ${pct(i.fromhi*100,1)} · 과열 ${i.heat}`:`RSI ${i.rsi?.toFixed(0)} · 외국인 ${i.fr20!=null?(i.fr20*100).toFixed(1)+'%':'-'} · 연기금 ${i.pen20!=null?(i.pen20*100).toFixed(1)+'%':'-'}`)}}],s.signals,'신호 없음 (장 마감 뒤 자료 수집 → 신호 계산)');
   const R=[['LVH','🏔 저변동고점',`후보풀(20일 평균 거래대금 30억+ · 1천~50만 원 · 이력 120일 · 당일 +20% 미만 · ETF/스팩/리츠/우선주/정지/관리/경고 제외)에서 ATR14/종가 낮음 · 250일 고점 근접 · 25일 과열 없음 세 백분위 평균 상위 3 → 다음날 시가 → 10거래일 보유 (회전형 · 원래 검증은 20일)`,'전종목(상장폐지 포함) 검증: 계좌 +34.0% / +22.4% · 최대낙폭 −5.8% / −7.6% · 변형 8/8 통과'],
     ['REV','🔄 반전·수급','[(RSI14 과매도 + 5일 하락)/2 + 외국인 20일 순매수 강도 + 연기금 20일 역방향] / 3 상위 3 → 종가 ≥ 9일 EMA 또는 10거래일 → 다음날 시가 매도','4구간 4/4 플러스 · 하락장에 가장 강함 · 저변동고점과 상관 +0.15'],

@@ -708,6 +708,15 @@ SV.tr.client, SV.tr.configured = _SVtc, _SVcf
 check('✋ 종목분석 수동매수: 주문(장 밖이면 장전 대기) · 15% 한도 · 대기 취소 · 장전 시가 체결 · 칸 MAN · 청산 규칙(10일 → 매도 표시 · 직접 매도는 그대로)',
       _okq and _sq['level'] == 'hold' and _ml[_mt[0]]['status'] == '보유' and _ml[_mt[1]]['status'] == '보유' and _ml[_mt[2]]['status'] == '취소'
       and tuple(_f1) == (1, 'hold20') and _f2[0] == 0, f"{_b1['msg'][:40]} · {_sq['verdict'][:30]} · {tuple(_f1)}")
+_rk = _sa['ranks']['LVH']
+_pp = [r_ for r_ in db.mconn().execute("SELECT score, parts FROM scores WHERE date=? AND sleeve IN ('LVH','REV')", (_sd,))]
+_mx = 0.0
+for sc_, pj_ in _pp:
+    pr_ = json.loads(pj_)
+    sl_ = 'LVH' if set(pr_) == {'atr', 'hi', 'heat'} else 'REV'
+    _mx = max(_mx, abs(sum(pr_[k_] * w_ for k_, _, w_ in S.PARTS[sl_]) - sc_))
+check('🧭 점수 체계: 100점 만점 · 등급(S 매수권~D) · N종목 중 몇 등 · 상위 % · 요소 점수 가중 평균 = 점수', _rk['score100'] == round(_rk['score'] * 100) and _rk['grade'] == 'S'
+      and _rk['top'] <= 1.5 and len(_rk['parts']) == 3 and len(_pp) > 300 and _mx < 0.002, f"{_rk['score100']}점 · {_rk['grade']} · {_rk['n']}중 {_rk['rank']}등 · 최대 오차 {_mx:.5f}")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──
