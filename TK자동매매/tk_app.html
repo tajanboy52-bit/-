@@ -117,6 +117,11 @@ main{max-width:1440px;margin:0 auto;padding:20px 24px 70px}
 .sk-bar{height:8px;border-radius:5px;background:#e2e8f0;overflow:hidden}.sk-bar i{display:block;height:100%;background:var(--accent)}
 .sk-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}.sk-tools label{margin:0;font-size:13px}
 #skChart{position:relative}#skTip{position:absolute;pointer-events:none;background:rgba(15,23,42,.94);color:#fff;border-radius:10px;padding:8px 11px;font-size:12.5px;line-height:1.55;display:none;z-index:5;min-width:170px}
+.btg h3{margin:0 0 6px;font-size:15.5px}.btg p,.btg li{font-size:13.5px;line-height:1.65}.btg ul,.btg ol{margin:0;padding-left:18px}
+.btg-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr));gap:12px}.btg-g>div{border:1px solid var(--bd);border-radius:12px;padding:12px 14px;background:rgba(255,255,255,.85)}
+details.tabhelp{margin:0 0 12px;border:1px solid var(--bd);border-radius:12px;background:rgba(255,255,255,.88);padding:9px 14px;font-size:13.5px}
+details.tabhelp summary{cursor:pointer;font-weight:800;list-style:none}details.tabhelp summary::-webkit-details-marker{display:none}details.tabhelp summary:after{content:' ▾';color:var(--t3)}details.tabhelp[open] summary:after{content:' ▴'}
+details.tabhelp ul{margin:8px 0 2px;padding-left:20px;line-height:1.7}
 .sc-card{display:flex;gap:14px;align-items:flex-start;padding:12px;border:1px solid var(--bd);border-radius:12px;margin:8px 0;background:#fff}.sc-card.off{opacity:.7}
 .sc-ring{width:74px;height:74px;flex-shrink:0}.sc-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.gb{color:#fff;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:800}
 .sc-t{font-size:13.5px;margin:4px 0 8px}.sc-p{display:grid;grid-template-columns:minmax(120px,1.2fr) 1fr 34px;gap:4px 8px;align-items:center;font-size:13px;margin:3px 0}
@@ -276,9 +281,11 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 <section id="t-dash">
   <div id="alerts"></div>
   <div class="kpis" id="kpis"></div>
-  <div class="grid g4" id="sleeves"></div>
+  <div class="grid" id="sleeves" style="grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr))"></div><div class="mut" id="slOff" style="font-size:12.5px;margin:6px 2px 0"></div>
   <div class="grid g2" style="margin-top:14px">
-    <div class="card"><h2>계좌 평가 <small id="curveSub">장 마감 기록</small></h2><div id="curve"></div></div>
+    <div class="card"><h2>계좌 평가 <small id="curveSub">장 마감 기록</small></h2><div id="curve"></div>
+      <h2 style="margin-top:14px">일별 실현 손익 <small>최근 30거래일 · 청산 기준</small></h2><div id="dDaily"></div>
+      <h2 style="margin-top:14px">최근 청산 <small>📒 거래내역에서 전체</small></h2><div class="tw" id="dRecent"></div></div>
     <div class="card"><h2>오늘 일정 <small id="tlSub"></small></h2><div class="tl" id="tl"></div></div>
   </div>
   <div class="card"><h2>다음 장전 08:50 계획 <small id="planSub"></small></h2><div class="today" id="plan"></div></div>
@@ -292,7 +299,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
       <div class="ord"><div><label>구분</label><select id="oSide"><option value="buy">매수</option><option value="sell">매도</option></select></div>
         <div><label>종목코드</label><input id="oTk" placeholder="005930" maxlength="6"></div><div><label>수량</label><input id="oQty" type="number" min="1" value="1"></div>
         <div><label>가격 (빈칸 = 시장가)</label><input id="oPx" placeholder="시장가"></div><div><button class="btn p" id="oSend" style="width:100%">주문</button></div></div>
-      <div class="mut" style="font-size:13px;margin-top:8px">수동 매수는 '수동' 묶음으로 따로 기록되고 자동 규칙이 팔지 않습니다 (직접 매도).</div></div>
+      <div class="mut" style="font-size:13px;margin-top:8px">여기서 산 것은 '✋ 수동매수' 칸 · 자동으로 팔지 않음(직접 매도). 청산 규칙(10일 · 9일선)을 고르려면 🔍 종목분석의 ✋ 수동매수.</div></div>
   </div>
   <div class="card"><h2>보유 묶음 <small>📡 = 웹소켓 실시간 가격 · 2초마다 새로 고침</small></h2><div class="tw" id="liveLots"></div></div>
   <div class="grid g2"><div class="card"><h2>미체결 주문</h2><div class="tw" id="liveOpen"></div></div>
@@ -308,7 +315,7 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 
 <section id="t-sig" hidden>
   <div class="card"><h2>최근 신호 <small id="sigSub"></small></h2><div class="tw" id="sig"></div></div>
-  <div class="grid" id="rules" style="grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr))"></div>
+  <div class="grid" id="rules" style="grid-template-columns:repeat(auto-fill,minmax(min(380px,100%),1fr))"></div>
 </section>
 
 <section id="t-stk" hidden>
@@ -330,6 +337,15 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
   <div class="card"><h2>포트폴리오 백테스트 <small>직접 모은 전종목 일봉(상장폐지 포함) · 실전과 같은 신호 함수 · 비용 반영</small></h2>
     <div class="row"><label style="margin:0">시작</label><input id="btS" value="20231024" size="9"><label style="margin:0">끝</label><input id="btE" placeholder="오늘까지" size="9">
       <button class="btn p" id="btRun">🧪 실행</button><span id="btMsg" class="mut"></span></div><div id="bt" style="margin-top:12px"></div></div>
+  <div class="card btg"><h2>📘 백테스트 사용 설명서 <small>무엇 · 왜 · 언제 · 어떻게 · 결과 읽는 법</small></h2>
+    <div class="btg-g">
+      <div><h3>🧪 백테스트란?</h3><p>지금 설정(칸 비율 · 자리 수 · 건너뛸 순위 · 갭 필터 · 남는 현금 방식)을 <b>과거 시장에 그대로 돌려 보는 모의 실험</b>입니다. 실전과 <b>같은 신호 함수 · 같은 비용(수수료 · 세금)</b>으로, 상장폐지 종목까지 포함한 전종목 일봉으로 계산합니다. 미래 정보는 쓰지 않습니다 (그날 종가까지 아는 값 → 다음 날 시가 매매).</p></div>
+      <div><h3>❓ 왜 필요한가</h3><ul><li>설정을 바꾸면 수익이 좋아질지 <b>돈을 걸기 전에</b> 확인</li><li>운이 아닌지 — <b>앞 기간 · 뒤 기간</b> 둘 다 좋아야 믿을 만함</li><li>최악의 경우(최대 낙폭)를 미리 알고 견딜 수 있는지 판단</li><li>칸(LVH · REV · ON · SW)별로 어디서 벌고 잃는지 확인</li></ul></div>
+      <div><h3>⏰ 언제 쓰나</h3><ul><li>⚙️ 설정에서 <b>칸 비율 · 자리 수 · 건너뛸 순위 · 갭 · 남는 현금 방식</b>을 바꾸고 싶을 때 (바꾼 값이 그대로 들어감)</li><li>몇 달마다 최신 자료까지 넣어 <b>규칙이 요즘 장에서도 통하는지</b> 점검</li><li>Claude에게 고도화를 부탁할 때 (결과 파일 첨부)</li><li>평소 매매에는 필요 없음 — 매매는 자동</li></ul></div>
+      <div><h3>▶️ 사용법</h3><ol><li>📥 데이터 탭에서 일봉 수집이 끝났는지 확인</li><li>(선택) ⚙️ 설정에서 실험할 값으로 바꾸고 저장</li><li>시작일(기본 2023-10-24) · 끝(비우면 오늘) → <b>🧪 실행</b> (몇 분)</li><li>결과 확인 → 좋으면 👥 그림자 운용(🔬 분석 탭)으로 <b>앞으로의 자료</b>에서 몇 주 비교 → 모의 → 실전</li><li>결과 파일: %APPDATA%\TKAuto\backtest_result.md</li></ol></div>
+      <div><h3>📊 결과 읽는 법</h3><ul><li><b>연 수익</b>: 1년으로 환산한 수익률</li><li><b>최대 낙폭(MDD)</b>: 고점에서 가장 많이 빠졌던 폭 — 이 정도 손실을 견딜 수 있어야 함</li><li><b>샤프</b>: 흔들림 대비 수익 (1 이상 양호 · 1.5 이상 우수)</li><li><b>두 기간 판정</b>: 앞 · 뒤 모두 기준선보다 나아야 '통과'</li><li><b>칸별 100%</b>: 그 칸만 썼을 때 — 칸의 실력 확인</li><li><b>근사 가격 경고</b>: ETF 자료가 없으면 지수로 근사 → 📥 ETF 수집 후 다시</li></ul></div>
+      <div><h3>✅ 설정을 바꿀 기준 (미리 정함)</h3><ul><li>두 기간 <b>모두</b> 개선</li><li>샤프가 나빠지지 않음</li><li>최대 낙폭 −20% 이내</li><li>그다음 👥 그림자 운용 몇 주 → 모의 20거래일 → 실전</li></ul><p class="mut">⚠️ 과거가 좋았다고 미래도 좋은 건 아닙니다. 여러 값을 계속 바꿔 가며 가장 좋은 것만 고르면(과최적화) 실전에서 무너집니다 — 미리 정한 기준과 두 기간을 지키세요.</p></div>
+    </div></div>
 </section>
 
 <section id="t-info" hidden>
@@ -554,14 +570,16 @@ function dash(s){const e=s.equity,a=[];
     kpi(`<span class="${cls(val-sv)}">${sv&&val?pct((val/sv-1)*100):'-'}</span>`,'시작 대비',sv?man(sv)+'에서':'')+kpi(e?pct((e.value/e.peak-1)*100,1):'-','고점 대비 낙폭','안전장치 −'+s.cfg.dd_limit+'%')+
     kpi(sw(ev),'보유 평가 손익',s.lots.filter(l=>l.status==='보유').length+'묶음')+kpi(sw(rz),'누적 실현 손익',e?'현금 '+man(e.cash):'');
   const off=s.sleeves.filter(x=>x.key!=='SW'&&x.pct===0&&!x.npos);
-  $('#sleeves').innerHTML=s.sleeves.filter(x=>!off.includes(x)).map(x=>x.key==='SW'?`<div class="card sl" style="--c:${x.color};margin:0"><h2><span class="ic">${x.icon}</span>남는 현금 <small>${x.on?'KODEX 200':'꺼짐'}</small></h2>
+  $('#sleeves').innerHTML=s.sleeves.filter(x=>!off.includes(x)&&!(x.key==='MAN'&&!x.npos&&!x.closed)).map(x=>x.key==='SW'?`<div class="card sl" style="--c:${x.color};margin:0"><h2><span class="ic">${x.icon}</span>남는 현금 <small>${x.on?'KODEX 200':'꺼짐'}</small></h2>
     <div class="mut" style="font-size:13px">${x.on?x.mode:'설정에서 켤 수 있음'} · 평가액 ${s.cfg.sweep_reserve||5}%만 현금</div>
     <div style="font-size:14px;margin-top:8px">${x.npos?`보유 <b>${man(x.value)}</b> · ${sw(x.eval)}원`:'지금 보유 없음 (15:20에 삼)'}</div>
-    <div class="mut" style="font-size:13px">실현 ${sw(x.realized)}원${x.closed?` · ${x.closed}회 · 승률 ${x.win.toFixed(0)}% · 회당 ${pct(x.avg)}`:''}</div></div>`:`<div class="card sl" style="--c:${x.color};margin:0"><h2><span class="ic">${x.icon}</span>${x.name} <small>${x.pct}% · ${man(x.limit)}</small></h2>
-    <div class="bar"><i style="width:${Math.min(100,x.limit?x.value/x.limit*100:0).toFixed(0)}%;background:${x.color}"></i></div>
-    <div style="font-size:14px;margin-top:8px">보유 <b>${x.npos}</b>${x.key!=='ON'?' / '+x.slots+'자리':''} · 평가 ${man(x.value)} · ${sw(x.eval)}원</div>
+    <div class="mut" style="font-size:13px">실현 ${sw(x.realized)}원${x.closed?` · ${x.closed}회 · 승률 ${x.win.toFixed(0)}% · 회당 ${pct(x.avg)}`:''}</div></div>`:`<div class="card sl" style="--c:${x.color};margin:0"><h2><span class="ic">${x.icon}</span>${x.name} <small>${x.pct!=null?x.pct+'% · '+man(x.limit):(x.key==='IN'?(x.on?'켜짐 · ':'꺼짐 · ')+x.mode:x.mode||'')}</small></h2>
+    <div class="bar"><i style="width:${x.pct==null?(x.npos?100:0):Math.min(100,x.limit?x.value/x.limit*100:0).toFixed(0)}%;background:${x.color}"></i></div>
+    <div style="font-size:14px;margin-top:8px">보유 <b>${x.npos}</b>${x.slots&&x.key!=='ON'?' / '+x.slots+'자리':''} · 평가 ${man(x.value)} · ${sw(x.eval)}원</div>
     <div class="mut" style="font-size:13px">실현 ${sw(x.realized)}원${x.closed?` · 청산 ${x.closed} · 승률 ${x.win.toFixed(0)}% · 건당 ${pct(x.avg)}`:''}</div></div>`).join('')+
-    (off.length?`<div class="mut" style="font-size:13px;align-self:end">꺼진 칸: ${off.map(x=>x.icon+' '+x.name).join(' · ')} (⚙️ 설정에서 비율을 주면 켜짐)</div>`:'');
+    '';$('#slOff').innerHTML=off.length?`꺼진 칸: ${off.map(x=>x.icon+' '+x.name).join(' · ')} (⚙️ 설정에서 비율을 주면 켜짐)`:'';
+  $('#dDaily').innerHTML=(s.daily_pnl||[]).length?barsSvg(s.daily_pnl.slice(-30)):'<div class="mut">청산이 생기면 표시</div>';
+  $('#dRecent').innerHTML=tbl([{h:'청산일',f:r=>md(r.exit_date)},{h:'칸',f:r=>sb(r.sleeve)},{h:'종목',f:r=>`<a href="#" onclick="skGoto('${r.ticker}');return false">${r.name}</a>`},{h:'손익',r:1,f:r=>sw(r.pnl)},{h:'수익률',r:1,f:r=>`<span class="${cls(r.ret)}">${pct(r.ret)}</span>`}],(s.closed||[]).slice(0,6),'아직 청산 없음');
   $('#curve').innerHTML=line([{name:'계좌',color:'var(--accent)',pts:s.curve,w:2.4}]);
   const hm=s.now.slice(11,16),T=(s.schedule||[]).filter(r=>!/07:30|06:00|21:30|18:30~/.test(r[0]));
   $('#tlSub').textContent=s.trading_day?'거래일':'휴장';
@@ -601,6 +619,26 @@ async function bal(force){if(TAB!=='bal')return;try{const B=await get('/api/bala
   clearTimeout(BT);BT=setTimeout(()=>bal(false),30000)}
 $('#balRe').onclick=()=>bal(true);
 async function adopt(t,n,a){if(!confirm(a==='sell'?`${n} — 앱으로 가져와서 정리(매도)합니다.\n장중이면 지금 시장가 · 아니면 다음 장전 08:50 시가`:`${n} — 앱의 '수동' 묶음으로 가져옵니다.\n자동 규칙은 팔지 않고, 📡 실시간에서 직접 매도합니다.`))return;await act('/api/adopt',{ticker:t,action:a});bal(true)}
+// ℹ️ 탭마다 '이 탭은?' 안내 (접기 · 펼치기 기억)
+const TABHELP={
+ info:['시스템 전체 구조 · 전략 · 일정 · 안전장치를 한눈에',['처음 쓰거나 다시 볼 때 — 우리 시스템이 무엇을 언제 어떻게 하는지','전략 카드 · 하루 흐름 · 데이터 → 신호 → 주문 → 기록 → 분석 순환 그림']],
+ dash:['오늘 계좌 · 칸별 상태 · 일정 · 다음 장전 계획',['위 숫자: 평가액 · 오늘/누적 수익 · 고점 대비 낙폭 · 보유/실현 손익','칸 카드: 칸마다 보유 · 평가 · 실현 · 승률 (꺼진 칸은 아래 줄)','계좌 평가 · 일별 손익 · 최근 청산 · 오늘 일정(지남/진행/대기) · 내일 08:50 매도/매수 예정']],
+ live:['장중 실시간 — 보유 묶음 가격 · 미체결 · 체결 통보 · 수동 주문',['📡 웹소켓 연결 시 2초마다 가격 갱신 (장 시간에만 연결)','보유 묶음의 매도 버튼 · 미체결 취소 · 수동 주문(코드 · 수량)','오늘 계좌 흐름: 1분마다 KIS 평가액']],
+ bal:['증권사 잔고 그대로 (HTS 잔고 화면처럼)',['예수금 · D+2 · 주문 가능 · 종목별 평단 · 평가 손익 · 비중','앱 기록과 KIS 잔고가 다르면 경고 · 앱 밖 종목은 정리(매도)/수동 보유로 가져오기','날마다 잔고 이력 60일']],
+ sig:['오늘 신호(다음 거래일 08:50에 살 종목)와 규칙 설명',['칸별 상위 3 = 매수권(S) · 예비 3 = 자리가 비면 참고','점수는 100점 만점 · 종목명 누르면 🔍 종목분석','아래 카드: 각 칸의 규칙과 검증 근거']],
+ stk:['종목 하나를 우리 시스템 기준으로 분석 · 수동매수',['검색 → 판정(매수 예정 · 관심 · 대상 아님과 이유) · 100점 점수 · 등급 · 요소 막대','매매 전략(매수 구간 · 보유 규칙 · 목표/기대/주의) · 과거 성적 · 차트(신호 · 매매 · 공시)','✋ 수동매수: 장중 바로 / 장 밖이면 다음 장전 · 청산 규칙 선택']],
+ res:['청산된 거래의 결과 — 칸별 · 일별 손익',['칸 필터 · 일별 손익 막대 · 청산 목록 · CSV 저장','자세한 조회는 📒 거래내역, 원인 분석은 🔬 분석']],
+ jr:['HTS급 거래 기록 조회 (지워지지 않고 쌓임)',['보기: 주문 · 체결 조각 · 매매일지 · 종목별 손익 · 거래 근거 · 보유 묶음 · 잔고 이력 · 판단(못 산 이유) …','기간(오늘~3달 · 전체) · 모의/실전/합쳐서 · 검색 · 정렬 · ⬇ CSV 저장(저장 폴더)']],
+ an:['쌓인 기록으로 무엇이 벌고 잃는지 · 고도화 후보',['칸별 · 청산 이유별 · 월/요일별 · 진입 근거 구간 · 체결 품질(미끄러짐) · 후보 순위별 사후 수익 · 놓친 거래','👥 그림자 운용(실험 설정 나란히) · ⏱ 장중 연구실(1분봉 규칙 판정)','📦 분석 패키지(기간 선택)를 Claude에게 → 고도화 점검 · 규칙은 자동으로 바뀌지 않음']],
+ bt:['과거 자료로 "이 설정이었다면" 모의 실험',['아래 📘 사용 설명서에 무엇 · 왜 · 언제 · 사용법 · 결과 읽는 법','설정을 바꾸기 전에 · 몇 달마다 점검할 때 사용 (평소 매매에는 필요 없음)']],
+ data:['모든 자료 수집 · 현황 · 저장',['📦 모든 데이터 한 번에 저장(기간 · 항목 · 🆕 지난 저장 이후 · 첨부용 조각)','자료 수집(KRX 일봉 · 수급 · ETF · 월 자료) · ⏱ 1분봉 · 📰 DART 공시 · 데이터 현황 표','진행 바 · 남은 시간 · 이어받기 (다시 켜도 받은 데서부터)']],
+ real:['모의 ↔ 실전 계좌 전환 (시스템은 그대로)',['바뀌는 것은 계좌 설정과 그 계좌의 장부뿐 · 계좌별 운용 상한 · 실전 단계 한도(선택)','모의 성적 판정: 사전 등록 기준(참고용 · 전환을 막지 않음)']],
+ set:['자동주문 · 전략 비율 · 안전장치 · 연결/비밀 값 · 장중 칸 · 저장 폴더',['자동주문 켜기/중지/정지 · 칸 비율 · 운용 자금 · 낙폭/하루 손실 안전장치 · 수수료/세금','텔레그램 브리핑 · 예약주문 · 악재 공시 매수 안 함 · 실험(자리 수 · 순위)','앱키 · 시크릿 · 계좌 · KRX · 텔레그램 · DART 키(암호화) · 저장 상태 · 연결 테스트']],
+ sys:['프로그램 상태 · 로그 · 점검 zip',['모드 · 자동주문 · 체결 반영 · 웹소켓 · 수집 · 1분봉 상태','로그(경고 · 오류만 보기) · 📦 기록 · 점검 zip (비밀 값 없음)']]};
+function tabHelp(){Object.entries(TABHELP).forEach(([k,[t,items]])=>{const sec=$('#t-'+k);if(!sec||sec.querySelector('details.tabhelp'))return;const d=document.createElement('details');d.className='tabhelp';
+  let o=false;try{o=localStorage.getItem('tk_help_'+k)==='1'}catch(e){}d.open=o;d.innerHTML=`<summary>ℹ️ 이 탭은? — ${t}</summary><ul>${items.map(x=>`<li>${x}</li>`).join('')}</ul>`;
+  d.addEventListener('toggle',()=>{try{localStorage.setItem('tk_help_'+k,d.open?'1':'0')}catch(e){}});sec.prepend(d)})}
+tabHelp();
 // ── 🔍 종목분석 ──
 let SKD=null,SKR=250,SKAC=[],SKI=-1;
 const skHist=()=>{try{return JSON.parse(localStorage.getItem('tk_sk_hist')||'[]')}catch(e){return[]}};
