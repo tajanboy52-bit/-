@@ -47,6 +47,7 @@ import tk_kis
 import tk_minute as mn
 import tk_brief as BR
 import tk_dart as DART
+import tk_export as XP
 import tk_intraday as IL
 import tk_shadow as SH
 import tk_signals as S
@@ -511,7 +512,7 @@ MODULES = [('tk_server.py', '서버 · 화면 API · 일정(수집 · 신호 · 
            ('tk_ws.py', '웹소켓 — 실시간 체결가 · 체결 통보(AES 해독) · 재접속'), ('tk_collect.py', '자료 수집 — KRX 전종목 · 수급 · ETF · 월 재무 · 가져오기'),
            ('tk_minute.py', '⏱ 1분봉 수집기 — 날짜별 대상 · 이어받기 · zip'), ('tk_intraday.py', '⏱ 장중 연구실(규칙 4개 · 대조군 · 판정) · 장중 칸(기본 꺼짐)'),
            ('tk_shadow.py', '👥 그림자 운용 — 실험 설정을 가상으로 나란히'), ('tk_dart.py', '📰 DART 공시 — 수집 · 악재 분류 · 효과 연구 · 매수 거르기(기본 꺼짐)'),
-           ('tk_brief.py', '📱 텔레그램 브리핑 (10시 · 13시 · 장마감)'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
+           ('tk_brief.py', '📱 텔레그램 브리핑 (10시 · 13시 · 장마감)'), ('tk_export.py', '📦 모든 데이터 한 번에 저장 (기간 · 항목 · 조각)'), ('tk_journal.py', '거래 기록 — 주문 상태 · 체결 조각 · 판단 · 매매일지 · 잔고 · 후보'),
            ('tk_analyze.py', '거래내역 조회 · 분석 · 고도화 후보 · 분석 패키지'), ('tk_db.py', '저장소 — 시장 DB · 모드별 장부 · 수정주가 · 백업'),
            ('tk_config.py', '설정 · 비밀 값 DPAPI 암호화'), ('tk_app.html', '화면 (우량주 앱 테마 7가지)')]
 RESEARCH = [
@@ -1396,6 +1397,30 @@ async def api_job_dart(req: Request):
     return {'ok': True, 'msg': 'DART 공시 수집 시작' + (' (오늘만)' if k == 'today' else ' (오늘 + 과거 이어받기)')}
 
 
+@app.post('/api/export_all')
+async def api_export_all(req: Request):
+    """📦 모든 데이터 한 번에 → 저장 폴더 (기간 · 항목 · 조각 크기)"""
+    b = await req.json()
+    if XP.STATE['running']:
+        return {'ok': False, 'error': '이미 저장 중'}
+    parts = [p for p in (b.get('parts') or list(XP.PARTS)) if p in XP.PARTS]
+    if not parts:
+        return {'ok': False, 'error': '항목을 하나 이상 고르세요'}
+    part = float(b.get('part_mb') or 0)
+    if part and not 1 <= part <= 2000:
+        return {'ok': False, 'error': '조각 크기 1~2000MB'}
+    folder = CFG.get('export_dir') or default_dir()
+    XP.STATE.update(running=True, err='', msg='준비', pct=0, paths=[])
+    threading.Thread(target=lambda: _quiet(XP.export_all, folder, b.get('frm') or '', b.get('to') or '', parts, part, CFG), daemon=True).start()
+    return {'ok': True, 'msg': f'모든 데이터 저장 시작 → {folder}'}
+
+
+@app.get('/api/export_all/state')
+async def api_export_all_state():
+    last = db.gmeta_get('last_export_to') or ''
+    return {'ok': True, **{k: v for k, v in XP.STATE.items()}, 'parts': XP.PARTS, 'last_to': last, 'folder': CFG.get('export_dir') or default_dir()}
+
+
 @app.post('/api/save')
 async def api_save(req: Request):
     """내려받기 대신 저장 폴더(⚙️ 설정 · 분봉 카드와 같은 폴더)에 파일로 바로 저장 → 저장 경로를 돌려줌
@@ -1540,7 +1565,7 @@ def keep_awake():
             hm = n.strftime('%H:%M')
             need = CFG.get('keep_awake', 'always') == 'always' \
                 or (tr.is_trading_day(n.strftime('%Y%m%d')) and '06:00' <= hm <= '21:30') or col.STATE['running'] or JOB['signal'] or JOB['bt'] or JOB['bf'] \
-                or mn.STATE['running'] or SH.STATE['running'] or IL.STATE['running'] or DART.STATE['running']
+                or mn.STATE['running'] or SH.STATE['running'] or IL.STATE['running'] or DART.STATE['running'] or XP.STATE['running']
             if need != on:
                 ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if need else 0))
                 db.log(('PC 잠들지 않게 유지' + (' (항상 · 앱이 켜져 있는 동안)' if CFG.get('keep_awake', 'always') == 'always' else '')) if need

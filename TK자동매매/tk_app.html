@@ -103,6 +103,7 @@ main{max-width:1440px;margin:0 auto;padding:20px 24px 70px}
 .kpi.info{background:var(--kpi-bg);border-color:var(--kpi-bd)}.kpi.good{background:#e9f8f1;border-color:#bce8d6}.kpi.warn{background:#fff7e6;border-color:#f6ddb1}.kpi.bad{background:#fff0f1;border-color:#ffd0d6}
 .kpi .v{font-size:22px;font-weight:var(--w8);letter-spacing:-.4px;line-height:1.25;overflow-wrap:anywhere}.kpi .v small{font-size:14px;font-weight:var(--w7)}
 .kpi .l{font-size:13px;color:var(--t3);margin-top:4px}.kpi .s{font-size:12px;color:var(--t3);margin-top:2px}
+.xall{border:2px solid var(--accent);background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(240,253,250,.95))}.xall h2{font-size:19px}.btn.xbig{font-size:16px;padding:11px 22px;box-shadow:0 6px 16px rgba(0,0,0,.15)}
 .kpi.click{cursor:pointer}.kpi.click:hover{border-color:var(--accent)}
 /* 모델 카드 */
 .mc{border:1px solid var(--card-bd);border-radius:13px;padding:15px 16px;border-top:4px solid var(--c);background:var(--card);
@@ -330,6 +331,12 @@ pre{background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-rad
 </section>
 
 <section id="t-data" hidden>
+  <div class="card xall"><h2>📦 모든 데이터 한 번에 저장 <small>저장 폴더에 zip으로 · 첨부용 크기로 나눔 · 비밀 값은 넣지 않음 · Claude에게 올려서 분석</small></h2>
+    <div class="row"><input type="date" id="xaFrm"> ~ <input type="date" id="xaTo"><span class="vtabs qr" data-f="#xaFrm" data-t="#xaTo"><button data-r="since" id="xaSince">🆕 지난 저장 이후</button><button data-r="0">오늘</button><button data-r="7">1주</button><button data-r="14">2주</button><button data-r="31">1달</button><button data-r="92">3달</button><button data-r="-1">전체</button></span></div>
+    <div class="row" id="xaParts" style="margin-top:8px"></div>
+    <div class="row" style="margin-top:8px"><span class="mut">조각 크기</span><input id="xaPart" size="4" value="25"><span class="mut">MB 이하</span>
+      <button class="btn p xbig" id="xaGo">📦 모든 데이터 저장</button><button class="btn" id="xaOpen">📂 폴더 열기</button></div>
+    <div class="bar" style="margin-top:8px"><i id="xaBar" style="width:0%"></i></div><div class="mut" id="xaMsg" style="font-size:12.5px;margin-top:4px"></div></div>
   <div class="kpis" id="dataK"></div>
   <div class="card"><h2>📚 데이터 현황 <small id="invSub">데이터별 기간 · 날 수 · 종목 · 줄 수 · 최신 여부 · 모의/실전 보유 · 거래 기록</small><button class="btn sm" id="invRe" style="margin-left:auto">새로 고침</button></h2>
     <div id="invTl"></div><div class="tw" id="invT" style="margin-top:12px;max-height:none"></div><div class="kbar" id="invF" style="margin-top:12px"></div></div>
@@ -684,7 +691,7 @@ async function dartLoad(){const r=await get('/api/dart?frm='+$('#dtFrm').value+'
 let DTT=null;
 $('#dtTest').onclick=()=>act('/api/job/dart',{kind:'test'});$('#dtRun').onclick=async()=>{await act('/api/job/dart',{kind:'run'});setTimeout(dartLoad,800)};$('#dtToday').onclick=async()=>{await act('/api/job/dart',{kind:'today'});setTimeout(dartLoad,800)};
 $('#dtStop').onclick=()=>act('/api/job/dart',{kind:'stop'});$('#dtSave').onclick=()=>saveTo({kind:'dart',frm:$('#dtFrm').value,to:$('#dtTo').value});['#dtFrm','#dtTo'].forEach(q=>$(q).addEventListener('change',dartLoad));
-function data(s){const D=s.data,C=D.collect;if(!DTT){DTT=1;dartLoad()}if(!INV||Date.now()-INV_AT>60000)inv();if(!MXT){MXT=1;mnExpPoll()}
+function data(s){const D=s.data,C=D.collect;if(!DTT){DTT=1;dartLoad()}if(!XAT){XAT=1;xaPoll(true)}if(!INV||Date.now()-INV_AT>60000)inv();if(!MXT){MXT=1;mnExpPoll()}
   $('#dataK').innerHTML=kpi(md(D.last_bar),'마지막 일봉',D.n_days+'거래일 · '+(D.first_bar||'-')+'~','info')+kpi(md(D.last_flow),'마지막 수급','외국인 · 기관 · 연기금')+kpi((D.n_stocks||0).toLocaleString(),'종목','상장폐지 '+(D.n_delisted||0).toLocaleString())+
     kpi(D.last_month?D.last_month.slice(0,4)+'-'+D.last_month.slice(4):'-','월 자료',D.months+'개월')+kpi(md(D.etf_last),'ETF 일봉','229200 · 069500')+kpi(D.dq_bad?'⚠️ '+md(D.dq_bad):'OK','데이터 품질','',D.dq_bad?'warn':'good');
   $('#cBar').style.width=(C.running?C.pct:(C.last?100:0))+'%';$('#cMsg').innerHTML=(C.running?'⏳ ':'')+(C.msg||'')+(C.err?' · ⚠️ '+C.err:'')+(D.collect_msg?' · '+D.collect_msg:'')+(D.master_at?' · 마스터 '+D.master_at.slice(5,16):'')+'<br>'+tline(C,C.running?`진행 ${C.pct||0}%`:'');
@@ -716,8 +723,19 @@ const PNLC=/손익|수익%|전일대비|등락%|평가%|대비%|갭%|역행%|순
 $('#jrViews').innerHTML=JV.map(([k,n])=>`<button data-v="${k}">${n}</button>`).join('');
 document.querySelectorAll('#jrViews button').forEach(b=>b.onclick=()=>{JVIEW=b.dataset.v;jr()});
 const ymd=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);   // 한국 시각 기준 날짜
+// 📦 모든 데이터
+let XAT=null,XAL='';
+async function xaPoll(first){const r=await get('/api/export_all/state');XAL=r.last_to||'';
+  if(first&&!$('#xaParts').innerHTML)$('#xaParts').innerHTML=Object.entries(r.parts).map(([k,v])=>`<label style="margin:0"><input type="checkbox" class="xaP" value="${k}" checked> ${v}</label>`).join('');
+  $('#xaSince').title=XAL?`${XAL.slice(0,4)}-${XAL.slice(4,6)}-${XAL.slice(6)} 다음 날부터 오늘까지`:'아직 저장한 적 없음 → 전체';
+  $('#xaBar').style.width=(r.running?r.pct:(r.paths&&r.paths.length?100:0))+'%';
+  $('#xaMsg').innerHTML=r.running?`⏳ ${r.pct}% · ${r.msg} · ${r.mb}MB`:(r.err?`❌ ${r.err}`:(r.paths&&r.paths.length?`✅ ${r.msg} (${r.mb}MB)<br><span class="mono">${r.folder}</span><br>${r.paths.map(p=>p.split(/[\\/]/).pop()).join('<br>')}`:`저장 폴더: <span class="mono">${r.folder}</span>`+(XAL?` · 지난 저장: ${XAL.slice(4,6)}/${XAL.slice(6)}까지`:'')));
+  if(r.running){clearTimeout(XAT);XAT=setTimeout(()=>xaPoll(),1500)}}
+$('#xaGo').onclick=async()=>{const parts=[...document.querySelectorAll('.xaP:checked')].map(e=>e.value);const r=await post('/api/export_all',{frm:$('#xaFrm').value,to:$('#xaTo').value,parts,part_mb:+$('#xaPart').value||0});toast(r.ok?r.msg:r.error,r.ok);if(r.ok)setTimeout(()=>xaPoll(),700)};
+$('#xaOpen').onclick=async()=>{const r=await post('/api/open_folder',{});if(!r.ok)toast('폴더: '+r.error,false)};
 // 📅 기간 고르기: 빠른 버튼(오늘 · 1주 · 2주 · 1달 · 3달 · 전체) + 날짜 칸 아무 데나 누르면 달력
 document.querySelectorAll('.qr button').forEach(b=>b.onclick=()=>{const q=b.parentElement,r=+b.dataset.r,t=new Date(),f=$(q.dataset.f),e=$(q.dataset.t);
+  if(b.dataset.r==='since'){const L=XAL?new Date(+XAL.slice(0,4),+XAL.slice(4,6)-1,+XAL.slice(6)+1):null;f.value=L?ymd(L):'';e.value=L?ymd(t):'';q.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));return}
   e.value=r<0?'':ymd(t);f.value=r<0?'':ymd(new Date(t-r*864e5));q.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));f.dispatchEvent(new Event('change'));if(q.dataset.go==='an')runAn()});
 document.querySelectorAll('input[type=date]').forEach(i=>i.addEventListener('click',()=>{try{i.showPicker()}catch(e){}}));
 function mnRng(){const f=$('#mnFrm').value,t=$('#mnTo').value;$('#mnRng').textContent=f||t?`${f||'처음'} ~ ${t||'끝'}만 저장`:'전체 기간 저장'}

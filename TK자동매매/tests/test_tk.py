@@ -654,6 +654,20 @@ _s5 = cli.post('/api/save', json={'kind': 'dart'}, headers={'X-TK-Token': SV.TOK
 _dj = cli.get('/api/dart', headers={'X-TK-Token': SV.TOKEN}).json()
 check('📰 DART 화면 API · 공시 CSV 저장 · 패키지에 dart.csv', _s5['ok'] and '가짜A' in open(_s5['path'], encoding='utf-8-sig').read() and _dj['ok'] and _dj['recent']
       and 'dart.csv' in zipfile.ZipFile(_s1['path']).namelist(), os.path.basename(_s5['path']))
+import tk_export as XPT
+_xa = os.path.join(db.DATA_DIR, '전체 저장')
+SV.CFG.update(dart_key='DARTSECRETKEY123', telegram_token='TGSECRET:abc')
+_xp = XPT.export_all(_xa, '', '', None, 3, SV.CFG)
+_names = [n_ for p_ in _xp for n_ in zipfile.ZipFile(p_).namelist()]
+_blob = b''.join(zipfile.ZipFile(p_).read(n_) for p_ in _xp for n_ in zipfile.ZipFile(p_).namelist())
+_xp2 = XPT.export_all(_xa, run_days[-3], run_days[-1], ['market', 'ledger'], 0, SV.CFG)
+_n2 = zipfile.ZipFile(_xp2[0]).namelist()
+check('📦 모든 데이터 한 번에: 9개 항목 · 조각 나눔 · 조각마다 README · 비밀 값 없음 · 기간/항목 고르기 · 지난 저장 기억', len(_xp) >= 2
+      and all('README.txt' in zipfile.ZipFile(p_).namelist() for p_ in _xp) and any(n_.startswith('market/bars/') for n_ in _names)
+      and any(n_.startswith('minute/bars/') for n_ in _names) and 'research/dart.csv' in _names and any(n_.startswith('ledger/paper/') for n_ in _names)
+      and b'DARTSECRETKEY123' not in _blob and b'TGSECRET' not in _blob and b'y' * 20 not in _blob and b'12345678-01' not in _blob
+      and len(_xp2) == 1 and not any(n_.startswith(('minute/', 'research/')) for n_ in _n2) and db.gmeta_get('last_export_to') == run_days[-1].replace('-', ''),
+      f"{len(_xp)}조각 · {sum(os.path.getsize(p_) for p_ in _xp) / 1e6:.1f}MB · 파일 {len(_names)}개")
 check('보안: CORS 헤더 없음', 'access-control-allow-origin' not in {k.lower() for k in cli.get('/api/state', headers={'X-TK-Token': SV.TOKEN, 'Origin': 'http://evil.com'}).headers})
 
 # ── 4. KIS 클라이언트 (가짜 KIS 서버) ──
